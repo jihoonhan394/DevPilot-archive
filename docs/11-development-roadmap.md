@@ -39,7 +39,7 @@
 
 | 단계 | 묶음 | 사용자 수동 작업 |
 |---|---|---|
-| S0 | M1 | spike 수동 확인, 위 운영 작업(tailnet HTTPS, healthchecks.io, DeepSeek 충전, GitHub secrets, 서버 준비), 서버 개발 DB `devpilot` schema 초기화 1회(`04` §10) |
+| S0 | M1 | spike 수동 확인, 위 운영 작업(tailnet HTTPS, healthchecks.io, DeepSeek 충전, GitHub secrets, 서버 준비) |
 | S1 | M1 | (없음 — PR 리뷰·결정) |
 | S2 | M1 | 백업 pull 스크립트 로컬 등록(`pull-backup.ps1`) |
 | S3 | M1 | 큐레이션 저장소 3개를 로컬에 clone(`content/curated-repos.yaml`의 `cloneHint`) → **실사용 시작** |
@@ -99,7 +99,7 @@ S0~S7은 **구현 순서를 나타내는 단계 ID**다. 기간·날짜가 없�
 
 | 순서 | 작업 |
 |---|---|
-| 1 | 계정 2FA(`BL-SEC-12`), GitHub 저장소·브랜치 규칙(`BL-OPS-21`, `BL-SEC-09`), `BL-FND-02`, 서버 준비 `prepare-server.sh`(`BL-OPS-04`) + `api.env`·`ops.env`, 서버 개발 DB `devpilot` schema 초기화(`04` §10), SP-4 남은 확인 시작 |
+| 1 | 계정 2FA(`BL-SEC-12`), GitHub 저장소·브랜치 규칙(`BL-OPS-21`, `BL-SEC-09`), `BL-FND-02`, 서버 준비 `prepare-server.sh`(`BL-OPS-04`) + `api.env`·`ops.env`, SP-4 남은 확인 시작 |
 | 2 | SP-4 결론 → `BL-FND-03~07·22`, devtoken 백엔드(`BL-SEC-16`, `BL-SEC-03`), `BL-OPS-09` 로컬 환경(서버 Docker 터널) |
 | 3 | SP-3(amd64 이미지 → GHCR → `deploy.sh` → Caddy `127.0.0.1:18080` → `tailscale serve` HTTPS), `BL-OPS-05~07·10`, SP-1(Flutter Web 입력), `BL-CLI-02~03`(dev 로그인 화면) |
 | 4 | CI `main`·`developer` 정리(`BL-OPS-06`), DeepSeek smoke(RestClient `/responses`, `fake` provider와 동일 파싱 확인), spike ADR 작성, 데모 |

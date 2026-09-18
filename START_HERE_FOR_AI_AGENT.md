@@ -60,4 +60,4 @@
 
 ## 보고
 
-S0를 마치면 다음 단계로 넘어가지 말고 `AGENTS.md` §6 형식으로 보고하라. 사람이 직접 해야 하는 작업(tailnet HTTPS 활성화, healthchecks.io 계정, 서버 `api.env` 작성, GitHub branch protection·secret, **서버 개발 DB `devpilot` schema 초기화** — SP-2 때 적용한 옛 migration이 남아 있으면 `V4` checksum 불일치로 기동이 실패한다, `docs/04` §10)은 따로 목록으로 정리하라.
+S0를 마치면 다음 단계로 넘어가지 말고 `AGENTS.md` §6 형식으로 보고하라. 사람이 직접 해야 하는 작업(tailnet HTTPS 활성화, healthchecks.io 계정, 서버 `api.env` 작성, GitHub branch protection·secret)은 따로 목록으로 정리하라.

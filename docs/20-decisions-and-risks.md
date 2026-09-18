@@ -150,7 +150,7 @@ canonical 문서끼리 또는 canonical과 다른 v2 문서 사이에서 발견�
 - [ ] healthchecks.io 무료 계정 + check 1개 생성 → ping URL 확보 (`BL-OPS-13`)
 - [ ] DeepSeek 잔액 확인(월 USD 3 기준 여유분), 5 USD 아래면 충전
 - [ ] GitHub 저장소: `developer` 브랜치 생성, `main`·`developer` ruleset(PR 필수 + 필수 check 4개), environment `ai-eval`에 `DEEPSEEK_API_KEY`
-- [ ] 서버 개발 DB `devpilot`의 `devpilot` schema 초기화 — SP-2 때 적용한 migration 뒤에 `V4`를 고치고 `V9`를 추가했다(`04` §10). 백엔드가 Flyway를 처음 돌리기 전에 한 번
+- [x] 서버 개발 DB 확인(2026-09-18): SP-2 때 스키마가 남아 있지 않았다. 로컬 `bootRun`이 V1~V9를 적용했다(`04` §10)
 - [ ] 서버: `prepare-server.sh` 실행 → `/opt/devpilot/api.env` 작성(`DEVPILOT_DEV_JWT_KEY`, `DEVPILOT_LOG_HASH_KEY`는 `openssl`로 생성) → `tailscale serve --bg --https=443 http://127.0.0.1:18080`
 
 **저장소 준비**
