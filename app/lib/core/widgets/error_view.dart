@@ -45,20 +45,28 @@ class _ReportInfo extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final traceId = failure.traceId;
+    // SelectionArea + Text, not SelectableText: on the web SelectableText reaches screen readers as
+    // an empty read-only field (docs/02 A-6).
     return ExpansionTile(
       title: Text(l10n.commonErrorReportInfo),
       children: [
-        ListTile(
-          dense: true,
-          title: Text(l10n.commonErrorCodeLabel),
-          subtitle: SelectableText(failure.code),
-        ),
-        if (traceId != null)
-          ListTile(
-            dense: true,
-            title: Text(l10n.commonErrorTraceIdLabel),
-            subtitle: SelectableText(traceId),
+        SelectionArea(
+          child: Column(
+            children: [
+              ListTile(
+                dense: true,
+                title: Text(l10n.commonErrorCodeLabel),
+                subtitle: Text(failure.code),
+              ),
+              if (traceId != null)
+                ListTile(
+                  dense: true,
+                  title: Text(l10n.commonErrorTraceIdLabel),
+                  subtitle: Text(traceId),
+                ),
+            ],
           ),
+        ),
       ],
     );
   }

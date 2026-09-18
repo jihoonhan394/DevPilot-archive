@@ -57,24 +57,24 @@ class _ProfileCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
+    // SelectionArea + Text, not SelectableText: on the web SelectableText reaches screen readers as
+    // an empty read-only field (docs/02 A-6).
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l10n.homeProfileTitle, style: textTheme.titleMedium),
-            const SizedBox(height: 16),
-            Text(l10n.homeEmailLabel, style: textTheme.bodySmall),
-            SelectableText(
-              profile.email ?? '—',
-              key: const Key('home.email'),
-              style: textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 12),
-            Text(l10n.homeUserIdLabel, style: textTheme.bodySmall),
-            SelectableText(profile.sub, style: AppTheme.codeTextStyle),
-          ],
+        child: SelectionArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l10n.homeProfileTitle, style: textTheme.titleMedium),
+              const SizedBox(height: 16),
+              Text(l10n.homeEmailLabel, style: textTheme.bodySmall),
+              Text(profile.email ?? '—', key: const Key('home.email'), style: textTheme.bodyLarge),
+              const SizedBox(height: 12),
+              Text(l10n.homeUserIdLabel, style: textTheme.bodySmall),
+              Text(profile.sub, style: AppTheme.codeTextStyle),
+            ],
+          ),
         ),
       ),
     );
