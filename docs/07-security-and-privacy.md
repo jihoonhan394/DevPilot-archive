@@ -106,7 +106,7 @@
 잔여 위험(수용):
 - 탈취된 access token은 만료 전까지 개별 폐기할 수 없다(세션 저장소를 두지 않음). allowlist 제거 또는 서명 키 교체로 대응한다(§17).
 - **devtoken 모드는 "tailnet 밖에서 `/api/v1/dev/token`에 도달할 수 없다"는 전제 위에 있다.** 이 전제가 깨지면(공개 노출, tailnet 침해) 허용 이메일만 알면 누구나 토큰을 받는다 — 비밀번호도 OAuth도 없다.
-- **이 전제는 한시적이다.** 최종 목표가 공개 배포이므로(DEC-19), 공개 노출 전에 반드시 `BL-SEC-18`(Supabase Auth)을 끝내고 `DEVPILOT_AUTH_MODE=supabase`로 전환한다(ADR-033의 게이트). 방어 장치로 `prod` + `devtoken` 조합은 기동 시 WARN을 남긴다.
+- **이 전제는 한시적이다.** 최종 목표가 공개 배포이므로(DEC-19), 공개 노출 전에 반드시 `BL-SEC-18`(실제 신원 확인 인증 — GitHub OAuth 직접 또는 Supabase Auth)을 끝낸다(ADR-033의 게이트). 방어 장치로 `prod` + `devtoken` 조합은 기동 시 WARN을 남긴다.
 - 회사 기밀 코드 붙여넣기는 기술로 완전히 막을 수 없다. 동의 체크와 마스킹으로 줄인다.
 - DeepSeek, GitHub, Tailscale 자체의 침해와 **공용 서버를 함께 쓰는 다른 서비스**의 침해는 이 문서 범위 밖이다(서버 root가 뚫리면 `api.env`가 노출된다).
 
@@ -122,7 +122,7 @@
 - backend가 EC P-256 키(`DEVPILOT_DEV_JWT_KEY`)로 JWT를 서명하고 같은 키의 공개키로 검증한다. 즉 **backend가 발급자이자 resource server**다.
 - `POST /api/v1/dev/token {email}`: allowlist에 있는 이메일에만 720시간 토큰을 발급한다. 불허 시 403 `USER_NOT_ALLOWED`. IP당 30회/시간(§12.3).
 - `GET /api/v1/dev/jwks.json`: 공개키만 제공한다(개인키 필드 `d` 없음).
-- 이 방식은 **서비스가 tailnet 밖에서 도달 불가능하다는 전제**에서만 쓴다(§2.4 잔여 위험). 이 전제는 임시이며(DEC-19), **공개 노출 전에 `supabase` 모드로 전환하는 것이 필수 게이트**다(ADR-033).
+- 이 방식은 **서비스가 tailnet 밖에서 도달 불가능하다는 전제**에서만 쓴다(§2.4 잔여 위험). 이 전제는 임시이며(DEC-19), **공개 노출 전에 실제 신원 확인 인증으로 바꾸는 것이 필수 게이트**다(ADR-033, `13` BL-SEC-18).
 - 토큰 폐기 수단은 (1) allowlist에서 이메일 제거(요청마다 재확인하므로 즉시 차단) (2) `DEVPILOT_DEV_JWT_KEY` 교체 후 재기동(전체 무효)뿐이다.
 
 **`supabase` (Later)**

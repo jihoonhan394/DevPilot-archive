@@ -506,7 +506,7 @@
 
 | 항목 | 지금 (임시) | 공개 전환 후 |
 |---|---|---|
-| 인증 | `devtoken` | **`supabase`(필수 선행, ADR-033·`BL-SEC-18`)** |
+| 인증 | `devtoken`(이메일 입력만) | **실제 신원 확인(필수 선행, `BL-SEC-18`)** — GitHub OAuth 직접(권장) 또는 Supabase Auth |
 | TLS | `tailscale serve` | Caddy 자동 HTTPS(ACME) + 도메인 또는 OCI 공개 IP |
 | Caddy publish | `127.0.0.1:18080` | `0.0.0.0:80,443` |
 | 호스트 | 자체 서버 | 자체 서버 웹 공개 또는 OCI Always Free(ADR-006) — 그때 결정 |
@@ -543,7 +543,7 @@
 **Consequences** — **이 방식은 "tailnet 밖에서 endpoint에 닿을 수 없다"는 전제 위에서만 안전하다.** 공개 인터넷에 노출하는 순간 **허용 이메일만 알면 누구나 토큰을 받는다**(비밀번호도 OAuth도 없다).
 
 **공개 전환의 필수 선행 조건 (게이트)** — 공개 노출 전에 반드시:
-1. `BL-SEC-18`(Supabase Auth 도입) 완료 → `DEVPILOT_AUTH_MODE=supabase`
+1. `BL-SEC-18`(공개 인증 도입) 완료 — **실제 신원 확인이 있는 로그인**으로 바꾼다. 후보 (a) backend가 GitHub OAuth를 직접 처리하고 현재의 JWT 발급·검증 경로를 재사용(권장 — 외부 의존 없음, `DevTokenService` 대부분 재사용) (b) Supabase Auth → `DEVPILOT_AUTH_MODE=supabase`
 2. `devtoken` 관련 bean이 prod에서 등록되지 않음을 확인(`/api/v1/dev/token`·`/api/v1/dev/jwks.json` 404)
 3. `07` §2.4 잔여 위험의 "tailnet 밖 도달 불가" 전제 해제를 기록
 

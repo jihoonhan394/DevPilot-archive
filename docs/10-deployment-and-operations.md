@@ -79,10 +79,17 @@ DevPilot은 서버의 방화벽·sshd·Docker daemon 설정을 **바꾸지 않�
 
 **아래를 전부 끝내기 전에는 공개 인터넷에 노출하지 않는다.** 하나라도 남아 있으면 tailnet 안에 둔다.
 
-- [ ] **인증을 `DEVPILOT_AUTH_MODE=supabase`로 전환한다 (가장 중요).** `devtoken`은 이메일 한 줄을 보내면 토큰을 내준다(`03` §4.2, `05` §1.4.5). **tailnet 전용이라는 전제에서만 안전하고**, 공개되면 allowlist 이메일을 아는 사람 누구나 로그인한다. 필요한 것: Supabase 프로젝트, GitHub OAuth App, `SUPABASE_URL`·`SUPABASE_JWT_ALGORITHM`·`SUPABASE_PUBLISHABLE_KEY`(§6), 앱 `AUTH_MODE=supabase` 빌드. 요지는 §13.8.
+- [ ] **인증을 실제 신원 확인이 있는 방식으로 바꾼다 (가장 중요, `13` BL-SEC-18).** `devtoken`은 이메일 한 줄을 보내면 토큰을 내준다(`03` §4.2, `05` §1.4.5). **tailnet 전용이라는 전제에서만 안전하고**, 공개되면 allowlist 이메일을 아는 사람 누구나 로그인한다. 고칠 지점은 **발급 직전의 신원 확인 단계 하나**이고 JWT 발급·검증 경로는 그대로 쓸 수 있다.
+
+  | 후보 | 내용 | 필요한 것 |
+  |---|---|---|
+  | **(a) GitHub OAuth 직접** (권장) | backend가 `spring-boot-starter-oauth2-client`로 GitHub 로그인을 처리 → 이메일 확인 → allowlist 검사 → **지금의 EC 키 JWT를 그대로 발급**. 외부 인증 서비스 의존 없음 | GitHub OAuth App 1개(callback은 우리 도메인), client id·secret을 `api.env`에. Flutter는 로그인 버튼만 교체 |
+  | (b) Supabase Auth | `DEVPILOT_AUTH_MODE=supabase`. JWKS 검증 경로로 바뀐다 | Supabase 프로젝트, GitHub OAuth App, `SUPABASE_URL`·`SUPABASE_JWT_ALGORITHM`·`SUPABASE_PUBLISHABLE_KEY`(§6), 앱 `AUTH_MODE=supabase` 빌드. 요지는 §13.8 |
+
+  (a)가 단순한 이유: `DevTokenService`의 서명·검증·claim 구성·allowlist 검사·JIT 프로비저닝이 모두 재사용되고, 바뀌는 것은 "이메일을 입력받는다" → "GitHub가 확인해 준 이메일을 받는다"뿐이다. 외부 서비스 중단·무료 플랜 제약(7일 비활성 일시정지)도 없다.
 - [ ] TLS를 `tailscale serve`에서 **Caddy 자동 HTTPS(ACME)**로 바꾼다. 도메인(A 레코드) 또는 공개 IP가 필요하다. `infra/Caddyfile`의 `auto_https off`와 사이트 주소 `:80`을 함께 고친다(§4.2, §5.4).
 - [ ] `compose.prod.yml`의 caddy publish를 `127.0.0.1:18080:80`에서 **`80:80`·`443:443`(HTTP/3를 쓰면 `443/udp`도)**로 바꾼다. Docker publish는 firewalld를 우회하므로(§3.2) 이 순간부터 실제로 공개된다. 자체 서버를 쓴다면 호스트 80/443이 비어 있는지, 공용 서버 규칙(§2.1)을 고칠 수 있는지를 먼저 확인한다.
-- [ ] CSP `connect-src`에 Supabase 호스트를 추가하고, rate limit(`03` §9)을 공개 트래픽 기준으로 다시 정한다. 값의 기준은 `07` §9.3·§9.4다.
+- [ ] CSP `connect-src`를 확인하고(후보 (b)를 고르면 Supabase 호스트 추가, (a)는 `'self'` 그대로), rate limit(`03` §9)을 공개 트래픽 기준으로 다시 정한다. 값의 기준은 `07` §9.3·§9.4다.
 - [ ] `07-security-and-privacy.md` §2.4 잔여 위험의 **"tailnet 밖에서 도달할 수 없다"** 전제가 해제됨을 확인하고 위협 모델을 갱신한다(이 항목은 `07`이 기준).
 - [ ] 백업·모니터링을 공개 기준으로 다시 본다(§8, §11). healthchecks.io는 공개 주소에서도 그대로 동작한다.
 - [ ] 전환 자체를 ADR로 남긴다(ADR-031 대체 또는 보완, `14-adrs.md`).

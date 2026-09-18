@@ -82,11 +82,11 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 | **S5** | Replan 제안 · Budget/Risk · Weekly · Dashboard 완성 | FND-18, CLI-25~26, CAR-08~14, SKL-07, TDY-12, EVD-01~04, AIP-14, CNT-14 | AC-03, AC-12(402·content_filter), AC-19(추세), AC-21(weekly), 배포 환경 확인 |
 | **S6** | Evidence · Export · 복구 리허설 · 하드닝 | SEC-13·15, OPS-16~18, CLI-27~28, EVD-05~08, CNT-12 | AC-15(export), AC-21(evidence), AC-08·AC-18 전체 재검증, 복구 리허설 1회 기록, 배포 환경 확인 |
 | **S7** | Job Radar | FND-19, CLI-29, JOB-01~04, CNT-13 | AC-22, 배포 환경 확인 |
-| **Later** | 2027-02~ | OPS-20·22, SEC-17, CLI-30·31, CAR-15·16, MEM-10·11, TDY-15, TRN-14·15, COA-11, JOB-05. **`BL-SEC-18`(Supabase Auth)은 Later가 아니라 공개 전환 게이트의 필수 선행(P0)이다 — §3.10** | AC-20(Supabase 도입 시), AC-15(삭제 job) |
+| **Later** | 2027-02~ | OPS-20·22, SEC-17, CLI-30·31, CAR-15·16, MEM-10·11, TDY-15, TRN-14·15, COA-11, JOB-05. **`BL-SEC-18`(공개 인증)은 Later가 아니라 공개 전환 게이트의 필수 선행(P0)이다 — §3.10** | AC-20(Supabase 도입 시), AC-15(삭제 job) |
 
 "배포 환경 확인" = `main`의 `v0.<sprint>.<patch>` tag를 `release.yml`이 빌드(amd64 이미지 → GHCR, web zip → release)하고, 로컬에서 `ssh <server>` → `sudo -u deploy /opt/devpilot/deploy.sh v0.x.y`로 배포해 `/actuator/health`가 `UP`이며, 해당 Sprint 데모 체크리스트를 **tailnet URL**(`https://<tailnet-host>`)에서 모두 통과한 상태. 배포 자동화(Actions → tailnet)는 Later(`BL-OPS-22`).
 
-범위 축소(2026-09-18): Supabase Auth는 Sprint 범위 밖(`BL-SEC-18` — 공개 전환 게이트의 필수 선행, §3.10), `POST /plans` Later(`BL-CAR-16`), `REVIEW_VARIANT` Later(`BL-MEM-10`), 계정 삭제 job Later(`BL-SEC-17`, `DELETE /me` 상태 변경은 S1), ICS 캘린더·수동 카드 CRUD는 S3, replan 제안은 S5, Trivy·CodeQL·digest 고정은 S2 P1(`BL-SEC-10`). S1 온보딩은 8·9단계(seed 카드 배정·snapshot)를 생략하고(`assignedSeedCardCount = 0`, `latestRiskLevel = null`), S2에는 `deadline_risk = null`이며 planner는 LOW로 취급한다(risk 계산은 S5).
+범위 축소(2026-09-18): 공개 인증은 Sprint 범위 밖(`BL-SEC-18` — 공개 전환 게이트의 필수 선행, §3.10), `POST /plans` Later(`BL-CAR-16`), `REVIEW_VARIANT` Later(`BL-MEM-10`), 계정 삭제 job Later(`BL-SEC-17`, `DELETE /me` 상태 변경은 S1), ICS 캘린더·수동 카드 CRUD는 S3, replan 제안은 S5, Trivy·CodeQL·digest 고정은 S2 P1(`BL-SEC-10`). S1 온보딩은 8·9단계(seed 카드 배정·snapshot)를 생략하고(`assignedSeedCardCount = 0`, `latestRiskLevel = null`), S2에는 `deadline_risk = null`이며 planner는 LOW로 취급한다(risk 계산은 S5).
 
 ### 3.2 S0 — Bootstrap (2026-09-17 ~ 09-27)
 
@@ -199,7 +199,7 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 
 - **현재 (S0~S2, ~2026-10-26)**: 자체 서버 + Tailscale HTTPS, 인증은 `devtoken`. 지금 서버 PostgreSQL을 테스트 DB로 써야 해서 이렇게 연결한 것이고, **임시 배포**다.
 - **공개 전환 (S3 이후, 시점 미정)**: 자체 서버를 웹으로 공개하거나 OCI Always Free에 배포한다. 어느 쪽인지는 그때 정한다. 선행 조건 세 가지를 모두 채우기 전에는 공개하지 않는다.
-  1. `BL-SEC-18`(Supabase Auth, P0) 완료 — `devtoken`은 "tailnet 밖에서 `/api/v1/dev/token`에 닿을 수 없다"는 전제 하나로만 안전하다(`03` §4.2).
+  1. `BL-SEC-18`(공개 인증, P0) 완료 — `devtoken`은 "tailnet 밖에서 `/api/v1/dev/token`에 닿을 수 없다"는 전제 하나로만 안전하다(`03` §4.2). 후보: (a) backend가 GitHub OAuth를 직접 처리하고 현재 JWT 발급·검증 경로를 재사용(권장 — 외부 서비스 의존이 없고 devtoken 코드의 대부분을 그대로 쓴다) (b) Supabase Auth.
   2. TLS를 `tailscale serve`에서 **ACME**로 전환.
   3. Caddy를 공개 publish(현재는 `127.0.0.1:18080`에만 바인딩).
   - OCI Always Free는 arm64(Ampere)이므로 이미지를 `linux/amd64,linux/arm64` 멀티아치로 빌드해야 한다(`release.yml`).
@@ -300,7 +300,7 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 
 ### SP-5 ~~취소~~ Supabase Auth 단독 운용 (`BL-SEC-01`, 취소 2026-09-18)
 
-Supabase Auth 도입이 Sprint 범위 밖(`BL-SEC-18` — 공개 전환 게이트의 필수 선행, §3.10)으로 미뤄지면서 취소됐다(결정 A: 현재 운영 인증도 `devtoken` 모드). 원래 절차(Data API 비활성 상태의 GitHub OAuth 로그인·토큰 갱신, JWKS `alg`·`iss`·`aud` 확정, 가입 비활성, 타 프로젝트 토큰 401)는 `BL-SEC-18` 착수 시 spike로 되살린다. `devtoken` 모드의 확인 항목은 spike가 아니라 AC-25(`12-acceptance-criteria.md`)로 S0에서 자동 테스트한다.
+공개 인증 도입이 Sprint 범위 밖(`BL-SEC-18` — 공개 전환 게이트의 필수 선행, §3.10)으로 미뤄지면서 취소됐다(결정 A: 현재 운영 인증도 `devtoken` 모드). 원래 절차(Data API 비활성 상태의 GitHub OAuth 로그인·토큰 갱신, JWKS `alg`·`iss`·`aud` 확정, 가입 비활성, 타 프로젝트 토큰 401)는 `BL-SEC-18` 착수 시 spike로 되살린다. `devtoken` 모드의 확인 항목은 spike가 아니라 AC-25(`12-acceptance-criteria.md`)로 S0에서 자동 테스트한다.
 
 **ADR 기록**: ADR-033(devtoken 운영 인증), ADR-014·ADR-023은 Supabase 도입 시 재적용
 

@@ -43,7 +43,7 @@
 | 결정 | 내용 |
 |---|---|
 | 배포 단위 | 단일 Spring Boot 애플리케이션(modular monolith), 단일 인스턴스 |
-| 노출 | **현재 배포 기준(임시)**: tailnet 전용. TLS는 `tailscale serve`가 종단하고 Caddy는 `127.0.0.1:18080`에만 바인딩(`10` §2.3). 공개 도메인·ACME 없음. 공개 배포(자체 서버 웹 공개 또는 OCI Always Free)는 별도 게이트이고 선행 조건은 `supabase` 모드 전환 + ACME TLS다(`11` §3.10, `13` BL-SEC-18) |
+| 노출 | **현재 배포 기준(임시)**: tailnet 전용. TLS는 `tailscale serve`가 종단하고 Caddy는 `127.0.0.1:18080`에만 바인딩(`10` §2.3). 공개 도메인·ACME 없음. 공개 배포(자체 서버 웹 공개 또는 OCI Always Free)는 별도 게이트이고 선행 조건은 **실제 신원 확인 인증**(GitHub OAuth 직접 또는 Supabase Auth) + ACME TLS다(`11` §3.10, `13` BL-SEC-18) |
 | 웹 제공 | Caddy가 Flutter web 정적 파일과 `/api`를 **같은 origin**으로 제공 → 운영 CORS 불필요 |
 | 인증 | `devpilot.security.auth-mode=devtoken`(현재 기본, 운영 포함): backend가 EC P-256 키로 서명한 JWT를 `POST /api/v1/dev/token`으로 발급하고 같은 키로 검증(§4.2). **비공개 네트워크 배포 전용**이다 — tailnet 밖에서 접근할 수 없다는 전제 하나로만 안전하다. 공개 노출 전에 `supabase` 모드(Supabase Auth JWT를 JWKS로 검증)로 전환한다 |
 | DB 접근 | backend만 JDBC로 접근(서버의 공용 PostgreSQL 16, `devpilot` DB/role, TLS 없음 — 현재는 같은 호스트이거나 Tailscale 구간 암호화). 클라이언트의 DB 직접 접근 없음 |
@@ -281,7 +281,7 @@ spring.security.oauth2.resourceserver.jwt:
 - 검증 항목(공통): 서명, `iss`, `aud=authenticated`, `exp`/`nbf`(clock skew 60초)
 - 사용 claim: `sub`(UUID) → `external_auth_id`, `email`(allowlist 비교), `is_anonymous`(true면 거부), `amr[].timestamp`(계정 삭제 전 최근 로그인 확인: 가장 최근 인증 시각이 5분 이내. devtoken은 발급 시각. `amr`이 없으면 `iat`로 대체)
 - `supabase` 모드에서 JWKS는 Spring decoder가 캐시한다. 키 회전 시 새 `kid`가 들어오면 다시 조회한다.
-- **`devtoken`은 임시 수단이다.** 안전성의 근거는 "tailnet 밖에서 `POST /api/v1/dev/token`에 닿을 수 없다" 하나뿐이다(`07` §3). 공개 URL이 되면 allowlist 이메일만 알면 누구나 로그인한다. **공개 노출 전에 반드시 `supabase` 모드로 전환한다(`13` BL-SEC-18, `11` §3.10). 이 방식은 비공개 네트워크 배포에서만 쓴다.**
+- **`devtoken`은 임시 수단이다.** 안전성의 근거는 "tailnet 밖에서 `POST /api/v1/dev/token`에 닿을 수 없다" 하나뿐이다(`07` §3). 공개 URL이 되면 allowlist 이메일만 알면 누구나 로그인한다. **공개 노출 전에 **실제 신원 확인이 있는 인증**으로 바꾼다(`13` BL-SEC-18, `11` §3.10). devtoken의 문제는 JWT 자체가 아니라 "이메일만 입력하면 발급"이라는 신원 확인 부재이므로, 발급 직전 단계만 바꾸면 된다 — 후보 (a) backend가 GitHub OAuth를 직접 처리하고 현재의 JWT 발급·검증 경로를 그대로 재사용(외부 서비스 의존 없음, 권장) (b) Supabase Auth(`auth-mode=supabase`). 이 방식은 비공개 네트워크 배포에서만 쓴다.**
 - **기동 시 경고**: `prod` profile + `auth-mode = devtoken`이면 기동은 하되 `SecurityConfig`가 WARN 1줄을 남긴다 — "이 인스턴스는 tailnet 등 비공개 네트워크에서만 노출해야 한다. 공개 배포 전 `DEVPILOT_AUTH_MODE=supabase`로 전환". 기동을 막지는 않는다(현재 운영 모드이므로). 확인은 `09` §6.4.
 
 ### 4.3 사용자 프로비저닝 (`UserProvisioningService.resolve`)
