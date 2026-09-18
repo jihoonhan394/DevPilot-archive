@@ -41,7 +41,7 @@
 | SpotBugs / SpotBugs Gradle plugin | 4.10.4 / 6.5.11 | 바이트코드 분석 |
 | JaCoCo | 0.8.15 | 커버리지 |
 
-**테스트용 HTTP 스텁은 두 가지만 쓴다.** (1) `supabase` 모드 JWT 검증 테스트의 JWKS는 `TestJwksServer`(JDK `com.sun.net.httpserver.HttpServer`, 추가 의존성 없음, `09-test-and-quality.md` §2). devtoken 모드는 JWKS HTTP 조회가 없으므로(앱이 가진 공개키로 `NimbusJwtDecoder.withPublicKey`) 스텁이 필요 없다. (2) `DeepSeekAiProvider` 요청·응답 매핑 테스트는 `MockRestServiceServer`(spring-test, `RestClient.Builder`에 바인딩). WireMock·OkHttp MockWebServer는 쓰지 않는다. 라이브러리를 추가하지 않으므로 SP-4의 "SDK 공존" 확인 항목은 없어졌다(§7.2).
+**테스트용 HTTP 스텁은 두 가지만 쓴다.** (1) `supabase` 모드 JWT 검증 테스트의 JWKS는 `TestJwksServer`(JDK `com.sun.net.httpserver.HttpServer`, 추가 의존성 없음, `09-test-and-quality.md` §2). devtoken 모드는 JWKS HTTP 조회가 없으므로(앱이 가진 공개키로 `NimbusJwtDecoder.withJwkSource`) 스텁이 필요 없다. (2) `DeepSeekAiProvider` 요청·응답 매핑 테스트는 `MockRestServiceServer`(spring-test, `RestClient.Builder`에 바인딩). WireMock·OkHttp MockWebServer는 쓰지 않는다. 라이브러리를 추가하지 않으므로 SP-4의 "SDK 공존" 확인 항목은 없어졌다(§7.2).
 
 ### 1.3 Flutter
 
@@ -400,7 +400,7 @@ Initializr가 생성한 좌표 (2026-09-17, Boot 4.1.1):
 |---|---|---|
 | REST API, Problem Details | `spring-boot-starter-webmvc` | S0 |
 | 요청 검증 | `spring-boot-starter-validation` | S0 |
-| JWT 검증 (devtoken 공개키, `supabase` 모드에서는 JWKS) | `spring-boot-starter-security`, `spring-boot-starter-security-oauth2-resource-server` (Nimbus JOSE 포함 — devtoken 서명·`NimbusJwtDecoder.withPublicKey`) | S0 |
+| JWT 검증 (devtoken 공개키, `supabase` 모드에서는 JWKS) | `spring-boot-starter-security`, `spring-boot-starter-security-oauth2-resource-server` (Nimbus JOSE 포함 — devtoken 서명·`NimbusJwtDecoder.withJwkSource`) | S0 |
 | DB 접근 | `spring-boot-starter-data-jpa`, `org.postgresql:postgresql` | S0 |
 | Migration | `spring-boot-starter-flyway`, `flyway-database-postgresql` | S0 |
 | Health | `spring-boot-starter-actuator` | S0 |
@@ -596,7 +596,7 @@ fvm flutter run -d chrome --web-port 5173 --dart-define-from-file=config/local.j
 5. API 문서(local만): `http://localhost:8080/swagger-ui/index.html`
 6. 실제 AI 호출이 필요할 때만 `.env`에 `DEVPILOT_AI_PROVIDER=deepseek`, `DEEPSEEK_API_KEY=sk-…`를 넣고 backend를 재시작한다(Spring property로 읽으므로 `.env`로 충분). 키는 prod·eval과 같은 DeepSeek 계정의 선불 잔액을 쓴다(결정 E) — 로컬 호출도 `DEVPILOT_AI_MONTHLY_BUDGET_USD=3` 가드 안에서 한다. 잔액이 없으면 402 → `aiStatus=BALANCE_EXHAUSTED`(§8).
 
-DB 초기화(개발 DB): 서버 DB `devpilot`의 `devpilot` 스키마를 지우고 backend를 재기동하면 Flyway가 전체 migration을 다시 적용한다. DB 클라이언트 또는 `ssh <user>@<server> docker exec -i <pg-container> psql -U devpilot -d devpilot -c "drop schema devpilot cascade;"` (`DevPilot-ops/02-database.md`). **S2 실사용 시작 전까지 local과 prod가 같은 DB를 쓰므로(§4.4) 운영 데이터가 생긴 뒤에는 `devpilot_dev`에서만 한다.**
+DB 초기화(개발 DB): 서버 DB `devpilot`의 `devpilot` 스키마를 지우고 backend를 재기동하면 Flyway가 전체 migration을 다시 적용한다. DB 클라이언트 또는 `ssh <user>@<server> docker exec -i <pg-container> psql -U devpilot -d devpilot -c "drop schema devpilot cascade;"` (`DevPilot-ops/02-database.md`). **실사용 시작(M1 완료) 전까지 local과 prod가 같은 DB를 쓰므로(§4.4) 운영 데이터가 생긴 뒤에는 `devpilot_dev`에서만 한다.**
 
 오프라인 대체(서버에 닿지 않을 때만): Docker Desktop 실행 → `docker compose -f infra/compose.dev.yml up -d`(`postgres:16`, **55432**) → `.env`의 `DATABASE_URL=jdbc:postgresql://localhost:55432/devpilot`, `DATABASE_USERNAME/PASSWORD=devpilot` → `DOCKER_HOST`·`TESTCONTAINERS_HOST_OVERRIDE`를 비운다. 초기화는 `down -v` → `up -d`.
 
@@ -823,7 +823,7 @@ S0(2026-09-17 ~ 09-27) 종료 시 아래 항목이 모두 체크되어야 한다
 - [ ] `V1__baseline.sql` (`create schema if not exists devpilot` …, `04` §10). PG16에서 전체 migration 적용 확인(2026-09-18 완료, `20` DEC-20)
 - [ ] Testcontainers(`postgres:16`) migration 통합 테스트 1개 (빈 DB → migration → `ddl-auto=validate` 기동)
 - [ ] ArchUnit 테스트: controller→repository 금지, 필드 주입 금지, 무인자 `now()` 금지
-- [ ] BL-SEC-16 devtoken 모드: `POST /api/v1/dev/token {email}` → `200 {accessToken, expiresAt}` / allowlist 밖 `403 USER_NOT_ALLOWED`, `GET /api/v1/dev/jwks.json`(permitAll), JWT `iss=${APP_BASE_URL}/dev`·`aud=authenticated`·`sub=uuid v5(email)`·`email`·`amr=[{method:"devtoken"}]`·ttl 720h, `JwtDecoder`는 `NimbusJwtDecoder.withPublicKey`(JWKS HTTP 조회 없음), `DEVPILOT_DEV_JWT_KEY` 비면 기동 시 키 생성 + 테스트(`auth-mode=devtoken` property로 기동)
+- [ ] BL-SEC-16 devtoken 모드: `POST /api/v1/dev/token {email}` → `200 {accessToken, expiresAt}` / allowlist 밖 `403 USER_NOT_ALLOWED`, `GET /api/v1/dev/jwks.json`(permitAll), JWT `iss=${APP_BASE_URL}/dev`·`aud=authenticated`·`sub=uuid v5(email)`·`email`·`amr=[{method:"devtoken"}]`·ttl 720h, `JwtDecoder`는 `NimbusJwtDecoder.withJwkSource`(JWKS HTTP 조회 없음), `DEVPILOT_DEV_JWT_KEY` 비면 기동 시 키 생성 + 테스트(`auth-mode=devtoken` property로 기동)
 - [ ] `GET /api/v1/me` 임시 구현(JWT `sub` 반환) + 테스트: 토큰 없음 401, 유효 토큰 200, 잘못된 `aud`·`iss` 401, allowlist 밖 403
 - [ ] `TraceIdFilter`, `ClockConfig`
 - [ ] `OpenApiSnapshotTest` + `docs/api/openapi.yaml` 커밋
@@ -891,7 +891,7 @@ S0(2026-09-17 ~ 09-27) 종료 시 아래 항목이 모두 체크되어야 한다
 - Spring Boot 지원 기간: https://spring.io/projects/spring-boot#support (API: https://api.spring.io/projects/spring-boot/generations)
 - Spring Boot 4.1 Application Properties: https://docs.spring.io/spring-boot/4.1/appendix/application-properties/index.html
 - Spring Framework `RestClient`·`MockRestServiceServer`: https://docs.spring.io/spring-framework/reference/integration/rest-clients.html · https://docs.spring.io/spring-framework/reference/testing/spring-mvc-test-client.html
-- Spring Security `NimbusJwtDecoder.withPublicKey`: https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html
+- Spring Security `NimbusJwtDecoder.withJwkSource` (EC 키는 `withPublicKey`가 RSA 전용이라 JWK source로 넘긴다): https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html
 - Spring Initializr 메타데이터·생성: https://start.spring.io
 - Spring Boot BOM: https://repo1.maven.org/maven2/org/springframework/boot/spring-boot-dependencies/4.1.1/
 - Maven Central 메타데이터: springdoc https://repo1.maven.org/maven2/org/springdoc/springdoc-openapi-starter-webmvc-ui/maven-metadata.xml · ArchUnit https://repo1.maven.org/maven2/com/tngtech/archunit/archunit-junit5/maven-metadata.xml · JSpecify https://repo1.maven.org/maven2/org/jspecify/jspecify/maven-metadata.xml · google-java-format https://repo1.maven.org/maven2/com/google/googlejavaformat/google-java-format/maven-metadata.xml · PMD https://repo1.maven.org/maven2/net/sourceforge/pmd/pmd-java/maven-metadata.xml · Checkstyle https://repo1.maven.org/maven2/com/puppycrawl/tools/checkstyle/maven-metadata.xml · SpotBugs https://repo1.maven.org/maven2/com/github/spotbugs/spotbugs/maven-metadata.xml · JaCoCo https://repo1.maven.org/maven2/org/jacoco/org.jacoco.agent/maven-metadata.xml

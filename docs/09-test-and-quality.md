@@ -353,7 +353,7 @@ V10,10,GOOD,CORRECT,SELF_EXPLAIN,GOOD,,5,4
 | D-01 | `POST /api/v1/dev/token` `{email: allowlist에 있는 값}` | 200, `tokenType = "Bearer"`, `expiresAt = now + 720h`, 감사 `AUTH_DEVTOKEN_ISSUED`. 이 시점에 `app_user` 행은 없다 |
 | D-02 | D-01의 `accessToken`으로 `GET /me` | 200, `app_user` 1행 생성(JIT, `03` §4.3), `AUTH_USER_PROVISIONED` |
 | D-03 | `POST /api/v1/dev/token` `{email: allowlist 밖}` | 403 `USER_NOT_ALLOWED`, 토큰 없음, `app_user` 행 없음, 감사 `AUTH_DEVTOKEN_REJECTED` |
-| D-04 | `POST /api/v1/dev/token` `{email: "not-an-email"}` / body 없음 | 400 `VALIDATION_FAILED` |
+| D-04 | `POST /api/v1/dev/token` `{email: "not-an-email"}` / body 없음·알 수 없는 속성 | 400 `VALIDATION_FAILED`(field `email`, code `Email`) / 400 `MALFORMED_REQUEST`(본문 파싱 실패, `03` §7) |
 | D-05 | `POST /api/v1/dev/token`에 `Idempotency-Key` 없이 호출 | 200 (IK 대상이 아니다, `05` §1.7) |
 | D-06 | `GET /api/v1/dev/jwks.json` | 200, `keys[0].kty = "EC"`, `crv = "P-256"`, `alg = "ES256"`, `kid` 존재, private key 필드(`d`) 없음, `Cache-Control: no-store` |
 | D-07 | 발급 토큰의 claim | `iss` = `devpilot.security.devtoken.issuer` 설정값(test profile 고정값 `http://localhost/dev`, 운영은 `${APP_BASE_URL}/dev`), `aud = authenticated`, `sub`이 UUID, `email` 일치, `amr[0].method = "devtoken"` |

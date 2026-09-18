@@ -154,12 +154,15 @@ com.devpilot.<module>
 | `common.error.ErrorCode` | enum: HTTP status, title, 메시지 key (`05-api-spec.md` §1.3 카탈로그와 1:1) |
 | `common.error.DevPilotException` | 추상 예외: `ErrorCode`, `Map<String,Object> args`, `List<FieldError> errors` |
 | `common.error.{NotFoundException, ConflictException, BusinessValidationException, ForbiddenException, PayloadTooLargeException, TooManyRequestsException}` | 구체 예외 |
+| `common.error.ProblemDetailFactory` / `ProblemResponseWriter` | Problem Details 본문 생성(`ErrorCode` + `messages_ko.properties` + `traceId`) / MVC 밖(필터·Security entry point)에서 같은 본문을 쓰는 writer (`05` §1.2) |
 | `common.error.GlobalExceptionHandler` | `@RestControllerAdvice`. ProblemDetail + `code`, `traceId`, `errors` 생성. 예상하지 못한 예외는 `INTERNAL_ERROR`로 변환하고 ERROR 로그 1회 |
 | `common.web.TraceIdFilter` | `X-Trace-Id` 수신 또는 생성(32 hex) → MDC `traceId` → 응답 헤더 |
 | `common.web.RequestBodySizeLimitFilter` | `Content-Length` 또는 실제 스트림 기준 64KB 초과 시 413 |
 | `common.web.CursorCodec` | `(sortKey, id)` ↔ base64url cursor |
 | `common.web.CursorPage<T>` | `record CursorPage<T>(List<T> items, String nextCursor)` |
-| `common.security.SecurityConfig` | filter chain, JWT decoder, CORS(local), 인증 예외 → ProblemDetail |
+| `common.security.SecurityConfig` | filter chain, CORS(local), 인증 예외 → ProblemDetail. JWT decoder는 auth-mode가 고른다(devtoken → `DevTokenConfig`, supabase → Spring Boot 자동 설정) |
+| `common.security.DevTokenConfig` / `DevTokenSigningKey` | devtoken 모드 전용(§4.2): 서명 키(PEM 또는 기동 시 생성, prod는 필수) → `JwtEncoder`·`JwtDecoder`(`NimbusJwtDecoder.withJwkSource`, 메모리의 공개 JWK). prod + devtoken WARN 1줄 |
+| `common.security.AllowedUserPolicy` | allowlist 판정(이메일 소문자·trim, `allowed-subjects`). devtoken 발급과 §4.3 프로비저닝이 같이 쓴다 |
 | `common.security.AuthenticatedUserResolver` | interface: `ResolvedUser resolve(Jwt jwt)` — `user` 모듈이 구현 |
 | `common.security.UserContextFilter` | JWT 인증 후 실행. resolver 호출 → `CurrentUser`를 SecurityContext에 저장, 거부 시 403 |
 | `common.security.UserRole` | enum `USER`, `ADMIN` (보안 공통 타입이므로 common에 둔다) |
@@ -167,7 +170,8 @@ com.devpilot.<module>
 | `common.web.OnboardingRequiredInterceptor` | MVC `HandlerInterceptor`. 온보딩 전 사용자의 요청을 409 `ONBOARDING_REQUIRED`로 막는다. 예외 목록은 §4.1 |
 | `common.web.RateLimitFilter` / `TokenBucketRateLimiter` | 사용자당 요청 수 제한 (`07-security-and-privacy.md` §12.3) |
 | `common.math.FixedPointMath` | `floorDiv`, `ceilDiv`, `roundHalfUpDiv`, bp·micro 변환 (`06-learning-engine-rules.md` §1) |
-| `common.logging.AuditLogger` / `UserRefCalculator` | 감사 이벤트 로그, `userRef` HMAC 계산 |
+| `common.logging.AuditLogger` / `AuditEvent` / `UserRefCalculator` | 감사 이벤트 로그(로거 `com.devpilot.audit`), 이벤트 이름 enum(`07` §6.3), `userRef` HMAC 계산 |
+| `common.config.OpenApiConfig` | OpenAPI 공통 규약(`05` §18): `bearerAuth`, default `ProblemDetail` 응답, 응답 필드 required, 서버 주소 고정 |
 | `common.web.validation.*` | `05-api-spec.md` 검증 규칙(UTF-8 바이트 상한, 줄 수, IANA timezone, URL, 날짜 범위)을 구현하는 공용 제약 annotation. 서비스 계층 검사로 구현해도 되며, 응답 오류 코드는 05를 따른다 |
 | `common.security.CurrentUserArgumentResolver` | 컨트롤러 파라미터 `CurrentUser currentUser` 주입 |
 | `common.idempotency.IdempotencyService` | `<T> IdempotentResult<T> execute(userId, key, method, path, requestHash, Supplier<ResponseEntity<T>>)` — §5.4 |
@@ -270,7 +274,7 @@ com.devpilot.<module>
          email(소문자 trim)이 allowlist에 없으면 403 USER_NOT_ALLOWED
          claims: iss=${APP_BASE_URL}/dev, aud=authenticated, sub=UUID v5(email), email,
                  amr=[{method:"devtoken", timestamp}], iat, exp=iat+token-ttl(720h)
-검증:    NimbusJwtDecoder.withPublicKey(공개키) + issuer·audience validator (JWKS HTTP 조회 없음)
+검증:    NimbusJwtDecoder.withJwkSource(메모리의 공개 JWK) + issuer·audience validator (JWKS HTTP 조회 없음)
 공개키:  GET /api/v1/dev/jwks.json (디버그·외부 도구용, 인증 불필요)
 ```
 
@@ -288,7 +292,7 @@ spring.security.oauth2.resourceserver.jwt:
 - 사용 claim: `sub`(UUID) → `external_auth_id`, `email`(allowlist 비교), `is_anonymous`(true면 거부), `amr[].timestamp`(계정 삭제 전 최근 로그인 확인: 가장 최근 인증 시각이 5분 이내. devtoken은 발급 시각. `amr`이 없으면 `iat`로 대체)
 - `supabase` 모드에서 JWKS는 Spring decoder가 캐시한다. 키 회전 시 새 `kid`가 들어오면 다시 조회한다.
 - **`devtoken`은 임시 수단이다.** 안전성의 근거는 "tailnet 밖에서 `POST /api/v1/dev/token`에 닿을 수 없다" 하나뿐이다(`07` §3). 공개 URL이 되면 allowlist 이메일만 알면 누구나 로그인한다. **공개 노출 전에 **실제 신원 확인이 있는 인증**으로 바꾼다(`13` BL-SEC-18, `11` §3.10). devtoken의 문제는 JWT 자체가 아니라 "이메일만 입력하면 발급"이라는 신원 확인 부재이므로, 발급 직전 단계만 바꾸면 된다 — 후보 (a) backend가 GitHub OAuth를 직접 처리하고 현재의 JWT 발급·검증 경로를 그대로 재사용(외부 서비스 의존 없음, 권장) (b) Supabase Auth(`auth-mode=supabase`). 이 방식은 비공개 네트워크 배포에서만 쓴다.**
-- **기동 시 경고**: `prod` profile + `auth-mode = devtoken`이면 기동은 하되 `SecurityConfig`가 WARN 1줄을 남긴다 — "이 인스턴스는 tailnet 등 비공개 네트워크에서만 노출해야 한다. 공개 배포 전 `DEVPILOT_AUTH_MODE=supabase`로 전환". 기동을 막지는 않는다(현재 운영 모드이므로). 확인은 `09` §6.4.
+- **기동 시 경고**: `prod` profile + `auth-mode = devtoken`이면 기동은 하되 `DevTokenConfig`가 WARN 1줄을 남긴다 — "이 인스턴스는 tailnet 등 비공개 네트워크에서만 노출해야 한다. 공개 배포 전 `DEVPILOT_AUTH_MODE=supabase`로 전환". 기동을 막지는 않는다(현재 운영 모드이므로). 확인은 `09` §6.4.
 
 ### 4.3 사용자 프로비저닝 (`UserProvisioningService.resolve`)
 
@@ -568,7 +572,7 @@ devpilot:
   ai:
     provider: ${DEVPILOT_AI_PROVIDER:deepseek}           # deepseek | fake | disabled
     model: ${DEVPILOT_AI_MODEL:deepseek-flash}
-    deepseek: { base-url: https://api.deepseek.com, api-key: ${DEEPSEEK_API_KEY:}, store: false, retry-after-default: 2s }
+    deepseek: { base-url: https://api.deepseek.com, api-key: "${DEEPSEEK_API_KEY:}", store: false, retry-after-default: 2s }
     monthly-budget-usd: ${DEVPILOT_AI_MONTHLY_BUDGET_USD:3}
     budget-warning-ratio: 0.80
     min-balance-usd: 1.00                                # 선불 잔액이 이 값 미만이면 BALANCE_EXHAUSTED (17 §8.7)

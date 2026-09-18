@@ -37,7 +37,7 @@ spring:
     oauth2:
       resourceserver:
         # devpilot.security.auth-mode=supabase 일 때만 쓴다 (Later). devtoken 모드는 앱이 가진 공개키로
-        # JwtDecoder를 직접 구성하므로(NimbusJwtDecoder.withPublicKey) 이 값을 읽지 않는다 (docs/03 §4.2).
+        # JwtDecoder를 직접 구성하므로(NimbusJwtDecoder.withJwkSource) 이 값을 읽지 않는다 (docs/03 §4.2).
         # 기본값을 비워 SUPABASE_URL 없이도 기동이 막히지 않게 한다.
         jwt:
           jwk-set-uri: ${SUPABASE_URL:}/auth/v1/.well-known/jwks.json
@@ -84,6 +84,8 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+  default-produces-media-type: application/json      # docs/05 §1.1 (오류는 application/problem+json)
+  default-consumes-media-type: application/json
 
 # ---------------------------------------------------------------------------
 # devpilot.* — docs/03-system-architecture.md §9 원문 그대로 복사. 변경은 03 §9와 함께 한다
@@ -194,7 +196,7 @@ devpilot:
   ai:
     provider: ${DEVPILOT_AI_PROVIDER:deepseek}          # deepseek | fake | disabled
     model: ${DEVPILOT_AI_MODEL:deepseek-flash}
-    deepseek: { base-url: https://api.deepseek.com, api-key: ${DEEPSEEK_API_KEY:}, store: false, retry-after-default: 2s }
+    deepseek: { base-url: https://api.deepseek.com, api-key: "${DEEPSEEK_API_KEY:}", store: false, retry-after-default: 2s }
     monthly-budget-usd: ${DEVPILOT_AI_MONTHLY_BUDGET_USD:3}
     budget-warning-ratio: 0.80
     min-balance-usd: 1.00

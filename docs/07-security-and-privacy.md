@@ -141,7 +141,7 @@
 
 | 항목 | 규칙 |
 |---|---|
-| 서명 (`devtoken`) | `NimbusJwtDecoder.withPublicKey(<EC P-256 공개키>)` + `ES256` 고정. JWKS HTTP 조회를 하지 않는다. 개인키는 `DEVPILOT_DEV_JWT_KEY`(PEM)에서만 읽고, 비어 있으면 기동 시 생성한다(**prod에서 비어 있으면 기동 실패**) |
+| 서명 (`devtoken`) | `NimbusJwtDecoder.withJwkSource(<메모리의 EC P-256 공개 JWK>)` + `ES256` 고정. JWKS HTTP 조회를 하지 않는다. 개인키는 `DEVPILOT_DEV_JWT_KEY`(PEM)에서만 읽고, 비어 있으면 기동 시 생성한다(**prod에서 비어 있으면 기동 실패**) |
 | 서명 (`supabase`, Later) | `NimbusJwtDecoder.withJwkSetUri(jwk-set-uri)`에 허용 알고리즘을 명시한다. `SUPABASE_JWT_ALGORITHM`은 쉼표 구분 목록이다(기본 `ES256`, 키 회전 중 `ES256,RS256`). 값을 `,`로 나누고 trim한 각 이름을 `SignatureAlgorithm.from(...)`으로 변환해 모두 `jwsAlgorithms`에 넣는다. 알 수 없는 이름이나 `HS*`가 있으면 기동 실패. **HS256 공유 secret 검증 경로는 만들지 않는다** |
 | issuer | `devtoken`: `iss == ${APP_BASE_URL}/dev` / `supabase`: `iss == ${SUPABASE_URL}/auth/v1` (`JwtIssuerValidator`) |
 | audience | `aud`에 `authenticated` 포함 |

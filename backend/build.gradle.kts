@@ -150,11 +150,16 @@ spotless {
 }
 
 checkstyle {
-    // 명명 규칙 전용 설정 (포맷 규칙은 Spotless가 담당). 규칙 내용: docs/09-test-and-quality.md
+    // 명명 규칙 전용 설정 (포맷 규칙은 Spotless가 담당). 규칙 내용: docs/08-coding-conventions.md §11.3
     toolVersion = libs.versions.checkstyle.get()
     configFile = file("config/checkstyle/checkstyle.xml")
     maxWarnings = 0
     isIgnoreFailures = false
+}
+
+// test 소스는 com.sun.net.httpserver(TestJwksServer)를 허용하는 설정을 쓴다 (docs/08 §11.3)
+tasks.named<Checkstyle>("checkstyleTest") {
+    configFile = file("config/checkstyle/checkstyle-test.xml")
 }
 
 pmd {
