@@ -18,6 +18,7 @@ analyzer:
     - "**/*.freezed.dart"
     - "lib/l10n/app_localizations*.dart"
     - "build/**"
+    - "web/**"
   errors:
     # freezed + json_serializable 조합에서 @JsonKey 위치 경고를 끈다 (freezed 문서 권장)
     invalid_annotation_target: ignore

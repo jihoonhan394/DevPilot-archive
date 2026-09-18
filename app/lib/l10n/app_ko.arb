@@ -1,0 +1,113 @@
+{
+  "@@locale": "ko",
+  "appTitle": "DevPilot",
+  "@appTitle": {
+    "description": "App name shown in the browser tab and the app bar."
+  },
+  "loginTagline": "이직 기한까지, 오늘 할 가장 중요한 공부 하나.",
+  "@loginTagline": {
+    "description": "SCR-LOGIN: tagline under the logo text."
+  },
+  "loginEmailLabel": "이메일",
+  "@loginEmailLabel": {
+    "description": "SCR-LOGIN: label of the email input (AUTH_MODE=dev)."
+  },
+  "loginButton": "로그인",
+  "@loginButton": {
+    "description": "SCR-LOGIN: primary button that requests a dev token."
+  },
+  "loginInviteOnly": "초대받은 계정만 쓸 수 있어요.",
+  "@loginInviteOnly": {
+    "description": "SCR-LOGIN: note under the login button."
+  },
+  "loginExpired": "로그인이 만료됐어요. 다시 로그인해 주세요.",
+  "@loginExpired": {
+    "description": "SCR-LOGIN: info note shown when redirected with reason=expired."
+  },
+  "loginNotAllowed": "허용된 사용자가 아닙니다.",
+  "@loginNotAllowed": {
+    "description": "SCR-LOGIN: inline error when the server answers 403 USER_NOT_ALLOWED."
+  },
+  "loginError": "로그인하지 못했어요. 다시 시도해 주세요.",
+  "@loginError": {
+    "description": "SCR-LOGIN: inline error for any other login failure."
+  },
+  "loginTooMany": "시도가 많아요. 잠시 후 다시 해 주세요.",
+  "@loginTooMany": {
+    "description": "SCR-LOGIN: inline error when the server answers 429 RATE_LIMITED."
+  },
+  "homeProfileTitle": "내 계정",
+  "@homeProfileTitle": {
+    "description": "S0 home: title of the card that shows the GET /me result."
+  },
+  "homeEmailLabel": "이메일",
+  "@homeEmailLabel": {
+    "description": "S0 home: label of the email returned by GET /me."
+  },
+  "homeUserIdLabel": "사용자 ID",
+  "@homeUserIdLabel": {
+    "description": "S0 home: label of the subject (sub) returned by GET /me."
+  },
+  "homeLogoutButton": "로그아웃",
+  "@homeLogoutButton": {
+    "description": "S0 home: app bar button that deletes the stored token."
+  },
+  "notFoundTitle": "페이지를 찾을 수 없어요",
+  "@notFoundTitle": {
+    "description": "SCR-NOT-FOUND: title."
+  },
+  "notFoundBody": "주소가 바뀌었거나 삭제된 항목이에요.",
+  "@notFoundBody": {
+    "description": "SCR-NOT-FOUND: body text."
+  },
+  "notFoundHome": "처음으로",
+  "@notFoundHome": {
+    "description": "SCR-NOT-FOUND: primary button to the start route. S0 has no Today yet."
+  },
+  "configErrorTitle": "앱을 시작할 수 없어요",
+  "@configErrorTitle": {
+    "description": "Startup error screen: title shown when a build setting is invalid."
+  },
+  "configErrorBody": "빌드 설정 {key} 값이 올바르지 않아요. 관리자에게 알려 주세요.",
+  "@configErrorBody": {
+    "description": "Startup error screen: body naming the invalid dart-define key.",
+    "placeholders": {
+      "key": {
+        "type": "String",
+        "example": "AUTH_MODE"
+      }
+    }
+  },
+  "commonErrorRetry": "다시 시도",
+  "@commonErrorRetry": {
+    "description": "Common error view: retry button."
+  },
+  "commonErrorReportInfo": "문제 신고 정보",
+  "@commonErrorReportInfo": {
+    "description": "Common error view: collapsed section with code and traceId."
+  },
+  "commonErrorCodeLabel": "오류 코드",
+  "@commonErrorCodeLabel": {
+    "description": "Common error view: label of the error code inside the report section."
+  },
+  "commonErrorTraceIdLabel": "추적 ID",
+  "@commonErrorTraceIdLabel": {
+    "description": "Common error view: label of the traceId inside the report section."
+  },
+  "errorGeneric": "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  "@errorGeneric": {
+    "description": "Fallback error message when neither a mapped code nor a server detail exists."
+  },
+  "errorNetworkError": "연결이 불안정해요. 다시 시도해 주세요.",
+  "@errorNetworkError": {
+    "description": "Client-side NETWORK_ERROR and CLIENT_TIMEOUT."
+  },
+  "errorRateLimited": "요청이 많아요. 잠시 후 다시 시도해 주세요.",
+  "@errorRateLimited": {
+    "description": "429 RATE_LIMITED."
+  },
+  "errorInternalError": "문제가 생겼어요. 잠시 후 다시 시도해 주세요.",
+  "@errorInternalError": {
+    "description": "500 INTERNAL_ERROR and unparsable error responses."
+  }
+}
