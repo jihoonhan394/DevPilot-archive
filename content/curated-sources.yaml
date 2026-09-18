@@ -47,17 +47,17 @@ sources:
     claim: ProblemDetail은 RFC 9457 problem detail 표현이며, ResponseEntityExceptionHandler를 상속한 @ControllerAdvice로 Spring MVC 예외를 이 형식으로 응답할 수 있다.
     verifiedAt: 2026-09-17
   - id: CS-POSTGRESQL-TRANSACTION-ISOLATION
-    title: PostgreSQL 17 Documentation — 13.2 Transaction Isolation
-    url: https://www.postgresql.org/docs/17/transaction-iso.html
+    title: PostgreSQL 16 Documentation — 13.2 Transaction Isolation
+    url: https://www.postgresql.org/docs/16/transaction-iso.html
     publisher: PostgreSQL Global Development Group
-    versionScope: PostgreSQL 17
+    versionScope: PostgreSQL 16
     claim: 기본 격리 수준은 Read Committed이고 Read Uncommitted는 Read Committed처럼 동작하며, Repeatable Read에서 동시 수정 충돌 시 직렬화 오류가 나면 트랜잭션 전체를 재시도해야 한다.
     verifiedAt: 2026-09-17
   - id: CS-POSTGRESQL-MULTICOLUMN-INDEX
-    title: PostgreSQL 17 Documentation — 11.3 Multicolumn Indexes
-    url: https://www.postgresql.org/docs/17/indexes-multicolumn.html
+    title: PostgreSQL 16 Documentation — 11.3 Multicolumn Indexes
+    url: https://www.postgresql.org/docs/16/indexes-multicolumn.html
     publisher: PostgreSQL Global Development Group
-    versionScope: PostgreSQL 17
+    versionScope: PostgreSQL 16
     claim: 복합 B-tree 인덱스는 컬럼의 어떤 부분집합 조건에도 쓰일 수 있지만 선두(가장 왼쪽) 컬럼에 조건이 있을 때 가장 효율적이다.
     verifiedAt: 2026-09-17
   - id: CS-OWASP-SQL-INJECTION-PREVENTION

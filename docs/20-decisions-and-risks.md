@@ -18,8 +18,8 @@
 | DEC-04 | GitHub 저장소 public + secret scanning·push protection | private | private 전환 시 ADR-016(배포 경로)·CI 무료 범위 재검토. 언제든 | ADR-028, ADR-016 |
 | DEC-05 | AI 공급자 **DeepSeek**, 모델 `deepseek-flash`, 설정으로 교체(2026-09-18 변경) | Anthropic Claude(단가 약 30배) · `deepseek-v4-pro` | `DEVPILOT_AI_MODEL`·operation 설정 변경 + eval 통과. 공급자 변경은 ADR. 언제든 | ADR-032 (ADR-011 대체) |
 | DEC-06 | AI 월 예산 **USD 3**(**서비스 전체**, Asia/Seoul 달력 월), 일일 호출 60회/사용자(plan-day), 동시 2개/사용자. **외부 하드 캡 없음 — 선불 잔액이 상한**이고 잔액 < USD 1이면 `BALANCE_EXHAUSTED`. 피크 요금은 항상 ×2로 보수 계산 | 사용자별 월 예산 / USD 25 / 피크 시각 규칙 구현 | `DEVPILOT_AI_MONTHLY_BUDGET_USD` 등 설정 변경. 증액 시 잔액을 먼저 충전한다. `BL-AIP-14` 실측 후(S5) 재검토 | ADR-035 (ADR-029 보완), ADR-012 |
-| DEC-07 | **도메인을 쓰지 않는다.** 주소는 tailnet 호스트명(`https://<tailnet-host>`)이고 TLS는 `tailscale serve`가 처리(2026-09-18 변경) | 구매 도메인 + Caddy ACME | 공개 노출이 필요해지면 도메인 구매 + ADR-031 대체. 언제든 | ADR-031 (ADR-006 대체) |
-| DEC-08 | 로그인: **devtoken**(이메일 입력 → backend 서명 토큰, allowlist, tailnet 전용). Supabase Auth GitHub OAuth는 Later(2026-09-18 변경) | Supabase Auth 즉시 도입(S0 2주 증가) | 공개 노출 전 또는 필요 시 `DEVPILOT_AUTH_MODE=supabase`로 전환 + Supabase 프로젝트 생성 | ADR-033 (ADR-023 대체) |
+| DEC-07 | **당분간 도메인을 쓰지 않는다.** 주소는 tailnet 호스트명(`https://<tailnet-host>`), TLS는 `tailscale serve`가 처리. **임시**이며 공개 전환 시 도메인 또는 OCI 공개 IP로 간다 | 처음부터 구매 도메인 + ACME(S0가 밀림) | 공개 전환 게이트에서 결정(`11` §3). 시점 미정 | ADR-031(임시), ADR-006(후보) |
+| DEC-08 | 로그인: **devtoken**(이메일 입력 → backend 서명 토큰, allowlist). **비공개 배포 전용**이며 공개 전환 전에 Supabase Auth GitHub OAuth로 바꾼다 | Supabase Auth 즉시 도입(S0 2주 증가) | **공개 노출 전 필수**: `BL-SEC-18` 완료 → `DEVPILOT_AUTH_MODE=supabase`. 그 전에는 바꿀 이유 없음 | ADR-033(조건부), ADR-023(공개 시 복귀) |
 | DEC-09 | Java 포맷: google-java-format AOSP(4칸), 100열 | google-java-format 기본(2칸) | 코드가 쌓이기 전(S1 종료 전)에만 변경. 이후 변경은 전체 재포맷 PR 1개 | ADR-010, ADR-019 |
 | DEC-10 | Flutter 상태관리 Riverpod (+ go_router, dio, freezed) | Bloc, Provider | S1 종료 이후 변경 금지(전체 재작성) | ADR-025 |
 | DEC-11 | 계정 삭제 시 운영자가 **allowlist에서 이메일을 제거**한다(runbook). Supabase 모드에서는 Auth 사용자도 대시보드에서 수동 삭제 | backend가 Admin API로 자동 삭제 | 초대 사용자 운영이 번거로워지면 ADR. S6 이후 | ADR-033 |
@@ -30,7 +30,7 @@
 | DEC-16 | coach 코드 원문 보존 30일 | 0일 / 7일 | `devpilot.privacy.coach-content-retention-days` 변경 + 화면 안내 문구. 단축은 언제든, 연장은 ADR | ADR-013 |
 | DEC-17 | 복습 HARD 간격 ×1.2 | HARD 2일 고정(`FIXED_2`) | `devpilot.review.hard-strategy` 설정. 4주 사용 후(`BL-CNT-14`, S5) | ADR-018 |
 | DEC-18 | 모바일: PWA 먼저, Android 앱은 Later | Android 앱 동시 | Later 백로그(`BL-CLI-30`). iOS/Android PWA 제약이 실사용을 막으면 재검토 | ADR-024 |
-| DEC-19 | 호스팅: 기존 자체 Linux 서버(Rocky 9, x86_64, 공용 Docker/PG) + Tailscale HTTPS. 공개 인터넷 노출 없음 (2026-09-18) | OCI 무료 VM / PaaS | 공개 서비스가 필요해지면 ADR-031 대체. 언제든 | ADR-031 |
+| DEC-19 | 호스팅(**임시, S0~S2**): 기존 자체 Linux 서버(Rocky 9, x86_64, 공용 Docker/PG) + Tailscale HTTPS. 최종 목표는 **공개 배포**이며 방식은 (a) 자체 서버 웹 공개 (b) OCI Always Free 중 그때 결정 (2026-09-18 사용자 확인) | 처음부터 OCI·도메인(S0 2주 증가) | 공개 전환 게이트(`11` §3): Supabase Auth + ACME + Caddy 공개 publish. 이미지는 이미 amd64·arm64 멀티아치라 어느 쪽이든 그대로 배포된다 | ADR-031(임시), ADR-006(후보), ADR-033 |
 | DEC-20 | 개발·테스트 DB도 같은 서버 PostgreSQL 16, Testcontainers 이미지 `postgres:16` (2026-09-18) | 로컬 Docker PG / Testcontainers 17 | 운영 DB major가 올라갈 때 함께 올린다 | ADR-030 |
 | DEC-21 | 로컬 테스트용 Docker는 **서버 Docker를 SSH 소켓 포워딩**으로 쓴다(Docker Desktop 불필요, 2026-09-18 검증) | 로컬 Docker Desktop 설치 | 로컬에 Docker를 깔면 터널 없이 그대로 동작한다. 언제든 | — |
 | DEC-22 | git 전략: `feature/BL-*` → `developer`(squash) → `main`(merge commit), 태그 `v0.<sprint>.<patch>`로 릴리스. CI는 두 브랜치 push·PR (2026-09-18, 사용자 방식) | `main` 단일 브랜치 | 협업자가 생기면 재검토. 언제든 | — |
@@ -61,7 +61,7 @@
 | E-04 | DeepSeek 요청 파라미터: `thinking {type}`·`reasoning_effort` 조합, `store`, `instructions`, `max_output_tokens` 상한, thinking on일 때 추론 토큰이 출력 상한에 포함되는지 | api-docs.deepseek.com + 실제 호출 | S3 (`BL-AIP-03`) | thinking 기본 on, 추론 토큰이 `output_tokens`에 포함됨(2026-09-18 확인) |
 | E-05 | ~~Supabase pooler 커스텀 role~~ | — | — | **무효**(2026-09-18): 자체 서버 PostgreSQL 16 직접 접속(ADR-030). Supabase 도입 시 되살린다 |
 | E-06 | ~~Supabase Data API·JWT 동작~~ | — | — | **무효**(2026-09-18): devtoken 모드에서는 backend가 claim을 직접 만든다(ADR-033). Supabase 도입 시 되살린다 |
-| E-07 | ~~Supabase 무료 플랜 한도~~ | — | — | **무효**(2026-09-18). 대신 서버 디스크 여유와 공용 PG 용량을 §11 점검표에서 본다 |
+| E-07 | ~~Supabase 무료 플랜 한도~~ | — | — | **무효**(2026-09-18). 대신 서버 디스크 여유와 공용 PG 용량을 `10` §11 점검표에서 본다 |
 | E-08 | ~~OCI Always Free 한도·회수 정책~~ | — | — | **무효**(2026-09-18): 자체 서버 사용(ADR-031) |
 | E-09 | Flutter 3.47.4 web 빌드의 엔진 리소스 로컬 번들 옵션(CDN 미사용 플래그)과 CSP 요구사항(`wasm-unsafe-eval` 등) | `flutter build web -h`, docs.flutter.dev web 배포·CSP 문서 | S0 (SP-1), S3 (`BL-SEC-08`) | |
 | E-10 | DeepSeek 데이터 정책(학습 사용 여부·보존·처리 위치) | api-docs.deepseek.com, 플랫폼 약관 | 확인 완료 | **2026-09-18**: 학습 미사용 약정 없음 / zero-retention 없음 / 중국 처리. 사용자 결정으로 수용(ADR-013) |
@@ -116,7 +116,7 @@ canonical 문서끼리 또는 canonical과 다른 v2 문서 사이에서 발견�
 
 | ID | 리스크 | P | I | 대응 | 조기 신호 · 트리거 | 소유자 | 상태 |
 |---|---|---|---|---|---|---|---|
-| RISK-01 | DevPilot 개발이 실제 학습 시간을 잠식해 이직 준비가 늦어진다 | H | H | 날짜 고정 Sprint, AI 없는 Today·Review를 10-26에 먼저 사용, 직접 구현 영역 한정, DevPilot 개발을 학습 `PROJECT_TASK`로 등록, S1·S3 재추정 | S1 BL 완료율 < 70% 또는 투입 > 12h/주. **2026-11-09 stop-loss 판정 불충족 시 Coach·Evidence·Job을 Later로 이동**(`11-development-roadmap.md` §6) | 사용자 | 감시 |
+| RISK-01 | DevPilot 개발이 실제 학습 시간을 잠식해 이직 준비가 늦어진다 | H | H | **DevPilot 구현은 전부 에이전트에 위임한다**(2026-09-18: DevPilot은 학습 도구이지 포트폴리오가 아니므로 직접 구현할 이유가 없다 — 구 RISK-09 취소). 날짜 고정 Sprint, AI 없는 Today·Review를 10-26에 먼저 사용, 사용자 작업은 결정·리뷰·계정 설정으로 한정, S1·S3 재추정 | 사용자 투입 > 4h/주(구 12h/주에서 하향), S1 BL 완료율 < 70%. **2026-11-09 stop-loss 판정 불충족 시 Coach·Evidence·Job을 Later로 이동**(`11-development-roadmap.md` §6) | 사용자 | 감시 |
 | RISK-02 | AI 비용이 예산을 넘는다 | L | M | 서비스 전체 월 USD 3 가드, 일일 60회·동시 2개, 피크 ×2 보수 계산, 선불 잔액 소액 유지, seed hint·캐시, `BL-AIP-14` 실측 후 thinking·effort 조정 | 주간 비용 > USD 0.9(월 예산 30%), `BUDGET_WARNING`이 월 20일 이전 발생 | 사용자 | 감시 |
 | RISK-03 | AI 코드 리뷰 품질 문제(오탐, 누락, 잘못된 사실) | M | H | eval v1(오탐 함정·injection 포함), 검증 배지와 강등 가드, `VERIFIED` 제한, 질문형 finding, DISMISSED 기록 | 최근 finding 20개 중 DISMISSED > 30%, eval recall < 기준 | 사용자 | 감시 |
 | RISK-04 | **단일 서버 SPOF** — 정전·ISP 장애·하드웨어 고장·Proxmox 호스트 문제로 서비스와 DB가 함께 멈춘다 | M | H | 상태를 서버 밖(GHCR 이미지 + 로컬 백업)에도 둔다, `prepare-server.sh`로 재구축, healthchecks.io 알림, 오프라인이어도 학습 자체는 가능(종이·IDE) | healthping 실패 알림, 서버 재부팅 로그 | 사용자 | 감시 |
@@ -124,7 +124,7 @@ canonical 문서끼리 또는 canonical과 다른 v2 문서 사이에서 발견�
 | RISK-06 | Flutter Web 한글 입력·폰트·초기 로딩 문제로 서술 입력이 불편하다 | M | M | SP-1, 폰트 번들, 입력 위젯 `<textarea>` 대체, 실패 시 웹 스택 변경 ADR | SP-1 실패 케이스, 실사용 중 입력 손실 1회 이상 | 사용자 | 감시 |
 | RISK-07 | Boot 4.1·Java 25 자료 부족과 에이전트의 구버전(Boot 3) 패턴 생성 | H | M | 검증된 버전 표(§3.1), `AGENTS.md` 버전 규칙, Initializr 좌표, SP-4, 컴파일·deprecation 경고를 CI에서 실패 처리 | Sprint당 같은 유형 컴파일 오류·deprecated 경고 3회 이상, unknown property 경고 | 사용자 | 감시 |
 | RISK-08 | 회사 코드·secret이 외부 AI로 전송되거나 저장된다 | L | H | 요청마다 기밀 동의, 모든 자유 입력 masking·private key 차단, 원문 30일, 프롬프트 원문 미저장, 공급자 약관 확인(ADR-013) | 감사 이벤트 `SECRET_BLOCKED`, AI `CONFIDENTIAL_SUSPECTED` 실패 | 사용자 | 감시 |
-| RISK-09 | 에이전트 위임 과다로 본인이 핵심 코드를 설명하지 못한다(면접 리스크) | M | H | 직접 구현 영역 4개, 설계 메모 필수, Coach로 자기 코드 리뷰, ADR 직접 승인 | 직접 구현 BL을 Sprint 중반까지 시작하지 못함(`11-development-roadmap.md` §5 전환 발생), PR 설계 메모 공란 | 사용자 | 감시 |
+| RISK-09 | ~~에이전트 위임 과다로 본인이 핵심 코드를 설명하지 못한다(면접 리스크)~~ | — | — | **취소(2026-09-18)**: DevPilot은 이직에 쓰는 학습 도구이지 면접에서 설명할 포트폴리오가 아니다. 전제가 틀렸으므로 이 리스크와 그 대응(`11` §5 직접 구현 영역 4개)을 삭제하고, 구현 전량 위임으로 RISK-01을 줄인다 | — | 사용자 | ~~종료~~ |
 | RISK-10 | planner 추천이 체감상 맞지 않아 사용을 멈춘다 | M | H | reason 표시, skip·defer·재생성 쉬움, score breakdown 저장, 4주 후 가중치 튜닝(`BL-CNT-14`) | 2주 연속 main task `SKIPPED` 비율 > 50%, 재생성 평균 > 2회/일 | 사용자 | 감시 |
 | RISK-11 | **DeepSeek 데이터 정책** — 서버가 중국에 있고 입력을 학습에 쓰지 않는다는 약정이 없다 | H | M | 학습용 프로젝트로 수용(ADR-013), 회사 코드 금지 동의·secret 마스킹·원문 30일, 동의 문구에 명시 | 회사 코드를 다루게 됨, 공급자 정책 변경 | 사용자 | **수용** |
 | RISK-16 | **선불 잔액 소진(402)으로 AI 기능이 통째로 멈춘다** | M | M | `AiBalanceCheckJob` 매시 확인 + `BALANCE_EXHAUSTED` 표시, 비-AI 기능은 정상(AC-12), 잔액 소액 상시 유지 | `AI_BALANCE_LOW` 감사 이벤트, 잔액 < USD 1 | 사용자 | 감시 |

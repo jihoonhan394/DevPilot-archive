@@ -46,6 +46,7 @@
 | AC-22 | Job Radar | FR-19 | S7 |
 | AC-23 | Idempotency | NFR-01, NFR-04 | S3, S4 재검증 |
 | AC-24 | Plan 일관성(동시 replan) | FR-04 | S1 |
+| AC-25 | devtoken 인증 | FR-01, NFR-04 | S0 |
 
 ---
 
@@ -782,7 +783,7 @@
 - And B의 행 수 변화 없음, 감사 로그 `ACCOUNT_DELETION_COMPLETED`
 
 **S5. Runbook (manual ops)**
-- 운영자가 allowlist에서 A를 제거 → A는 `POST /dev/token`으로 새 토큰을 받을 수 없고(403), 기존 토큰으로 요청해도 `UserContextFilter`가 403 `USER_NOT_ALLOWED`. (Supabase 도입 시에는 Auth 사용자도 함께 삭제한다)
+- 운영자가 allowlist에서 A를 제거 → A는 `POST /api/v1/dev/token`으로 새 토큰을 받을 수 없고(403), 기존 토큰으로 요청해도 `UserContextFilter`가 403 `USER_NOT_ALLOWED`. (Supabase 도입 시에는 Auth 사용자도 함께 삭제한다)
 - allowlist 제거를 빠뜨리면 같은 계정 재로그인 시 빈 사용자가 생성됨을 runbook에 경고로 기록
 
 ---
@@ -1035,7 +1036,7 @@
 - `sourceUrl`을 요청 기록 stub 서버(WireMock) 주소로 두었을 때 수신 요청 0건, 분석 중 AI provider 외 외부 HTTP 호출 0건
 
 **S5. 크기·삭제·보존**
-- `jobDescription` 20,001자 → 413 `CONTENT_TOO_LARGE`
+- `jobDescription` 20,001 **byte**(UTF-8) → 413 `CONTENT_TOO_LARGE`. 한도는 글자 수가 아니라 바이트다(`01` FR-19, `05` §17, `07` §5.2) — 한국어는 글자당 3바이트이므로 6,667자면 넘는다
 - `DELETE /jobs/{id}` → `job_posting`·`job_requirement` 0행
 - clock을 `created_at + 180일 + 1일`로 옮겨 `RetentionCleanupJob` → `job_description = null`, `job_description_purged_at` 설정, requirement 유지
 
@@ -1103,3 +1104,58 @@
 
 **S4. Replan과 milestone PATCH 경쟁**
 - replan 커밋 후 도착한 v1 milestone PATCH → 409 `PLAN_NOT_ACTIVE`, v2 milestone 변경 없음
+
+---
+
+## AC-25 devtoken 인증
+
+| 항목 | 값 |
+|---|---|
+| 관련 요구사항 | FR-01, NFR-04 |
+| Sprint | S0 (S1에서 allowlist·프로비저닝과 함께 재검증) |
+| 검증 수준 | integration, unit |
+| 테스트 클래스 | `DevTokenIntegrationTest`, `DevTokenServiceTest`, `JwtValidationIntegrationTest` |
+| 관련 결정 | ADR-033, DEC-08. 상세 규칙은 `03-system-architecture.md` §4.2, endpoint 계약은 `05-api-spec.md` §1.4.5, 테스트 목록은 `09-test-and-quality.md` §6.4 |
+
+`devpilot.security.auth-mode = devtoken`(기본값, 운영 포함)에서만 해당한다. 이 방식은 **서비스가 tailnet 밖에서 도달할 수 없다는 전제** 위에 있다(`07-security-and-privacy.md` §2.4 잔여 위험).
+
+**S1. 발급 (allowlist 통과)**
+- Given `DEVPILOT_ALLOWED_EMAILS`에 있는 이메일
+- When `POST /api/v1/dev/token` `{ "email": "<allowed>" }` (인증 없음, `Idempotency-Key` 없음)
+- Then 200 `{ accessToken, tokenType: "Bearer", expiresAt }`, `expiresAt = now + 720h`, 감사 로그 `AUTH_DEVTOKEN_ISSUED`
+- And 이 시점에 `app_user` 행은 **아직 만들어지지 않는다**
+
+**S2. 발급된 토큰으로 인증**
+- When S1의 `accessToken`으로 `GET /api/v1/me`
+- Then 200, `app_user` 1행 생성(JIT, `03` §4.3), 감사 로그 `AUTH_USER_PROVISIONED`
+- And claim: `iss = ${APP_BASE_URL}/dev`, `aud = authenticated`, `sub`이 UUID, `email` 일치, `amr[0].method = "devtoken"`, `amr[0].timestamp` 존재
+- And 같은 이메일로 다시 발급 → `sub` 동일(UUID v5(email)) → `app_user`는 여전히 1행
+
+**S3. allowlist 밖 (거부)**
+- When `POST /api/v1/dev/token` `{ "email": "<not-allowed>" }`
+- Then 403 `USER_NOT_ALLOWED`, 응답에 토큰 없음, `app_user` 행 없음, 감사 로그 `AUTH_DEVTOKEN_REJECTED`(이메일 원문 대신 해시)
+- And 이메일 형식 오류·body 없음 → 400 `VALIDATION_FAILED`
+
+**S4. 검증 실패는 모두 401**
+- 다른 키로 서명한 같은 형식의 토큰 → 401 `AUTHENTICATION_REQUIRED`
+- `exp`가 지난 토큰(`MutableClock` 전진) → 401
+- `aud`가 `authenticated`가 아님 / `iss` 불일치 / `alg = none` / `sub` 없음 → 각각 401
+- 실패 사유를 응답에서 구분하지 않는다(`07` §3.2)
+
+**S5. 공개키 endpoint**
+- `GET /api/v1/dev/jwks.json` → 200, `keys[0]`에 `kty: "EC"`, `crv: "P-256"`, `alg: "ES256"`, `kid`
+- And **개인키 필드(`d`)가 없다**, `Cache-Control: no-store`
+
+**S6. 모드·기동 조건**
+- `auth-mode = supabase` context에서 두 endpoint 모두 404 `RESOURCE_NOT_FOUND`(bean 미등록)
+- `prod` profile + `auth-mode = devtoken` + `DEVPILOT_DEV_JWT_KEY` 없음 → **기동 실패**
+- `local` profile + 키 없음 → 기동 성공(기동 시 생성) + WARN 로그 1줄
+
+**S7. 남용 방지**
+- 같은 IP에서 `POST /api/v1/dev/token` 31회/시간 → 31번째 429 `RATE_LIMITED`(`devpilot.security.rate-limit.dev-token-per-hour-per-ip`)
+
+**S8. 폐기**
+- Given 발급된 유효 토큰 + allowlist에서 해당 이메일 제거 + api 재기동
+- When 그 토큰으로 `GET /api/v1/me`
+- Then 403 `USER_NOT_ALLOWED` (`UserContextFilter`가 요청마다 allowlist를 다시 확인, `03` §4.3 4단계)
+- And `DEVPILOT_DEV_JWT_KEY` 교체 후 재기동 → 기존 토큰 전부 401

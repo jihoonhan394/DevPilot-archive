@@ -1,7 +1,8 @@
-<#
+﻿<#
 .SYNOPSIS
 DevPilot 백업 2차 사본 (결정 C): 서버 /opt/devpilot/backups 의 최신 .dump 를 scp 로 받아 로컬에 8주 보관한다.
 기준: docs/10-deployment-and-operations.md §8.2 (2026-09-18). Windows PowerShell 5.1 호환.
+파일 인코딩은 UTF-8 **BOM 포함**이다 — 5.1 은 BOM 이 없으면 ANSI 코드페이지로 읽어 한글 문자열이 깨진다.
 
 .DESCRIPTION
 1) ssh <server> 로 최신 devpilot-*.dump 이름을 얻고 2) 같은 이름이 로컬에 없으면 scp 로 받아(.part → 이름 변경)
@@ -38,13 +39,20 @@ function Write-Log {
     Write-Output ("{0:yyyy-MM-ddTHH:mm:ssZ} [pull-backup] {1}" -f (Get-Date).ToUniversalTime(), $Message)
 }
 
+# $ErrorActionPreference='Stop' 에서 Write-Error 는 종료 오류를 던져 뒤따르는 exit 가 실행되지 않는다.
+# 문서화한 종료 코드(1·2)가 실제로 나오도록 오류도 Write-Host 로 출력한다 (PowerShell 5.1 호환).
+function Write-Err {
+    param([string]$Message)
+    Write-Host ("{0:yyyy-MM-ddTHH:mm:ssZ} [pull-backup] ERROR: {1}" -f (Get-Date).ToUniversalTime(), $Message) -ForegroundColor Red
+}
+
 if ([string]::IsNullOrWhiteSpace($Server)) {
-    Write-Error '서버를 모른다: -Server user@host 또는 $env:DEVPILOT_SERVER_SSH 를 준다 (DevPilot-ops/01-servers.md)'
+    Write-Err '서버를 모른다: -Server user@host 또는 $env:DEVPILOT_SERVER_SSH 를 준다 (DevPilot-ops/01-servers.md)'
     exit 2
 }
 foreach ($tool in @('ssh', 'scp')) {
     if ($null -eq (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        Write-Error "$tool 을 찾을 수 없다 (Windows OpenSSH Client)"
+        Write-Err "$tool 을 찾을 수 없다 (Windows OpenSSH Client)"
         exit 2
     }
 }
@@ -53,18 +61,18 @@ foreach ($tool in @('ssh', 'scp')) {
 $remoteCommand = "ls -1t $remoteDir/devpilot-*.dump 2>/dev/null | head -n 1"
 $listed = @(& ssh -o BatchMode=yes $Server $remoteCommand)
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "ssh 실패 (exit $LASTEXITCODE): $Server"
+    Write-Err "ssh 실패 (exit $LASTEXITCODE): $Server"
     exit 1
 }
 $latest = ($listed | Select-Object -Last 1)
 if ([string]::IsNullOrWhiteSpace($latest)) {
-    Write-Error "서버에 백업 파일이 없다: ${Server}:${remoteDir} (devpilot-backup.timer 상태 확인)"
+    Write-Err "서버에 백업 파일이 없다: ${Server}:${remoteDir} (devpilot-backup.timer 상태 확인)"
     exit 1
 }
 $latest = $latest.Trim()
 $name = $latest.Substring($latest.LastIndexOf('/') + 1)
 if ($name -notmatch '^devpilot-\d{8}T\d{6}Z\.dump$') {
-    Write-Error "예상하지 못한 파일 이름: $name"
+    Write-Err "예상하지 못한 파일 이름: $name"
     exit 1
 }
 
@@ -82,13 +90,13 @@ if (Test-Path -LiteralPath $local) {
     & scp -q -o BatchMode=yes "${Server}:${latest}" $part
     if ($LASTEXITCODE -ne 0) {
         if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Force }
-        Write-Error "scp 실패 (exit $LASTEXITCODE): $latest"
+        Write-Err "scp 실패 (exit $LASTEXITCODE): $latest"
         exit 1
     }
     $size = (Get-Item -LiteralPath $part).Length
     if ($size -lt $minBytes) {
         Remove-Item -LiteralPath $part -Force
-        Write-Error "받은 파일이 너무 작다 ($size bytes)"
+        Write-Err "받은 파일이 너무 작다 ($size bytes)"
         exit 1
     }
     Move-Item -LiteralPath $part -Destination $local -Force

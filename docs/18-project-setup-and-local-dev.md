@@ -1,10 +1,10 @@
 # 18. Project Setup & Local Development
 
-> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: DEC-02, DEC-03, DEC-04, DEC-08(Later), DEC-09, DEC-10, DEC-12, DEC-18, `03-system-architecture.md`, `04-domain-model-and-db.md`, `10-deployment-and-operations.md`, `_PENDING-CHANGES.md` §3·§5·§6·§7
+> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: DEC-02, DEC-03, DEC-04, DEC-08(Later), DEC-09, DEC-10, DEC-12, DEC-18, `03-system-architecture.md`, `04-domain-model-and-db.md`, `10-deployment-and-operations.md`, `14-adrs.md` ADR-030~035, `20-decisions-and-risks.md` DEC-05~23
 >
-> 이 문서는 **저장소 생성부터 로컬에서 로그인 → `/api/v1/me` 호출이 되는 상태까지**의 절차를 정의한다. 버전, 저장소 구조, Windows 11 개발환경, backend/Flutter bootstrap, Gradle 구성, profile 파일, 로컬 실행 순서, S0 완료 조건, 문제 해결을 다룬다. 운영 환경(자체 서버·Tailscale HTTPS, CI/CD, 백업)은 `10-deployment-and-operations.md`가 기준이다.
+> 이 문서는 **저장소 생성부터 로컬에서 로그인 → `/api/v1/me` 호출이 되는 상태까지**의 절차를 정의한다. 개발 DB·테스트 Docker를 Tailscale로 묶은 것은 **지금 단계의 수단이고 최종 목표는 공개 배포다**(`10` §1.4·§1.5). 버전, 저장소 구조, Windows 11 개발환경, backend/Flutter bootstrap, Gradle 구성, profile 파일, 로컬 실행 순서, S0 완료 조건, 문제 해결을 다룬다. 운영 환경(자체 서버·Tailscale HTTPS, CI/CD, 백업)은 `10-deployment-and-operations.md`가 기준이다.
 >
-> 2026-09-18 결정(`_PENDING-CHANGES.md` §3·§6·§7): 개발 DB는 **서버의 공용 PostgreSQL 16**(Tailscale 경유), 인증은 **devtoken 모드**(`POST /dev/token`, 결정 A), 로컬 테스트용 Docker는 **서버 Docker를 SSH 소켓 포워딩으로** 쓴다(Docker Desktop 불필요). 서버 주소·계정·DB 접속값은 저장소 밖 `DevPilot-ops/`(`01-servers.md`, `02-database.md`)에만 있고, 이 문서의 `<server>`, `<user>`, `<server tailnet IP>`, `<your-email>`은 자리표시자다.
+> 2026-09-18 결정(`14-adrs.md` ADR-030·ADR-033, `20-decisions-and-risks.md` DEC-08·DEC-15·DEC-20·DEC-21): 개발 DB는 **서버의 공용 PostgreSQL 16**(Tailscale 경유), 인증은 **devtoken 모드**(`POST /api/v1/dev/token`, 결정 A), 로컬 테스트용 Docker는 **서버 Docker를 SSH 소켓 포워딩으로** 쓴다(Docker Desktop 불필요). 서버 주소·계정·DB 접속값은 저장소 밖 `DevPilot-ops/`(`01-servers.md`, `02-database.md`)에만 있고, 이 문서의 `<server>`, `<user>`, `<server tailnet IP>`, `<your-email>`은 자리표시자다.
 >
 > 이 문서가 참조하는 시드 파일은 `repo-seed/`에 있다. 저장소를 만들 때 같은 경로로 복사한다.
 
@@ -31,7 +31,7 @@
 |---|---|---|
 | `org.springdoc:springdoc-openapi-starter-webmvc-ui` | **3.1.1** | OpenAPI 생성. springdoc 3.x = Boot 4 라인. Initializr(Boot 4.1.1)는 3.1.0을 넣으므로 3.1.1로 올린다 |
 | `com.tngtech.archunit:archunit-junit5` | **1.5.0** | 모듈 의존 규칙 (`03` §2.2, `09-test-and-quality.md`) |
-| (AI 공급자 SDK 없음) | — | DeepSeek는 Java SDK가 없다. `integration.ai.deepseek.DeepSeekAiProvider`가 Spring Framework `RestClient`(Boot BOM, 추가 의존성 없음)로 `POST /responses`를 호출한다 (`17-ai-integration.md`, `_PENDING-CHANGES.md` §1) |
+| (AI 공급자 SDK 없음) | — | DeepSeek는 Java SDK가 없다. `integration.ai.deepseek.DeepSeekAiProvider`가 Spring Framework `RestClient`(Boot BOM, 추가 의존성 없음)로 `POST /responses`를 호출한다 (`17-ai-integration.md`, `14` ADR-032) |
 | `org.jspecify:jspecify` | 1.0.1 (Boot BOM) | null 계약 annotation |
 | (HTTP stub 라이브러리 없음) | — | `DeepSeekAiProviderRequestTest`는 spring-test의 `MockRestServiceServer`로 요청·응답을 검증한다. WireMock을 쓰지 않는다 |
 | Spotless Gradle plugin | 8.10.2 | 포맷 적용·검사 |
@@ -74,8 +74,8 @@ pub 패키지 버전은 `flutter pub add`가 고른 값을 `pubspec.lock`으로 
 | Docker Engine | 서버 Docker **29.6.1** (Rocky Linux 9.8, x86_64, 2026-09-18 확인) | 로컬 PC는 SSH 소켓 포워딩으로 이 Docker를 쓴다 (§3.1). 서버 설정은 바꾸지 않는다 (`10` §2.1) |
 | Tailscale | 서버 1.98.8 (`serve` 사용 가능), 로컬 PC·폰은 최신 클라이언트 | `10` §2.3 |
 | PostgreSQL 클라이언트 (`pg_dump`/`pg_restore`) | `postgres:16` 이미지로 실행 | 서버 backup.sh·복구 리허설 (`10` §8) |
-| GitHub-hosted runner | `ubuntu-24.04` (amd64) | 서버가 x86_64이므로 arm runner를 쓰지 않는다 |
-| Actions (major) | `actions/checkout@v7`, `actions/setup-java@v6`, `gradle/actions/wrapper-validation@v6`, `gradle/actions/setup-gradle@v6`, `subosito/flutter-action@v2`, `docker/login-action@v4`, `docker/build-push-action@v7`, `gitleaks/gitleaks-action@v3`, `actions/upload-artifact@v7`, `actions/download-artifact@v8` | S0에 전부 commit SHA로 고정 (`10` §7.5). Trivy·CodeQL action은 S2 P1(`10` §7.4), Tailscale action은 Later(결정 D) |
+| GitHub-hosted runner | `ubuntu-24.04` (amd64) | runner는 amd64 하나만 쓰고, arm64 이미지는 같은 runner에서 QEMU + buildx로 빌드한다(`10` §7.2). 이미지는 `linux/amd64` + `linux/arm64` 멀티아치다 — 공개 전환 후보인 OCI Ampere A1이 arm64이기 때문이다(`10` §1.4) |
+| Actions (major) | `actions/checkout@v7`, `actions/setup-java@v6`, `gradle/actions/wrapper-validation@v6`, `gradle/actions/setup-gradle@v6`, `subosito/flutter-action@v2`, `docker/setup-qemu-action@v3`, `docker/setup-buildx-action@v3`, `docker/login-action@v4`, `docker/build-push-action@v7`, `gitleaks/gitleaks-action@v3`, `actions/upload-artifact@v7` — 로컬 reusable workflow(`uses: ./.github/workflows/ci.yml`)를 뺀 **`uses:` 23개** | S0에 전부 commit SHA로 고정하고 `ci.yml`의 `continue-on-error: true`를 지운다 (`10` §7.5). Trivy·CodeQL action은 S2 P1(`10` §7.4), Tailscale action은 Later(결정 D) |
 
 ---
 
@@ -96,7 +96,7 @@ devpilot/
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml                    # main·developer push + PR: security, backend, app, content
-│   │   ├── release.yml               # tag v0.<sprint>.<patch> → amd64 api 이미지 → GHCR, 번들 zip → Release (배포는 수동)
+│   │   ├── release.yml               # tag v0.<sprint>.<patch> → api 이미지 → GHCR, web.zip → Release (배포는 수동)
 │   │   └── ai-eval.yml               # workflow_dispatch만: 실제 모델 eval (DEEPSEEK_API_KEY, 상한 USD 0.5)
 │   └── dependabot.yml                # gradle, pub, github-actions (대상 브랜치 developer)
 ├── database/
@@ -133,8 +133,8 @@ devpilot/
 ├── app/
 │   ├── .fvmrc                        # {"flutter": "3.47.4"}
 │   ├── pubspec.yaml, pubspec.lock, analysis_options.yaml, l10n.yaml
-│   ├── config/local.example.json     # local.json 은 커밋하지 않음. prod.json 은 secret이 없어 커밋 (§6.3)
-│   ├── config/prod.json              # {"AUTH_MODE":"dev","API_BASE_URL":""} — release.yml이 사용
+│   ├── config/local.example.json     # 커밋하는 유일한 config. local.json 은 .gitignore (§6.3)
+│   │                                 #   prod.json 은 만들지 않는다 — release.yml이 inline --dart-define 을 쓴다 (10 §7.2)
 │   ├── assets/fonts/                 # Pretendard, JetBrains Mono + OFL 라이선스
 │   ├── tool/check_identifiers.sh     # 로마자 식별자 검사 (08 §2.2, CI app job)
 │   ├── lib/                          # §6.3
@@ -156,7 +156,7 @@ devpilot/
     ├── Caddyfile
     ├── scripts/
     │   ├── prepare-server.sh         # 서버 1회 준비 (10 §2.2)
-    │   ├── deploy.sh                 # 서버에서 실행: 번들·이미지 활성화, 롤백 (10 §9.3)
+    │   ├── deploy.sh                 # 서버에서 실행: web.zip·이미지 활성화, 롤백 (10 §9.3)
     │   ├── backup.sh                 # pg_dump → /opt/devpilot/backups (10 §8)
     │   ├── pull-backup.ps1           # 로컬 PC: 주 1회 scp pull (10 §8.2)
     │   ├── dev-docker-tunnel.ps1     # 로컬 PC: 서버 Docker SSH 터널 (§3.1)
@@ -164,8 +164,9 @@ devpilot/
     │   ├── host-check.sh             # 호스트 점검 (10 §11.3, S6)
     │   └── smoke-headers.sh          # 배포 후 헤더 검사 (07 §9.3)
     └── systemd/
-        ├── devpilot-backup.service · devpilot-backup.timer
-        └── devpilot-healthping.service · devpilot-healthping.timer
+        ├── devpilot-backup.service · devpilot-backup.timer          # 19:00 UTC (10 §8.1)
+        └── devpilot-healthping.service · devpilot-healthping.timer  # 5분 (10 §11.1)
+                                                                     # devpilot-host-check.* 는 S6에 추가 (10 §11.3)
 ```
 
 규칙:
@@ -234,12 +235,15 @@ choco install fvm -y
 | IntelliJ IDEA | §3.3 | |
 | Chrome | Flutter web 실행·디버깅 기본 브라우저 | `fvm flutter devices` 에 Chrome 표시 |
 
-**서버 Docker 터널** (2026-09-18 검증 완료, `_PENDING-CHANGES.md` §6):
+**서버 Docker 터널** (2026-09-18 검증 완료, `20` DEC-21):
 
 ```powershell
-# 터미널 A (터널, 켜 두는 동안만 유효. Ctrl+C로 종료)
-$env:DEVPILOT_SERVER = "<user>@<server>"                 # 또는 -Server 인자. 값은 DevPilot-ops/01-servers.md
-pwsh infra/scripts/dev-docker-tunnel.ps1                 # = ssh -N -L 2375:/var/run/docker.sock <user>@<server>
+# 터널은 백그라운드 ssh 프로세스다. 끌 때는 -Stop 을 쓴다 (Ctrl+C 로는 꺼지지 않는다)
+$env:DEVPILOT_SERVER_SSH = "<user>@<server>"             # 또는 -Server 인자. 값은 DevPilot-ops/01-servers.md
+$env:DEVPILOT_SERVER_IP  = "<server tailnet IP>"         # 또는 -ServerIp 인자. TESTCONTAINERS_HOST_OVERRIDE 값
+. .\infra\scripts\dev-docker-tunnel.ps1                  # dot-source: 이 세션에 DOCKER_HOST 등을 남긴다
+                                                         # = ssh -N -L 2375:/var/run/docker.sock <user>@<server>
+.\infra\scripts\dev-docker-tunnel.ps1 -Stop             # 종료
 # 스크립트가 아래 두 값을 출력한다. 1회만 사용자 환경변수로 등록해 두면 IntelliJ·터미널이 모두 읽는다
 [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://localhost:2375", "User")
 [Environment]::SetEnvironmentVariable("TESTCONTAINERS_HOST_OVERRIDE", "<server tailnet IP>", "User")
@@ -247,6 +251,7 @@ pwsh infra/scripts/dev-docker-tunnel.ps1                 # = ssh -N -L 2375:/var
 
 | 항목 | 내용 |
 |---|---|
+| 스크립트 | `infra/scripts/dev-docker-tunnel.ps1`. 인자 `-Server`(기본 `$env:DEVPILOT_SERVER_SSH`), `-ServerIp`(기본 `$env:DEVPILOT_SERVER_IP`), `-Port`(기본 2375), `-Stop`. 2375가 이미 열려 있으면 새로 띄우지 않고 재사용한다. **Windows PowerShell 5.1로 실행한다**(`powershell.exe`. 파일은 UTF-8 BOM으로 저장되어 있어야 한다) |
 | 원리 | SSH가 서버의 `/var/run/docker.sock`을 로컬 `localhost:2375`로 포워딩한다. Testcontainers(docker-java)와 `docker` CLI는 `DOCKER_HOST=tcp://localhost:2375`로 서버 Docker에 컨테이너를 만든다 |
 | `TESTCONTAINERS_HOST_OVERRIDE` | 컨테이너의 publish 포트는 **서버**에 열리므로 Testcontainers가 접속할 호스트를 서버의 tailnet IP로 바꾼다. 서버 `tailscale0`이 firewalld `trusted` zone이라 tailnet에서 그 포트에 닿는다. 값은 `tailscale status`에서 서버 노드의 IP(100.x.y.z), 저장소에 적지 않는다 |
 | Ryuk·포트 | Testcontainers 기본 설정 그대로. 테스트 동안만 서버에 임시 포트가 열리고 Ryuk이 정리한다. 다른 사용자의 컨테이너와 이름이 겹치지 않도록 Testcontainers 기본 이름(무작위)을 바꾸지 않는다 |
@@ -371,6 +376,7 @@ Expand-Archive backend.zip -DestinationPath . ; Remove-Item backend.zip
 ```
 
 생성 후 정리:
+0. **wrapper 확인 (S0 첫 단계)**: Initializr zip에는 `gradlew`·`gradlew.bat`·`gradle/wrapper/`가 들어 있다. 저장소에 seed 파일만 있고 wrapper가 없으면(2026-09-18 현재 상태) 여기서 만든다 — `cd backend; gradle wrapper --gradle-version 9.7.1`(로컬 Gradle이 없으면 Initializr zip에서 네 파일을 복사). **wrapper가 생기기 전에는 `./gradlew`를 쓰는 모든 명령과 CI `backend` job이 실패한다**(`10` §7.1). 실행 비트도 함께 준다: `git update-index --chmod=+x backend/gradlew`.
 1. `backend/build.gradle.kts`, `settings.gradle.kts`, `gradle/libs.versions.toml`을 `repo-seed/backend/`의 파일로 교체한다. **Initializr가 만든 starter 좌표는 seed 파일에 그대로 들어 있다** — Boot 4 starter 이름(`spring-boot-starter-webmvc`, `spring-boot-starter-security-oauth2-resource-server`, `*-test` starter 등)을 기억으로 바꾸지 않는다.
 2. `HELP.md`, `backend/.gitattributes`, `application.properties`(있으면)를 지운다.
 3. `src/main/resources/`에 seed의 `application*.yml` 4개를 복사한다.
@@ -487,7 +493,7 @@ PowerShell에서는 `./gradlew`가 `gradlew.bat`을 실행한다.
 
 | Profile | DB | 인증 | AI | 용도 |
 |---|---|---|---|---|
-| `local` | **서버 PostgreSQL 16** (`DATABASE_URL` 필수, 기본값 없음. Tailscale 경유, DB `devpilot`) | devtoken (`POST /dev/token`, `DEVPILOT_AUTH_MODE` 기본 `devtoken`) | `fake` (실제 호출 시 `.env`에 `deepseek` + `DEEPSEEK_API_KEY`) | 개발자 PC |
+| `local` | **서버 PostgreSQL 16** (`DATABASE_URL` 필수, 기본값 없음. Tailscale 경유, DB `devpilot`) | devtoken (`POST /api/v1/dev/token`, `DEVPILOT_AUTH_MODE` 기본 `devtoken`) | `fake` (실제 호출 시 `.env`에 `deepseek` + `DEEPSEEK_API_KEY`) | 개발자 PC |
 | `test` | Testcontainers `postgres:16` (`@ServiceConnection`) | 테스트 JWKS (`auth-mode: supabase` + `TestJwksConfig`/`TestJwksServer`, `09` §6.2). devtoken endpoint 테스트는 `@SpringBootTest(properties = "devpilot.security.auth-mode=devtoken")` | `fake` | `./gradlew check`, CI |
 | `prod` | 서버 PostgreSQL 16 (`host.docker.internal:5432`, `10` §2.4) | devtoken (`DEVPILOT_DEV_JWT_KEY` 필수, 결정 A) | `deepseek` (`DEEPSEEK_API_KEY`) | 서버 `api` 컨테이너 |
 
@@ -514,7 +520,7 @@ PowerShell에서는 `./gradlew`가 `gradlew.bat`을 실행한다.
 
 ```text
 [Chrome: Flutter web :5173, AUTH_MODE=dev]
-          │ POST /dev/token {email}  →  {accessToken, expiresAt}   (이메일 1칸 로그인 화면)
+          │ POST /api/v1/dev/token {email}  →  {accessToken, expiresAt}   (이메일 1칸 로그인 화면)
           │ Authorization: Bearer <JWT>  (이후 모든 /api/v1/* 요청)
           ▼
 [Spring Boot :8080, profile=local, DEVPILOT_AUTH_MODE=devtoken]  ── 앱이 가진 EC P-256 공개키로 JWT 검증 (JWKS 조회 없음)
@@ -561,11 +567,11 @@ APP_BASE_URL=http://localhost:5173
 4. `cd backend; ./gradlew bootRun` → `curl.exe -s http://localhost:8080/actuator/health` → `{"status":"UP"}`. 첫 기동에서 Flyway가 서버 DB `devpilot`에 migration을 적용한다(이미 적용돼 있으면 검증만).
 5. 토큰 발급 확인:
    ```powershell
-   curl.exe -s -X POST http://localhost:8080/dev/token -H "Content-Type: application/json" -d "{\"email\":\"<your-email>\"}"
+   curl.exe -s -X POST http://localhost:8080/api/v1/dev/token -H "Content-Type: application/json" -d "{\"email\":\"<your-email>\"}"
    # → {"accessToken":"eyJ...","expiresAt":"..."}   (allowlist 밖 이메일이면 403 USER_NOT_ALLOWED)
    curl.exe -s http://localhost:8080/api/v1/me -H "Authorization: Bearer <accessToken>"
    ```
-6. `app/config/local.example.json`을 `app/config/local.json`으로 복사한다(`AUTH_MODE=dev`, `API_BASE_URL=http://localhost:8080`, §6.3). Supabase URL·key는 없다.
+6. `app/config/local.example.json`을 `app/config/local.json`으로 복사한다(`AUTH_MODE=dev`, `API_BASE_URL=http://localhost:8080`, §6.3). `local.json`은 `.gitignore` 대상이다. Supabase URL·key는 없다.
 
 ### 5.3 매일 실행
 
@@ -573,8 +579,8 @@ APP_BASE_URL=http://localhost:5173
 # 0) Tailscale 연결 확인 (서버 PostgreSQL·SSH는 tailnet 안에서만 닿는다)
 tailscale status | Select-String "<server>"
 
-# 1) 서버 Docker 터널 — 통합 테스트(./gradlew check, integrationTest)를 돌릴 때만. 터미널 A에 켜 둔다
-pwsh infra/scripts/dev-docker-tunnel.ps1            # Ctrl+C로 종료. DOCKER_HOST 등은 §5.2-3에서 등록해 둔 값
+# 1) 서버 Docker 터널 — 통합 테스트(./gradlew check, integrationTest)를 돌릴 때만. 백그라운드 ssh로 뜬다
+. .\infra\scripts\dev-docker-tunnel.ps1            # 종료는 -Stop. DOCKER_HOST 등은 §5.2-3에서 등록해 둔 값
 
 # 2) Backend (새 터미널)
 cd backend
@@ -586,7 +592,7 @@ cd app
 fvm flutter run -d chrome --web-port 5173 --dart-define-from-file=config/local.json   # AUTH_MODE=dev
 ```
 
-4. 브라우저 로그인 화면에 allowlist 이메일을 입력 → 앱이 `POST /dev/token`으로 토큰을 받아 메모리와 `sessionStorage`에 두고 `GET /api/v1/me` 결과를 표시하면 정상이다. backend를 재시작했는데 `DEVPILOT_DEV_JWT_KEY`가 비어 있으면 401이 나므로 다시 로그인한다(§4.4).
+4. 브라우저 로그인 화면에 allowlist 이메일을 입력 → 앱이 `POST /api/v1/dev/token`으로 토큰을 받아 메모리와 `sessionStorage`에 두고 `GET /api/v1/me` 결과를 표시하면 정상이다. backend를 재시작했는데 `DEVPILOT_DEV_JWT_KEY`가 비어 있으면 401이 나므로 다시 로그인한다(§4.4).
 5. API 문서(local만): `http://localhost:8080/swagger-ui/index.html`
 6. 실제 AI 호출이 필요할 때만 `.env`에 `DEVPILOT_AI_PROVIDER=deepseek`, `DEEPSEEK_API_KEY=sk-…`를 넣고 backend를 재시작한다(Spring property로 읽으므로 `.env`로 충분). 키는 prod·eval과 같은 DeepSeek 계정의 선불 잔액을 쓴다(결정 E) — 로컬 호출도 `DEVPILOT_AI_MONTHLY_BUDGET_USD=3` 가드 안에서 한다. 잔액이 없으면 402 → `aiStatus=BALANCE_EXHAUSTED`(§8).
 
@@ -623,7 +629,7 @@ fvm flutter pub add dev:build_runner dev:freezed dev:json_serializable dev:mockt
 
 | 목적 | 패키지 | 결정 |
 |---|---|---|
-| 인증 | (패키지 없음) `AUTH_MODE=dev`: 이메일 입력 화면 → `POST /dev/token` → 토큰을 메모리 + `sessionStorage`(`package:web`)에 보관, 만료(`expiresAt`, 720h) 전 재로그인 없음 | 결정 A. `supabase_flutter`(GitHub OAuth PKCE)는 Supabase Auth 도입 시 `AUTH_MODE=supabase`로 추가(Later, BL 신설) |
+| 인증 | (패키지 없음) `AUTH_MODE=dev`: 이메일 입력 화면 → `POST /api/v1/dev/token` → 토큰을 메모리 + `sessionStorage`(`package:web`)에 보관, 만료(`expiresAt`, 720h) 전 재로그인 없음 | 결정 A. `supabase_flutter`(GitHub OAuth PKCE)는 Supabase Auth 도입 시 `AUTH_MODE=supabase`로 추가(Later, BL 신설) |
 | 상태관리 | `flutter_riverpod` | DEC-10. Riverpod code generation은 쓰지 않는다 (Notifier 수기 작성) |
 | 라우팅 | `go_router` | 인증 redirect, 웹 URL |
 | HTTP | `dio` | interceptor: `Authorization`, `Idempotency-Key`(POST), `X-Trace-Id`, Problem Details 파싱 |
@@ -644,7 +650,7 @@ app/lib/
 │   └── router.dart            # go_router, 로그인 여부 redirect
 ├── core/
 │   ├── api/                   # ApiClient(dio), interceptors, ProblemDetail, ApiException
-│   ├── auth/                  # authStateProvider: AUTH_MODE=dev → DevTokenAuth(/dev/token, 메모리+sessionStorage). supabase → Later
+│   ├── auth/                  # authStateProvider: AUTH_MODE=dev → DevTokenAuth(/api/v1/dev/token, 메모리+sessionStorage). supabase → Later
 │   ├── config/                # AppConfig: String.fromEnvironment 값 검증 (AUTH_MODE, API_BASE_URL)
 │   ├── theme/                 # AppTheme (fontFamily Pretendard, code = JetBrainsMono)
 │   └── widgets/               # 공통 위젯
@@ -659,13 +665,13 @@ app/lib/
 
 `AppConfig` 값은 빌드 시 `--dart-define-from-file`로 들어온다:
 
-| 키 | local (`config/local.json`, 커밋 안 함) | prod (`config/prod.json`, **커밋** — secret 없음, `release.yml`이 사용) |
+| 키 | local (`config/local.json`, 커밋 안 함) | prod (**파일 없음** — `release.yml`이 inline `--dart-define`으로 준다, `10` §7.2) |
 |---|---|---|
 | `AUTH_MODE` | `dev` | `dev` (결정 A). `supabase`는 Later |
 | `API_BASE_URL` | `http://localhost:8080` | **빈 문자열** = same-origin (`/api/v1`). tailnet 호스트명을 저장소에 넣지 않는다 (`10` §4.1) |
 | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | (없음) | (없음) — `AUTH_MODE=supabase`일 때만 필요(Later) |
 
-클라이언트는 `API_BASE_URL` 뒤에 `/api/v1/...`을 붙이고, 비어 있으면 현재 origin을 쓴다. `AUTH_MODE`가 `dev`·`supabase` 외의 값이면 앱 시작 시 오류 화면을 표시한다. `AUTH_MODE=dev`의 로그인 화면은 이메일 입력 1칸 + 로그인 버튼이며 `POST /dev/token {email}` → 403 `USER_NOT_ALLOWED`면 "허용된 사용자가 아닙니다"를 표시한다. 토큰은 `Authorization: Bearer`로 붙이고, 401이면 토큰을 지우고 로그인 화면으로 보낸다.
+클라이언트는 `API_BASE_URL` 뒤에 `/api/v1/...`을 붙이고, 비어 있으면 현재 origin을 쓴다. `AUTH_MODE`가 `dev`·`supabase` 외의 값이면 앱 시작 시 오류 화면을 표시한다. `AUTH_MODE=dev`의 로그인 화면은 이메일 입력 1칸 + 로그인 버튼이며 `POST /api/v1/dev/token {email}` → 403 `USER_NOT_ALLOWED`면 "허용된 사용자가 아닙니다"를 표시한다. 토큰은 `Authorization: Bearer`로 붙이고, 401이면 토큰을 지우고 로그인 화면으로 보낸다.
 
 ### 6.4 analysis_options
 
@@ -757,7 +763,12 @@ const codeStyle = TextStyle(fontFamily: 'JetBrainsMono', fontFamilyFallback: ['P
 ### 6.7 Web 빌드
 
 ```powershell
-fvm flutter build web --release --no-web-resources-cdn --csp --dart-define-from-file=config/prod.json
+# 운영 빌드: release.yml의 build-web job과 같은 값 (10 §7.2). config/prod.json 파일은 만들지 않는다
+fvm flutter build web --release --no-web-resources-cdn --csp `
+  --dart-define=AUTH_MODE=dev --dart-define=API_BASE_URL=
+
+# 로컬에서 빌드만 확인할 때 (CI app job과 같은 값)
+fvm flutter build web --release --no-web-resources-cdn --csp --dart-define-from-file=config/local.example.json
 ```
 
 | 옵션 | 결정 | 이유 |
@@ -795,34 +806,35 @@ S0(2026-09-17 ~ 09-27) 종료 시 아래 항목이 모두 체크되어야 한다
 
 ### 7.1 저장소 · GitHub
 
-- [ ] §2 구조, `AGENTS.md`, `CLAUDE.md`, `README.md`, `CHANGELOG.md`, `.gitattributes`(`* text=auto eol=lf`), `.editorconfig`, `.gitignore`(`.env`, `DevPilot-ops/`, `app/config/local.json`), `.env.example`
+- [ ] **S0 첫 단계 — 빌드 진입점 만들기**: `backend/gradlew`·`backend/gradlew.bat`·`backend/gradle/wrapper/`(§4.1-0, `gradle wrapper --gradle-version 9.7.1`)와 `app/.fvmrc`·`app/pubspec.yaml`(§6.1·§6.2). **2026-09-18 현재 저장소에 없다.** 이 파일들이 생기기 전에는 CI의 `backend`·`app` job이 첫 step에서 실패한다(`10` §7.1)
+- [ ] §2 구조, `AGENTS.md`, `CLAUDE.md`, `README.md`, `CHANGELOG.md`, `.gitattributes`(`* text=auto eol=lf`), `.editorconfig`, `.gitignore`(`.env`, `DevPilot-ops/`, `app/config/*.json`), `.env.example`
 - [ ] 셸 스크립트·`gradlew` 실행 비트 (`git ls-files -s infra/scripts backend/gradlew` → `100755`)
 - [ ] [사람] 저장소 public (DEC-04), Settings → Code security: **Secret scanning + Push protection 활성화**, Dependabot alerts/security updates 활성화
-- [ ] [사람] 브랜치 `developer` 생성(기본 브랜치는 `main`). Git 전략: `feature/BL-<EPIC>-<nn>-<슬러그>` → `developer`(squash) → `main`(PR + merge commit), `fix/`·`chore/`·`docs/`, Conventional Commits 영문, PR 제목에 BL ID (`_PENDING-CHANGES.md` §5, `08` §10.1)
+- [ ] [사람] 브랜치 `developer` 생성(기본 브랜치는 `main`). Git 전략: `feature/BL-<EPIC>-<nn>-<슬러그>` → `developer`(squash) → `main`(PR + merge commit), `fix/`·`chore/`·`docs/`, Conventional Commits 영문, PR 제목에 BL ID (`20` DEC-22, `08` §10.1)
 - [ ] [사람] Branch protection(ruleset) **`main`·`developer` 둘 다**: PR 필수, status check `security`, `backend`, `app`, `content` 필수 (`10` §7.1)
 - [ ] [사람] Actions 설정: Workflow permissions = Read repository contents, "Require approval for all outside collaborators"
-- [ ] 모든 workflow의 `uses:`를 commit SHA로 고정 (`10` §7.5). 저장소 전체 `# TODO(S0)` 주석 0건. base image `@sha256` digest 고정·Trivy·CodeQL은 S2 P1(`10` §7.4)
+- [ ] 모든 workflow의 `uses:` **23개**를 commit SHA로 고정하고 `ci.yml`의 `actions-pin-check` step에서 `continue-on-error: true`를 지운다 (`10` §7.5). 저장소 전체 `# TODO(S0)` 주석 0건. base image `@sha256` digest 고정·Trivy·CodeQL은 S2 P1(`10` §7.4)
 - [ ] [사람] GitHub environment `ai-eval`(Required reviewers = 소유자, secret `DEEPSEEK_API_KEY`, `10` §7.3) 생성. `production` environment는 만들지 않는다(결정 D)
 
 ### 7.2 Backend
 
 - [ ] Boot 4.1.1 + Java 25 toolchain, `./gradlew check` 통과 (spotless, checkstyle, pmd, spotbugs, jacoco, openApiCheck 포함) — 서버 Docker 터널(§3.1)로
 - [ ] `GET /actuator/health` → `{"status":"UP"}` (서버 PostgreSQL 16에 Flyway 적용)
-- [ ] `V1__baseline.sql` (`create schema if not exists devpilot` …, `04` §10). PG16에서 전체 migration 적용 확인(2026-09-18 완료, `_PENDING-CHANGES.md` §3)
+- [ ] `V1__baseline.sql` (`create schema if not exists devpilot` …, `04` §10). PG16에서 전체 migration 적용 확인(2026-09-18 완료, `20` DEC-20)
 - [ ] Testcontainers(`postgres:16`) migration 통합 테스트 1개 (빈 DB → migration → `ddl-auto=validate` 기동)
 - [ ] ArchUnit 테스트: controller→repository 금지, 필드 주입 금지, 무인자 `now()` 금지
-- [ ] BL-SEC-16 devtoken 모드: `POST /dev/token {email}` → `200 {accessToken, expiresAt}` / allowlist 밖 `403 USER_NOT_ALLOWED`, `GET /dev/jwks.json`(permitAll), JWT `iss=${APP_BASE_URL}/dev`·`aud=authenticated`·`sub=uuid v5(email)`·`email`·`amr=[{method:"devtoken"}]`·ttl 720h, `JwtDecoder`는 `NimbusJwtDecoder.withPublicKey`(JWKS HTTP 조회 없음), `DEVPILOT_DEV_JWT_KEY` 비면 기동 시 키 생성 + 테스트(`auth-mode=devtoken` property로 기동)
+- [ ] BL-SEC-16 devtoken 모드: `POST /api/v1/dev/token {email}` → `200 {accessToken, expiresAt}` / allowlist 밖 `403 USER_NOT_ALLOWED`, `GET /api/v1/dev/jwks.json`(permitAll), JWT `iss=${APP_BASE_URL}/dev`·`aud=authenticated`·`sub=uuid v5(email)`·`email`·`amr=[{method:"devtoken"}]`·ttl 720h, `JwtDecoder`는 `NimbusJwtDecoder.withPublicKey`(JWKS HTTP 조회 없음), `DEVPILOT_DEV_JWT_KEY` 비면 기동 시 키 생성 + 테스트(`auth-mode=devtoken` property로 기동)
 - [ ] `GET /api/v1/me` 임시 구현(JWT `sub` 반환) + 테스트: 토큰 없음 401, 유효 토큰 200, 잘못된 `aud`·`iss` 401, allowlist 밖 403
 - [ ] `TraceIdFilter`, `ClockConfig`
 - [ ] `OpenApiSnapshotTest` + `docs/api/openapi.yaml` 커밋
-- [ ] SP-4: Spotless/PMD/SpotBugs/Checkstyle/springdoc/ArchUnit이 Java 25 + Boot 4.1에서 공존 → 결과 ADR. 6번 "RestClient + DeepSeek `/responses` smoke"는 2026-09-18 완료(`_PENDING-CHANGES.md` §1), SDK 공존 항목 없음
+- [ ] SP-4: Spotless/PMD/SpotBugs/Checkstyle/springdoc/ArchUnit이 Java 25 + Boot 4.1에서 공존 → 결과 ADR. 6번 "RestClient + DeepSeek `/responses` smoke"는 2026-09-18 완료(`14` ADR-032), SDK 공존 항목 없음
 
 ### 7.3 App
 
 - [ ] Flutter 3.47.4 (FVM), Riverpod, go_router, dio, `web` (supabase_flutter 없음)
-- [ ] 로그인 화면(이메일 입력, `AUTH_MODE=dev`) → `POST /dev/token` → `/api/v1/me` 결과 표시. 403이면 "허용된 사용자가 아닙니다"
+- [ ] 로그인 화면(이메일 입력, `AUTH_MODE=dev`) → `POST /api/v1/dev/token` → `/api/v1/me` 결과 표시. 403이면 "허용된 사용자가 아닙니다"
 - [ ] 한글 폰트 번들 (§6.6), l10n(§6.5), widget test 1개
-- [ ] `fvm flutter analyze --fatal-infos` 0건, `fvm flutter test` 통과, `flutter build web --release --no-web-resources-cdn --csp --dart-define-from-file=config/prod.json` 성공
+- [ ] `fvm flutter analyze --fatal-infos` 0건, `fvm flutter test` 통과, `flutter build web --release --no-web-resources-cdn --csp --dart-define=AUTH_MODE=dev --dart-define=API_BASE_URL=` 성공(§6.7, release.yml과 같은 값)
 - [ ] SP-1: 한글 긴 서술(조합 중 Backspace·커서 이동·붙여넣기), 코드 붙여넣기(탭·공백 유지) — Chrome, Edge, 모바일 Safari → 결과 ADR
 
 ### 7.4 서버 · Tailscale · 배포 (`10-deployment-and-operations.md`)
@@ -832,11 +844,11 @@ S0(2026-09-17 ~ 09-27) 종료 시 아래 항목이 모두 체크되어야 한다
 - [ ] [사람] Tailscale admin console: MagicDNS·HTTPS Certificates 활성화 — `10` §2.3
 - [ ] [사람] 서버(root) `prepare-server.sh --operator <user>` → `deploy` 사용자, `/opt/devpilot`, systemd 유닛 — `10` §2.2. OS 설정은 건드리지 않는다
 - [ ] [사람] `tailscale serve --bg --https=443 http://127.0.0.1:18080` — `10` §2.3
-- [ ] [사람] 서버 `/opt/devpilot/api.env`(`DEVPILOT_DEV_JWT_KEY`·`DEVPILOT_ALLOWED_EMAILS`·`DATABASE_*`·`APP_BASE_URL=https://<tailnet-host>` 등)·`ops.env` 작성, password manager 백업 — `10` §5.5, §6
-- [ ] SP-2: 서버 PostgreSQL 16 연결 + Flyway 전체 적용 + 원격 Docker Testcontainers — **2026-09-18 완료** (`_PENDING-CHANGES.md` §3·§6) → 결과 ADR
-- [ ] SP-3: `ubuntu-24.04`에서 `linux/amd64` 이미지 빌드 → GHCR → 서버 pull → Tailscale HTTPS로 `/actuator/health` → 결과 ADR
+- [ ] [사람] 서버 `/opt/devpilot/api.env`(`DEVPILOT_DEV_JWT_KEY`·`DEVPILOT_ALLOWED_EMAILS`·`DATABASE_*`·`APP_BASE_URL=https://<tailnet-host>` 등)·`ops.env`(`GITHUB_OWNER` 필수 — deploy.sh가 여기서 이미지 이름과 `web.zip` URL을 만든다) 작성, password manager 백업 — `10` §5.5, §6
+- [ ] SP-2: 서버 PostgreSQL 16 연결 + Flyway 전체 적용 + 원격 Docker Testcontainers — **2026-09-18 완료** (`20` DEC-20·DEC-21) → 결과 ADR
+- [ ] SP-3: `ubuntu-24.04`에서 `linux/amd64,linux/arm64` 멀티아치 이미지 빌드(QEMU + buildx) → GHCR → 서버 pull(amd64) → Tailscale HTTPS로 `/actuator/health` → 결과 ADR. arm64 레이어를 돌려 볼 서버가 지금은 없으므로 manifest에 들어갔는지만 확인한다(`docker buildx imagetools inspect`). 공개 전환 후보가 OCI Ampere A1(arm64)이다 (`10` §1.4)
 - [ ] `v0.0.1` tag → `release.yml` 녹색 → 서버 `deploy.sh v0.0.1` 성공, tailnet 기기(폰 포함)에서 `https://<tailnet-host>` 로그인 → `/me` 성공
-- [ ] 롤백 1회 검증: `deploy.sh <이전 tag> --no-pull --skip-backup` (`10` §13.1)
+- [ ] 롤백 1회 검증: `deploy.sh <이전 tag> --no-pull` (`10` §13.1. `--skip-backup` 플래그는 없다 — 백업은 `--backup-first`일 때만 실행된다)
 - [ ] healthchecks.io `devpilot-health` + `devpilot-healthping.timer` 활성화 — `10` §11.2
 - [ ] ~~Supabase dev/prod 프로젝트·GitHub OAuth App·JWKS `alg`·SP-5 Data API·"Allow new users to sign up"~~ 취소(Supabase Auth Later)
 - [ ] ~~OCI 계정·A1 VM·`bootstrap-vm.sh`·도메인 A 레코드·Caddy ACME·`ubuntu-24.04-arm`~~ 취소(자체 서버, 결정 B·D)
@@ -853,7 +865,7 @@ S0(2026-09-17 ~ 09-27) 종료 시 아래 항목이 모두 체크되어야 한다
 | `bootRun`: `Connection to <server>:5432 refused` / `connect timed out` | Tailscale 미연결, 서버 오프라인, 또는 `.env`의 `DATABASE_URL` 호스트 오타 | `tailscale status`에 서버 노드 online 확인 → `Test-NetConnection <server> -Port 5432` → `.env` 값을 `DevPilot-ops/02-database.md`와 대조. 서버 PostgreSQL 컨테이너가 죽었으면 `10` §13.5 |
 | `bootRun`: `password authentication failed for user "devpilot"` | `.env`의 `DATABASE_PASSWORD` 오류(비밀번호 교체 후 미반영) | `DevPilot-ops/02-database.md`의 현재 값으로 갱신 (`10` §13.3.1) |
 | `bootRun`: `Could not resolve placeholder 'DATABASE_URL'` | `.env` 미생성, 작업 디렉터리가 `backend/`가 아님, 또는 profile이 local이 아님 | 루트 `.env` 확인, IDE Working directory = `backend`, Active profile = `local`. local은 datasource 기본값이 없다(§4.4) |
-| Testcontainers: `Could not find a valid Docker environment` / `Connection refused: localhost/127.0.0.1:2375` | 서버 Docker 터널이 꺼짐(터미널 A 종료, PC 절전, SSH 끊김), 또는 `DOCKER_HOST` 미설정 | `pwsh infra/scripts/dev-docker-tunnel.ps1` 다시 실행 → `docker info` 성공 확인 → 재실행. `DOCKER_HOST=tcp://localhost:2375`가 사용자 환경변수에 있는지 확인(§3.1). Docker 없이 돌릴 테스트는 `./gradlew test`(tag `unit`) |
+| Testcontainers: `Could not find a valid Docker environment` / `Connection refused: localhost/127.0.0.1:2375` | 서버 Docker 터널이 꺼짐(터미널 A 종료, PC 절전, SSH 끊김), 또는 `DOCKER_HOST` 미설정 | `. .\infra\scripts\dev-docker-tunnel.ps1` 다시 실행(dot-source) → `docker info` 성공 확인 → 재실행. `DOCKER_HOST=tcp://localhost:2375`가 사용자 환경변수에 있는지 확인(§3.1). Docker 없이 돌릴 테스트는 `./gradlew test`(tag `unit`) |
 | Testcontainers: 컨테이너는 떴는데 JDBC `Connection to localhost:<random port> refused` 또는 Ryuk `Connection refused` | `TESTCONTAINERS_HOST_OVERRIDE` 미설정 — publish 포트가 서버에 열렸는데 localhost로 접속 | `TESTCONTAINERS_HOST_OVERRIDE=<server tailnet IP>` 설정(§3.1) 후 터미널·IDE 재시작 |
 | Testcontainers: `TESTCONTAINERS_HOST_OVERRIDE`를 설정했는데 `<server tailnet IP>:<port>` timeout | 서버 firewalld에서 `tailscale0`이 `trusted` zone이 아님, 또는 Tailscale 끊김 | 서버 소유자로서 `firewall-cmd --get-zone-of-interface=tailscale0` → `trusted`인지 확인(2026-09-18 기준 trusted). 로컬 `tailscale status` 확인 |
 | `ssh: Permission denied (publickey)` | 공개키가 서버 `authorized_keys`에 없거나 `~/.ssh/` 키 파일 권한·경로 문제 | §3.1·§5.2-1. `ssh -v <user>@<server>`로 어떤 키를 시도하는지 확인 |
@@ -862,11 +874,11 @@ S0(2026-09-17 ~ 09-27) 종료 시 아래 항목이 모두 체크되어야 한다
 | Flutter: `Filename too long`, pub get 실패 | Windows 경로 길이 제한 | §3.1 `LongPathsEnabled`, `git config --global core.longpaths true`, 저장소 경로 단축 |
 | Flutter: `Building with plugins requires symlink support` / FVM `.fvm` 링크 생성 실패 | 개발자 모드 꺼짐 | Windows 설정 → 개발자 모드 켜기 → 터미널 재시작 |
 | 브라우저 콘솔 CORS 오류 (localhost:5173 → 8080) | `CORS_ALLOWED_ORIGINS` 불일치 | `.env`에 정확히 `http://localhost:5173` (끝 `/` 없음), backend 재시작 |
-| 로그인 버튼 → `POST /dev/token` 404 | backend가 `supabase` 모드로 떠 있음(`DEVPILOT_AUTH_MODE`), 또는 `API_BASE_URL` 오타 | `.env`의 `DEVPILOT_AUTH_MODE=devtoken`(기본), `app/config/local.json`의 `API_BASE_URL=http://localhost:8080` |
+| 로그인 버튼 → `POST /api/v1/dev/token` 404 | backend가 `supabase` 모드로 떠 있음(`DEVPILOT_AUTH_MODE`), 경로에 `/api/v1` 접두사를 빠뜨림, 또는 `API_BASE_URL` 오타 | `.env`의 `DEVPILOT_AUTH_MODE=devtoken`(기본), `app/config/local.json`의 `API_BASE_URL=http://localhost:8080` |
 | 로그인 직후 또는 backend 재시작 후 API 401 | `DEVPILOT_DEV_JWT_KEY`가 비어 있어 재기동 시 새 키가 생성됨(기존 토큰 무효) | 다시 로그인. 반복이 싫으면 §4.4대로 PEM을 `.env`에 고정 |
 | API 401, 로그에 `iss` 불일치 | 토큰 발급 시점과 검증 시점의 `APP_BASE_URL`이 다름(`.env` 수정 후 옛 토큰 사용) | 다시 로그인. issuer는 `${APP_BASE_URL}/dev` 고정 |
 | API 401, 로그에 `aud` 불일치 | 다른 환경(prod)의 토큰을 local에 붙임, 또는 `supabase` 모드 토큰 | local에서 다시 로그인. 토큰 `aud`는 `authenticated` |
-| API 403 `USER_NOT_ALLOWED` (`/dev/token` 또는 `/api/v1/*`) | allowlist에 이메일 없음 | `.env`의 `DEVPILOT_ALLOWED_EMAILS`에 이메일을 소문자로 추가 → backend 재시작 |
+| API 403 `USER_NOT_ALLOWED` (`/api/v1/dev/token` 또는 `/api/v1/*`) | allowlist에 이메일 없음 | `.env`의 `DEVPILOT_ALLOWED_EMAILS`에 이메일을 소문자로 추가 → backend 재시작 |
 | AI 기능이 꺼지고 `aiStatus=BALANCE_EXHAUSTED`, 로그에 DeepSeek 402 `insufficient_balance` | DeepSeek 선불 잔액 소진 (`min-balance-usd` 1.00 이하 또는 402 수신) | platform.deepseek.com에서 소액 충전 → 다음 `AiBalanceCheckJob`(매시 15분) 또는 backend 재시작으로 해제 (`10` §11.6). 로컬 개발은 `DEVPILOT_AI_PROVIDER=fake`로 돌린다 |
 | AI 호출 401 `authentication_error` | `DEEPSEEK_API_KEY` 미설정·오타·폐기된 키 | `.env` 값 확인(`sk-` + 16진수 32자), 키 교체는 `10` §13.3.2 |
 | `remaining connection slots are reserved` / 연결 수 초과 | 공용 PostgreSQL의 `max_connections` 소진(다른 사용자 포함) | Hikari `maximum-pool-size=5` 확인, 로컬에서 서버 DB에 붙은 도구(DB 클라이언트, 죽은 bootRun) 종료. 계속되면 서버 소유자로서 PostgreSQL 설정 확인 |

@@ -22,7 +22,9 @@
 #   /opt/devpilot/state/web-<tag>.zip   최근 두 tag의 web.zip 사본 (네트워크 없이 롤백)
 #
 # 결과 출력: 마지막 줄에 DEPLOY_RESULT=<success|rolled_back|rollback_failed|failed_no_previous>
-# 종료 코드: 0 성공 / 1 사전 단계 실패(변경 없음) / 2 사용법 오류 / 10 실패 후 롤백 성공 / 11 롤백 실패
+# 종료 코드: 0 성공 / 1 사전 단계 실패(변경 없음) / 2 사용법 오류 / 10 실패 후 롤백 성공
+#            11 롤백 실패(서버가 중간 상태 — 수동 복구가 필요하다)
+#            12 배포 실패, 되돌릴 이전 tag가 없어 롤백을 시도하지 않았다
 set -euo pipefail
 
 readonly DEVPILOT_HOME="${DEVPILOT_HOME:-/opt/devpilot}"
@@ -113,7 +115,7 @@ fetch_web_zip() {
     log "[${tag}] web.zip 다운로드 실패 (release.yml 성공 여부, GITHUB_OWNER 확인)"
     return 1
   }
-  mv -f "${zip}.part" "${zip}"
+  mv -f "${zip}.part" "${zip}" || return 1
 }
 
 # /opt/devpilot/web 의 내용을 교체한다. 디렉터리 자체(inode)는 유지한다 — caddy가 bind mount로 보고 있어
@@ -121,24 +123,39 @@ fetch_web_zip() {
 install_web() {
   local tag="$1" zip="${STATE_DIR}/web-${tag}.zip" tmp
   fetch_web_zip "${tag}" || return 1
-  tmp="$(mktemp -d "${STATE_DIR}/web.XXXXXX")"
+  tmp="$(mktemp -d "${STATE_DIR}/web.XXXXXX")" || return 1
   if ! unzip -q "${zip}" -d "${tmp}" || [[ ! -f "${tmp}/index.html" ]]; then
     rm -rf -- "${tmp}"
     rm -f "${zip}"
     log "[${tag}] web.zip 이 비정상이다 (index.html 없음). 사본을 지웠다"
     return 1
   fi
-  chmod -R u+rwX,go+rX,go-w "${tmp}"
-  find "${WEB_DIR}" -mindepth 1 -delete
-  cp -a "${tmp}/." "${WEB_DIR}/"
+  # 이 함수는 activate()를 거쳐 if 조건에서 호출되므로 본문 전체에서 errexit가 꺼져 있다.
+  # 실패를 놓치면 배포가 성공으로 보고되므로 단계마다 명시적으로 반환한다.
+  chmod -R u+rwX,go+rX,go-w "${tmp}" || {
+    rm -rf -- "${tmp}"
+    log "[${tag}] 압축 해제한 web 파일의 권한을 바꾸지 못했다"
+    return 1
+  }
+  find "${WEB_DIR}" -mindepth 1 -delete || {
+    rm -rf -- "${tmp}"
+    log "[${tag}] ${WEB_DIR} 를 비우지 못했다 (기존 파일 유지)"
+    return 1
+  }
+  cp -a "${tmp}/." "${WEB_DIR}/" || {
+    rm -rf -- "${tmp}"
+    log "[${tag}] web 정적 파일 복사 실패. ${WEB_DIR} 가 비어 있다 — 같은 tag로 다시 실행한다"
+    return 1
+  }
   rm -rf -- "${tmp}"
   log "[${tag}] web 정적 파일 교체 완료"
 }
 
+# install_web 과 같은 이유로(errexit 꺼짐) 단계마다 명시적으로 반환한다
 write_compose_env() {
   local tag="$1"
-  printf 'TAG=%s\nAPI_IMAGE=%s\n' "${tag}" "${API_IMAGE}" >"${COMPOSE_ENV_FILE}.tmp"
-  mv -f "${COMPOSE_ENV_FILE}.tmp" "${COMPOSE_ENV_FILE}"
+  printf 'TAG=%s\nAPI_IMAGE=%s\n' "${tag}" "${API_IMAGE}" >"${COMPOSE_ENV_FILE}.tmp" || return 1
+  mv -f "${COMPOSE_ENV_FILE}.tmp" "${COMPOSE_ENV_FILE}" || return 1
 }
 
 # 호스트에서 caddy(127.0.0.1:18080) → api:8080 경로로 확인한다 (tailscale serve는 거치지 않는다)
@@ -245,9 +262,9 @@ main() {
   compose_cmd logs --no-color --tail 200 api || true
 
   if [[ -z "${previous_tag}" || "${previous_tag}" == "${TAG}" ]]; then
-    log "롤백 대상 tag가 없다"
+    log "롤백 대상 tag가 없다 (롤백을 시도하지 않았다)"
     printf 'DEPLOY_RESULT=failed_no_previous\n'
-    exit 11
+    exit 12
   fi
 
   log "자동 롤백: ${previous_tag} (DB migration은 되돌리지 않는다)"

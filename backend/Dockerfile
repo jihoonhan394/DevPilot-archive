@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 #
-# DevPilot API runtime image — linux/amd64 (서버는 Rocky Linux 9 x86_64, release.yml이 ubuntu-24.04에서 빌드)
+# DevPilot API runtime image — linux/amd64 + linux/arm64 둘 다 지원한다.
+#   amd64 = 현재 자체 서버(Rocky Linux 9 x86_64), arm64 = 공개 전환 후보인 OCI Always Free Ampere A1
+#   release.yml이 ubuntu-24.04 runner에서 buildx + QEMU로 두 아키텍처를 함께 빌드한다 (docs/10 §1.4, §7.2)
+#   이 Dockerfile 자체에는 아키텍처 의존이 없다 (base 이미지가 멀티아치, jar는 바이트코드)
 # 기준: docs/10-deployment-and-operations.md §5.3 (2026-09-18)
 #
 # 빌드 컨텍스트는 backend/ 이다. jar는 이미지 밖에서 먼저 만든다:

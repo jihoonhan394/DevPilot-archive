@@ -1,10 +1,10 @@
 # 07. Security & Privacy
 
-> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: ADR-013, ADR-014, DEC-01, DEC-04, DEC-06, DEC-08, DEC-11, DEC-13, DEC-15, DEC-16, NFR-04, NFR-05, AC-07, AC-08, AC-13, AC-14, AC-15, AC-18, AC-20, AC-23, `_PENDING-CHANGES.md` §1·§4·§7
+> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: ADR-013, ADR-014, DEC-01, DEC-04, DEC-06, DEC-08, DEC-11, DEC-13, DEC-15, DEC-16, NFR-04, NFR-05, AC-07, AC-08, AC-13, AC-14, AC-15, AC-18, AC-20, AC-23, AC-25, ADR-030~035, DEC-05~23
 >
 > 이 문서는 DevPilot의 **보안 통제, 위협 모델, 감사 이벤트, secret 목록, 개인정보 처리, 보안 테스트 목록**을 정의한다. 인증·필터·트랜잭션 구조는 `03-system-architecture.md`, 오류 코드는 `05-api-spec.md` §1.3, AI 가드와 마스킹 패턴은 `17-ai-integration.md`, 배포·runbook은 `10-deployment-and-operations.md`가 기준이다. 이 문서의 규칙과 충돌하는 구현은 허용하지 않는다.
 >
-> **전제(2026-09-18 확정):** 서비스는 자체 서버에서 `tailscale serve`로만 노출되며 **tailnet 밖에서는 도달할 수 없다.** 인증은 `DEVPILOT_AUTH_MODE=devtoken`(기본·운영 공통, 결정 A) — allowlist 이메일만 `POST /dev/token`으로 토큰을 받는다. AI 공급자는 DeepSeek(중국 소재, §8.4). Supabase Auth는 Later(`supabase` 모드, 이 문서의 해당 항목은 "(Later)"로 표시). 서버 IP·tailnet 호스트명·계정·이메일은 이 문서에 쓰지 않고 `<server>`, `<tailnet-host>`, `<your-email>` 자리표시자를 쓴다. 실제 값은 저장소 밖 `DevPilot-ops/`에 있다.
+> **전제(2026-09-18 확정, 임시):** 서비스는 자체 서버에서 `tailscale serve`로만 노출되며 **tailnet 밖에서는 도달할 수 없다. 이것은 S0~S2(~2026-10-26)의 임시 배포 조건이고, 최종 목표는 공개 배포다**(ADR-031·DEC-19). 공개 전환 시 이 전제가 해제되므로 §2.4 잔여 위험과 §3.1 인증 방식을 먼저 갱신해야 한다. 인증은 `DEVPILOT_AUTH_MODE=devtoken`(기본·운영 공통, 결정 A) — allowlist 이메일만 `POST /api/v1/dev/token`으로 토큰을 받는다. AI 공급자는 DeepSeek(중국 소재, §8.4). Supabase Auth는 Later(`supabase` 모드, 이 문서의 해당 항목은 "(Later)"로 표시). 서버 IP·tailnet 호스트명·계정·이메일은 이 문서에 쓰지 않고 `<server>`, `<tailnet-host>`, `<your-email>` 자리표시자를 쓴다. 실제 값은 저장소 밖 `DevPilot-ops/`에 있다.
 
 ---
 
@@ -22,13 +22,13 @@
 
 | OWASP | DevPilot 통제 | 검증 (테스트 클래스 / AC) |
 |---|---|---|
-| A01 Broken Access Control | 모든 `/api/v1/**`는 JWT 필수(예외는 §4.1 표뿐). application service 조회에 항상 `userId` 조건(`03` §4.4). 타 사용자 리소스는 404. allowlist는 `/dev/token` 발급 시와 매 요청마다 확인. `DELETION_REQUESTED` 사용자는 403. ADMIN endpoint 없음. actuator는 `health`만 노출 | `AuthorizationIsolationTest`, `EndpointCatalogCompletenessTest`, `AllowlistProvisioningTest`, `DevTokenEndpointTest`, `DeletionRequestedAccessTest`, `ActuatorExposureTest` / AC-08, AC-18 |
+| A01 Broken Access Control | 모든 `/api/v1/**`는 JWT 필수(예외는 §4.1 표뿐). application service 조회에 항상 `userId` 조건(`03` §4.4). 타 사용자 리소스는 404. allowlist는 `/api/v1/dev/token` 발급 시와 매 요청마다 확인. `DELETION_REQUESTED` 사용자는 403. ADMIN endpoint 없음. actuator는 `health`만 노출 | `AuthorizationIsolationTest`, `EndpointCatalogCompletenessTest`, `AllowlistProvisioningTest`, `DevTokenEndpointTest`, `DeletionRequestedAccessTest`, `ActuatorExposureTest` / AC-08, AC-18 |
 | A02 Cryptographic Failures | 브라우저 구간은 Tailscale 관리 TLS(§10), HSTS, JWT는 EC P-256(ES256) 비대칭 키 검증(앱이 가진 공개키), 캘린더 토큰은 256bit 난수 + DB에는 SHA-256만 저장, 백업은 tailnet 내부·운영자 PC에만(암호화 없음, 결정 C), 로그의 사용자 식별자는 HMAC | `CalendarFeedSecurityTest`, `JwtValidationIntegrationTest`, 배포 스모크 `infra/scripts/smoke-headers.sh` / AC-08 |
 | A03 Injection | JPA 파라미터 바인딩만 사용(`08-coding-conventions.md` §5), 동적 정렬은 enum allowlist, enum 엄격 파싱, Markdown raw HTML 비활성, AI 입력은 `<user_content>`로 감싸고 출력은 가드 통과 | `UnknownEnumValueTest`, `CursorCodecTest`, `markdown_view_test.dart`(Flutter), `VerificationGuardTest`, `CodeLeakGuardTest` / AC-07 |
 | A04 Insecure Design | §2 위협 모델, AI 예산·일일 한도·동시 실행 가드 + 잔액 모니터, 리소스를 만들거나 AI를 호출하는 POST의 `Idempotency-Key`, AI 호출은 트랜잭션 밖(T-2), 불변식은 DB + 애플리케이션 이중 강제(T-6) | `AiBudgetGuardTest`, `AiBalanceMonitorTest`, `IdempotencyTest`, `ReplanServiceIntegrationTest` / AC-13, AC-23, AC-24 |
 | A05 Security Misconfiguration | `api`·DB 포트를 publish하지 않음(Caddy `127.0.0.1:18080`만), `tailscale funnel` 금지, `/dev/**`는 devtoken 모드에서만 bean 등록, Swagger는 `local`만, `spring.web.error.include-stacktrace=never`(Boot 4 property 이름), Caddy 보안 헤더(§9.3), 컨테이너 read-only·non-root. (Later) Supabase Data API 비활성화(DEC-15) + `devpilot` 스키마 권한 revoke | `ActuatorExposureTest`, `ProblemDetailsLeakTest`, `DevTokenEndpointTest`, `smoke-headers.sh`, (Later) `SupabaseHardeningMigrationTest` / AC-20, AC-08 |
 | A06 Vulnerable and Outdated Components | S0: Dependabot(gradle/pub/actions), Gradle dependency locking, `pubspec.lock` 커밋. S2 P1: Trivy(fs + image), base image digest 고정, Dependabot `docker`(§11) | S0: Dependabot PR / S2 P1: CI `trivy-fs` job, release `trivy-image` step |
-| A07 Identification and Authentication Failures | devtoken 모드(결정 A): tailnet 안에서만 도달 가능한 `POST /dev/token` + allowlist 이메일, ES256 서명·`iss`·`aud`·`exp`·`nbf` 검증, `DELETE /me` 최근 로그인 확인(`amr[].timestamp`), 운영 계정 2FA/passkey(§15). (Later) Supabase GitHub OAuth(DEC-08) | `JwtValidationIntegrationTest`, `DevTokenEndpointTest`, `RecentLoginRequiredTest` / AC-08, AC-15 |
+| A07 Identification and Authentication Failures | devtoken 모드(결정 A): tailnet 안에서만 도달 가능한 `POST /api/v1/dev/token` + allowlist 이메일, ES256 서명·`iss`·`aud`·`exp`·`nbf` 검증, `DELETE /me` 최근 로그인 확인(`amr[].timestamp`), 운영 계정 2FA/passkey(§15). (Later) Supabase GitHub OAuth(DEC-08) | `JwtValidationIntegrationTest`, `DevTokenEndpointTest`, `RecentLoginRequiredTest` / AC-08, AC-15 |
 | A08 Software and Data Integrity Failures | GitHub Actions commit SHA 고정, Gradle wrapper 검증, lockfile, 적용된 Flyway migration 수정 금지, seed YAML 기동 시 검증, idempotency 응답 재생은 같은 사용자·같은 hash일 때만, 배포는 GHCR 이미지 태그 고정(`deploy.sh v0.x.y`) | CI `actions-pin-check` step, `FlywayMigrationIntegrationTest`, `ContentValidatorTest`, `IdempotencyTest` |
 | A09 Security Logging and Monitoring Failures | 감사 이벤트 카탈로그(§6.3), `traceId`, `userRef`, `JOB_FAILED`, `AI_BALANCE_LOW`, 일일 요약 로그(`03` §8), 호스트 `healthping.sh` timer → healthchecks.io ping(5분) | `AuditLoggerTest`, `LogMaskingTest` |
 | A10 Server-Side Request Forgery | 서버는 사용자·AI가 준 URL을 fetch하지 않는다(`job_posting.source_url`, `evidence_candidate.reference_links`, `coach_finding.source_reference`). 외부 HTTP 호출 대상은 DeepSeek API 한 곳뿐(supabase 모드에서만 JWKS 추가, Later) | `VerificationGuardTest`, ArchUnit `ARCH-19`(`08-coding-conventions.md` §11.6) |
@@ -55,7 +55,7 @@
 | ID | 행위자 | 능력 |
 |---|---|---|
 | TA-1 | 인터넷 익명 공격자 | **tailnet 밖에서는 서비스에 도달할 수 없다**(`tailscale serve`, 공개 포트 없음). 이 문서의 통제는 tailnet 노출이 깨진 경우(운영자 실수로 `funnel`·포트 publish)에도 남는 2차 방어선이다 |
-| TA-2 | tailnet에 접속한 비초대 사용자 | 같은 tailnet의 다른 기기 사용자. `POST /dev/token`에 임의 이메일로 요청. allowlist가 유일한 관문 |
+| TA-2 | tailnet에 접속한 비초대 사용자 | 같은 tailnet의 다른 기기 사용자. `POST /api/v1/dev/token`에 임의 이메일로 요청. allowlist가 유일한 관문 |
 | ~~TA-3~~ | ~~publishable key 보유자~~ | (Later, Supabase 도입 시) |
 | TA-4 | 초대 사용자 (DEC-01) | 유효한 토큰으로 다른 사용자 리소스 ID를 추측·재사용 |
 | TA-5 | Prompt injection 작성자 | 사용자가 붙여넣는 코드·로그·JD 안에 모델 지시문을 심음 |
@@ -69,7 +69,7 @@
 ```text
 [Browser (Flutter web, tailnet 기기)] ─TB-1 (tailnet, Tailscale TLS :443)─▶ [tailscale serve] ─▶ [Caddy 127.0.0.1:18080]
 [Caddy] ─TB-2 (docker network, HTTP)─▶ [devpilot-api :8080, publish 없음]
-[Browser] ─TB-1' (같은 경로)─▶ [POST /dev/token] (이메일 → allowlist → JWT 발급, devtoken 모드)
+[Browser] ─TB-1' (같은 경로)─▶ [POST /api/v1/dev/token] (이메일 → allowlist → JWT 발급, devtoken 모드)
 [devpilot-api] ─TB-3 (tailnet 내부 JDBC, TLS 없음 — WireGuard 구간 암호화)─▶ [서버 PostgreSQL 16, 공용 인스턴스]
 [devpilot-api] ─TB-4 (Later, supabase 모드만, TLS)─▶ [Supabase JWKS]
 [devpilot-api] ─TB-5 (TLS, 데이터가 외부 공급자로 나감 — 중국 소재)─▶ [DeepSeek API]
@@ -87,7 +87,7 @@
 
 | ID | 위협 (STRIDE) | 행위자 | 대응 | 검증 |
 |---|---|---|---|---|
-| TM-01 | 초대받지 않은 사용자가 로그인해 AI 비용을 소모 (E, D) | TA-2 | **tailnet 밖에서는 `/dev/token`에 도달할 수 없다** + allowlist 검사(발급 시 + 요청마다 재확인, `03` §4.3) + `/dev/token` IP당 30회/시간 + AI 예산 가드(DEC-06) + 선불 잔액 소액 유지(§7.4) | `DevTokenIntegrationTest`(D-03), `AllowlistProvisioningTest`, `AiBudgetGuardTest` / AC-18, AC-13 |
+| TM-01 | 초대받지 않은 사용자가 로그인해 AI 비용을 소모 (E, D) | TA-2 | **tailnet 밖에서는 `/api/v1/dev/token`에 도달할 수 없다** + allowlist 검사(발급 시 + 요청마다 재확인, `03` §4.3) + `/api/v1/dev/token` IP당 30회/시간 + AI 예산 가드(DEC-06) + 선불 잔액 소액 유지(§7.4) | `DevTokenIntegrationTest`(D-03), `AllowlistProvisioningTest`, `AiBudgetGuardTest` / AC-18, AC-13 |
 | TM-02 | DB에 직접 접속해 다른 사용자 데이터를 읽는다 (I) | TA-3 | DB는 tailnet 안에만 열려 있고 `devpilot` role은 `devpilot` DB 소유자로 범위가 한정된다. 클라이언트는 DB에 접속하지 않는다. (Supabase 도입 시) Data API 비활성화·`anon`/`authenticated` 권한 revoke(DEC-15, `schema.sql` §12) | `SupabaseHardeningMigrationTest`(DO 블록, 현재 no-op) / AC-20 |
 | TM-03 | 초대 사용자가 다른 사용자 리소스 ID로 조회·수정 (I, T) | TA-4 | 모든 조회 `findByIdAndUserId`, 타인·미존재 모두 404, 요청 body/path의 `userId` 미수용, idempotency record는 `(user_id, key)` 범위 | `AuthorizationIsolationTest`, `IdempotencyTest` / AC-08 |
 | TM-04 | Prompt injection으로 `VERIFIED` 위조, 수정 코드 노출, 링크를 통한 데이터 유출 (T, I) | TA-5 | tool use 없음, URL fetch 없음, `<user_content>` 래핑과 escape, `VerificationGuard`·`CodeLeakGuard`, 점수·레벨은 서버 계산, 클라이언트는 이미지 미렌더링·https 링크만(§9.5) | `VerificationGuardTest`, `CodeLeakGuardTest`, eval injection case(`17-ai-integration.md` §12) / AC-07 |
@@ -105,7 +105,8 @@
 
 잔여 위험(수용):
 - 탈취된 access token은 만료 전까지 개별 폐기할 수 없다(세션 저장소를 두지 않음). allowlist 제거 또는 서명 키 교체로 대응한다(§17).
-- **devtoken 모드는 "tailnet 밖에서 `/dev/token`에 도달할 수 없다"는 전제 위에 있다.** 이 전제가 깨지면(공개 노출, tailnet 침해) 이메일만 알면 토큰을 받을 수 있다. 공개 노출 전에 반드시 `DEVPILOT_AUTH_MODE=supabase`로 전환한다(ADR-033).
+- **devtoken 모드는 "tailnet 밖에서 `/api/v1/dev/token`에 도달할 수 없다"는 전제 위에 있다.** 이 전제가 깨지면(공개 노출, tailnet 침해) 허용 이메일만 알면 누구나 토큰을 받는다 — 비밀번호도 OAuth도 없다.
+- **이 전제는 한시적이다.** 최종 목표가 공개 배포이므로(DEC-19), 공개 노출 전에 반드시 `BL-SEC-18`(Supabase Auth)을 끝내고 `DEVPILOT_AUTH_MODE=supabase`로 전환한다(ADR-033의 게이트). 방어 장치로 `prod` + `devtoken` 조합은 기동 시 WARN을 남긴다.
 - 회사 기밀 코드 붙여넣기는 기술로 완전히 막을 수 없다. 동의 체크와 마스킹으로 줄인다.
 - DeepSeek, GitHub, Tailscale 자체의 침해와 **공용 서버를 함께 쓰는 다른 서비스**의 침해는 이 문서 범위 밖이다(서버 root가 뚫리면 `api.env`가 노출된다).
 
@@ -119,9 +120,9 @@
 **`devtoken` (기본값, 운영 포함)**
 
 - backend가 EC P-256 키(`DEVPILOT_DEV_JWT_KEY`)로 JWT를 서명하고 같은 키의 공개키로 검증한다. 즉 **backend가 발급자이자 resource server**다.
-- `POST /dev/token {email}`: allowlist에 있는 이메일에만 720시간 토큰을 발급한다. 불허 시 403 `USER_NOT_ALLOWED`. IP당 30회/시간(§12.3).
-- `GET /dev/jwks.json`: 공개키만 제공한다(개인키 필드 `d` 없음).
-- 이 방식은 **서비스가 tailnet 밖에서 도달 불가능하다는 전제**에서만 쓴다(§2.4 잔여 위험). 공개 노출 전에 `supabase` 모드로 전환한다.
+- `POST /api/v1/dev/token {email}`: allowlist에 있는 이메일에만 720시간 토큰을 발급한다. 불허 시 403 `USER_NOT_ALLOWED`. IP당 30회/시간(§12.3).
+- `GET /api/v1/dev/jwks.json`: 공개키만 제공한다(개인키 필드 `d` 없음).
+- 이 방식은 **서비스가 tailnet 밖에서 도달 불가능하다는 전제**에서만 쓴다(§2.4 잔여 위험). 이 전제는 임시이며(DEC-19), **공개 노출 전에 `supabase` 모드로 전환하는 것이 필수 게이트**다(ADR-033).
 - 토큰 폐기 수단은 (1) allowlist에서 이메일 제거(요청마다 재확인하므로 즉시 차단) (2) `DEVPILOT_DEV_JWT_KEY` 교체 후 재기동(전체 무효)뿐이다.
 
 **`supabase` (Later)**
@@ -605,7 +606,7 @@ Content-Security-Policy-Report-Only:
 S0 확인 절차(SP-1과 함께):
 1. `index.html`에 inline `<script>`가 없는지 확인한다. 있으면 `flutter_bootstrap.js` 외부 파일 방식으로 바꾼다.
 2. 로그인 → Today → Review → Coach 화면을 Chrome에서 열고 DevTools Console의 `[Report Only]` 위반을 모두 기록한다. 외부 폰트(`fonts.gstatic.com`) 요청이 보이면 폰트 번들 누락이므로 정책을 넓히지 말고 번들을 고친다.
-3. 로그인(`POST /dev/token`)과 이후 API 호출이 같은 origin에서 동작하는지 확인한다(devtoken 모드는 외부 왕복이 없다). Supabase 도입 시 OAuth 왕복이 COOP `same-origin`에서 동작하는지 다시 확인한다.
+3. 로그인(`POST /api/v1/dev/token`)과 이후 API 호출이 같은 origin에서 동작하는지 확인한다(devtoken 모드는 외부 왕복이 없다). Supabase 도입 시 OAuth 왕복이 COOP `same-origin`에서 동작하는지 다시 확인한다.
 4. 위반이 없는 상태로 S2 실사용 1주를 지낸 뒤 헤더 이름을 `Content-Security-Policy`로 바꿔 강제한다(S2 종료 작업, `BL-SEC` 백로그).
 
 report 수집 endpoint는 두지 않는다(콘솔 확인).
@@ -722,7 +723,7 @@ S0에서는 공급망 통제를 **gitleaks + Action SHA 고정 + Dependabot(grad
 | 한도 | 값 · 집계 | 설정 | 초과 응답 |
 |---|---|---|---|
 | provider 비활성 | `devpilot.ai.provider = disabled` | — | 503 `AI_UNAVAILABLE` (먼저 검사) |
-| 월 예산 | USD 25, **서비스 전체** `ai_call_log.cost_micro_usd` 합. 월 경계는 `devpilot.time.default-zone`(Asia/Seoul)의 달력 월(1일 00:00 ~ 다음 달 1일 00:00) | `devpilot.ai.monthly-budget-usd` | 429 `AI_MONTHLY_BUDGET_EXCEEDED`, `Retry-After` = 다음 달 1일 00:00 KST까지 초, `aiStatus = DISABLED` |
+| 월 예산 | **USD 3**(`devpilot.ai.monthly-budget-usd` 기본값, ADR-035), **서비스 전체** `ai_call_log.cost_micro_usd` 합. 테스트 벡터는 test profile 고정값 25 기준이다(`09` §10.3). 월 경계는 `devpilot.time.default-zone`(Asia/Seoul)의 달력 월(1일 00:00 ~ 다음 달 1일 00:00) | `devpilot.ai.monthly-budget-usd` | 429 `AI_MONTHLY_BUDGET_EXCEEDED`, `Retry-After` = 다음 달 1일 00:00 KST까지 초, `aiStatus = DISABLED` |
 | 예산 경고 | 80% (8,000bp) | `devpilot.ai.budget-warning-ratio` | 차단 없음, `aiStatus = BUDGET_WARNING`, `AI_BUDGET_WARNING` |
 | 일일 호출 | 사용자당 60회, **사용자 plan-day 시작 시각부터** 집계 | `devpilot.ai.daily-call-limit-per-user` | 429 `AI_DAILY_LIMIT_EXCEEDED`, `Retry-After` = 다음 plan-day 시작까지 초 |
 | 동시 실행 | 사용자당 (진행 중인 동기 AI 호출 수 + `PENDING`/`RUNNING` 비동기 작업 수) ≥ 2 | `devpilot.ai.max-concurrent-per-user` | 429 `AI_CONCURRENCY_LIMIT`, `Retry-After: 5` |
@@ -765,7 +766,7 @@ S0에서는 공급망 통제를 **gitleaks + Action SHA 고정 + Dependabot(grad
 ### 12.4 그 밖의 남용 방지
 
 - 요청 body 64KB, coach 30KB/1,000줄(§5.2), challenge attempt당 제출 5회(`devpilot.training.max-submissions-per-attempt`).
-- `POST /dev/token`은 IP당 30회/시간(§12.3)으로 무차별 이메일 시도를 막는다. (Later) Supabase Auth 자체 rate limit은 기본값을 유지한다.
+- `POST /api/v1/dev/token`은 IP당 30회/시간(§12.3)으로 무차별 이메일 시도를 막는다. (Later) Supabase Auth 자체 rate limit은 기본값을 유지한다.
 - 목록 API `limit` 최대 100.
 
 ---
@@ -777,9 +778,9 @@ S0에서는 공급망 통제를 **gitleaks + Action SHA 고정 + Dependabot(grad
 | 항목 | 규칙 |
 |---|---|
 | 형식 | `application/json; charset=utf-8`, `Content-Disposition: attachment; filename="devpilot-export-<yyyyMMdd>.json"`, `Cache-Control: no-store` |
-| 포함 | `app_user`(`calendar_token_hash` 제외), `career_goal`(+focus skill code), 모든 plan version·milestone·skill target·snapshot, `user_skill_state`, `skill_state_change`, `learning_session`, `learning_event`(무효화 포함, 플래그 표시), `hint_disclosure`, `daily_plan`·`learning_task`, 본인 소유 `challenge`, `challenge_attempt`·`challenge_submission`, `review_item`·`review_answer`, `coach_review`(purge 전 content 포함)·`coach_finding`, `thinking_pattern_observation`, `evidence_candidate`, `weekly_review`, `job_posting`·`job_requirement`, 본인 `ai_call_log`(operation, model, 토큰 수, 비용, 상태, 시각) |
-| 제외 | `idempotency_record`, `calendar_token_hash`, seed catalog 원본(skill은 code·name만 참조로 포함) |
-| 최상위 필드 | `exportVersion: 1`, `exportedAt`, `userId` |
+| 포함 | `app_user`(`calendar_token_hash` 제외), `career_goal`(+focus skill code), 모든 plan version·milestone·skill target·snapshot, `user_skill_state`, `skill_state_change`, `learning_session`, `learning_event`(무효화 포함, 플래그 표시), `hint_disclosure`, `daily_plan`·`learning_task`, 본인 소유 `challenge`, `challenge_attempt`·`challenge_submission`, `review_item`·`review_answer`, `coach_review`(purge 전 content 포함)·`coach_finding`, `thinking_pattern_observation`, `evidence_candidate`, `weekly_review`, `job_posting`·`job_requirement`, |
+| 제외 | **`ai_call_log`**, `idempotency_record`, `calendar_token_hash`, 행 단위 제외 컬럼(`user_id`, `owner_user_id`, `version`, `ai_call_id`, `request_fingerprint`, `content_sha256`), seed catalog 원본(skill은 code·name만 참조로 포함). 상세는 `05` §3.3이 기준이다 |
+| 최상위 필드 | `exportVersion: 1`, `exportedAt`, `user`(객체 — `05` §3.3 예시 기준). 개별 `userId` 필드는 두지 않는다 |
 | 처리 | 하나의 `readOnly` 트랜잭션에서 조회 후 스트리밍 직렬화. 감사 이벤트 `DATA_EXPORTED` |
 | 상태 | `DELETION_REQUESTED`이면 403 `FORBIDDEN` (§4.5). 클라이언트는 삭제 확인 화면에서 export를 먼저 안내한다 |
 
@@ -796,7 +797,7 @@ S0에서는 공급망 통제를 **gitleaks + Action SHA 고정 + Dependabot(grad
 | 7 | 운영자 | 사용자에게 완료 사실과 백업 잔존 기간(§13.3)을 알린다 |
 
 - 삭제를 취소하는 API는 없다. 5분 안에 운영자가 SQL로 `status = 'ACTIVE'`를 복원하는 것만 가능하다.
-- 6단계 전에 사용자가 다시 로그인하면(토큰이 아직 살아 있거나 `/dev/token`을 다시 호출하면) **새 빈 계정**이 만들어진다. 6단계에서 allowlist를 정리하는 이유다.
+- 6단계 전에 사용자가 다시 로그인하면(토큰이 아직 살아 있거나 `/api/v1/dev/token`을 다시 호출하면) **새 빈 계정**이 만들어진다. 6단계에서 allowlist를 정리하는 이유다.
 
 ### 13.3 삭제 대상과 잔존 데이터
 

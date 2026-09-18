@@ -37,7 +37,7 @@
 | [08-coding-conventions.md](docs/08-coding-conventions.md) | Java/Spring/JPA/Flutter 규칙, 자동 강제 도구, ArchUnit 규칙 | 코드 작성 전 |
 | [09-test-and-quality.md](docs/09-test-and-quality.md) | 테스트 전략, fixture, JWT·DB·권한 격리·AI 테스트, E2E 흐름, 품질 게이트 | 테스트 작성 |
 | [10-deployment-and-operations.md](docs/10-deployment-and-operations.md) | 서버 준비, Tailscale HTTPS, 컨테이너, 환경변수, CI/CD, 백업, 모니터링, runbook | 배포·운영 |
-| [11-development-roadmap.md](docs/11-development-roadmap.md) | Sprint S0~S7, spike, 직접 구현 영역, 작업 지시 템플릿 | 작업 계획 |
+| [11-development-roadmap.md](docs/11-development-roadmap.md) | Sprint S0~S7, spike, 구현 분담, 공개 전환 게이트, 작업 지시 템플릿 | 작업 계획 |
 | [12-acceptance-criteria.md](docs/12-acceptance-criteria.md) | AC-01~24 (Given/When/Then) | 완료 판단 |
 | [13-product-backlog.md](docs/13-product-backlog.md) | BL 항목 전체 (우선순위, Sprint, 의존, AC) | 작업 선택 |
 | [14-adrs.md](docs/14-adrs.md) | 아키텍처 결정 기록 | 결정 이유 확인·변경 |

@@ -4,7 +4,7 @@
 >
 > 이 문서는 Flutter 클라이언트의 **화면 ID(SCR), 라우트, 화면별 레이아웃·데이터·상태·검증·문구, 핵심 흐름, 오류 코드별 UI 처리, 공통 컴포넌트, 접근성, PWA, 테마 토큰**을 정의한다. 기능 규칙은 `01`의 FR, 요청·응답 필드는 `05-api-spec.md`가 기준이다. API는 base `/api/v1`을 생략하고 `METHOD path`로 적는다.
 >
-> 클라이언트 스택: Flutter web(PWA), Riverpod, go_router, dio, freezed(DEC-10, DEC-12). 인증은 `AUTH_MODE` dart-define으로 고른다 — `dev`(기본: `POST /dev/token`) / `supabase`(Later: `supabase_flutter`).
+> 클라이언트 스택: Flutter web(PWA), Riverpod, go_router, dio, freezed(DEC-10, DEC-12). 인증은 `AUTH_MODE` dart-define으로 고른다 — `dev`(기본: `POST /api/v1/dev/token`) / `supabase`(Later: `supabase_flutter`).
 
 ---
 
@@ -328,7 +328,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 - **레이아웃 (`AUTH_MODE=supabase`, Later)**: 이메일 입력 자리에 `FilledButton`(GitHub 아이콘) 하나.
 - **컴포넌트**: 로고 텍스트, 설명, `TextField`(email, `autofillHints: [email]`, `keyboardType: emailAddress`) 또는 GitHub `FilledButton`, `FilledButton`(로그인), `InfoNote`.
 - **데이터**
-  - `dev`: "로그인" → `POST /dev/token {email}` → 200이면 `accessToken`을 세션 저장소에 넣고 `GET /me`로 이동(SCR-AUTH-CALLBACK과 같은 분기). 403 `USER_NOT_ALLOWED` → `/not-allowed`.
+  - `dev`: "로그인" → `POST /api/v1/dev/token {email}` → 200이면 `accessToken`을 세션 저장소에 넣고 `GET /me`로 이동(SCR-AUTH-CALLBACK과 같은 분기). 403 `USER_NOT_ALLOWED` → `/not-allowed`.
   - `supabase`: `supabase.auth.signInWithOAuth(OAuthProvider.github, redirectTo: '<origin>/auth/callback?from=<from>')`.
 - **상태**: Loading — 버튼 안 진행 표시, 다시 탭 불가. Error — 인라인 `login.error`(429는 `login.tooMany`). Offline — 공통 배너 + 버튼 비활성.
 - **행동·검증**: `dev` 모드에서 이메일이 비었거나 형식이 아니면 버튼 비활성(제출 전 검증, 서버 400을 만들지 않는다).
@@ -859,7 +859,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 ```
 
   - 평가 버튼 4개는 한 줄, 각 높이 56 이상. 버튼 아래 작은 숫자는 데스크톱에서만 보인다(단축키 안내).
-  - "AI로 채점하기" 스위치는 `answerText`가 비어 있지 않고, flag `review_evaluate`가 켜져 있고, `aiStatus != DISABLED`일 때만 보인다. 기본값은 마지막 선택(`localStorage` `devpilot.review.evaluate`, 없으면 꺼짐).
+  - "AI로 채점하기" 스위치는 `answerText`가 비어 있지 않고, flag `review_evaluate`가 켜져 있고, **`aiAvailable`**(= `aiStatus ∉ {DISABLED, BALANCE_EXHAUSTED}`, §6.4)일 때만 보인다. 기본값은 마지막 선택(`localStorage` `devpilot.review.evaluate`, 없으면 꺼짐).
   - 평가 버튼을 누르면 버튼 영역이 진행 표시로 바뀐다. 채점이 켜져 있으면 `review.session.evaluating`(최대 20초)을 보여준다.
 
 - **레이아웃 ③ 조정 토스트 (다음 카드 위에 4초)**
@@ -2267,7 +2267,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 └────────────────────────────────┘
 ```
 
-- **데이터**: 재인증 — `dev` 모드는 "다시 로그인" → 이메일 확인 후 `POST /dev/token`으로 새 토큰을 받는다(발급 시각이 `amr[].timestamp`가 되어 5분 규칙을 만족). `supabase` 모드는 `supabase.auth.signInWithOAuth(github, redirectTo: '<origin>/auth/callback?from=/settings/delete-account%3Freauth%3D1')`. "내 데이터 먼저 내려받기" → `GET /me/export`. "계정 삭제" → `DELETE /me` → `202` → Supabase `signOut()` → `/login?reason=deleted`.
+- **데이터**: 재인증 — `dev` 모드는 "다시 로그인" → 이메일 확인 후 `POST /api/v1/dev/token`으로 새 토큰을 받는다(발급 시각이 `amr[].timestamp`가 되어 5분 규칙을 만족). `supabase` 모드는 `supabase.auth.signInWithOAuth(github, redirectTo: '<origin>/auth/callback?from=/settings/delete-account%3Freauth%3D1')`. "내 데이터 먼저 내려받기" → `GET /me/export`. "계정 삭제" → `DELETE /me` → `202` → Supabase `signOut()` → `/login?reason=deleted`.
 - **재로그인 판정**: 현재 access token의 JWT payload(base64 디코드, 서명 검증 없음)에서 `authTime` = `amr[].timestamp` 최댓값(`amr`이 없을 때만 `iat`)을 구한다(서버와 같은 기준, `05-api-spec.md` §3.4). `authTime`이 지금으로부터 4분 30초 이내면 "확인됐어요" + 남은 시간 카운트다운(5분 − 30초 여유). 0이 되면 다시 "GitHub로 다시 로그인"을 보여준다.
 - **상태**: 삭제 중 — 버튼 로딩, 화면 잠금. Error — `403 RECENT_LOGIN_REQUIRED` → 확인 표시를 지우고 인라인 `account.delete.reauthAgain`. 그 외 §5. Offline — 공통.
 - **행동·검증**: "계정 삭제" 활성 조건 = 재로그인 확인 유효 + 입력값이 정확히 `삭제합니다` + 온라인. 추가 확인 대화상자는 없다(두 단계 확인으로 충분).
@@ -2299,7 +2299,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | # | 사용자 | 화면 | API / 클라이언트 동작 | [서버] |
 |---|---|---|---|---|
 | 1 | 앱 URL 접속 | SCR-LOGIN (redirect 1) | 세션 없음 | — |
-| 2 | 이메일 입력 → "로그인" | SCR-LOGIN | `POST /dev/token {email}` | allowlist 확인 → 서명 토큰 발급 (`supabase` 모드면 GitHub OAuth) |
+| 2 | 이메일 입력 → "로그인" | SCR-LOGIN | `POST /api/v1/dev/token {email}` | allowlist 확인 → 서명 토큰 발급 (`supabase` 모드면 GitHub OAuth) |
 | 3 | — | SCR-AUTH-CALLBACK | `GET /me` | JIT: allowlist 통과 → `app_user` INSERT(기본값). 실패 시 403 → SCR-NOT-ALLOWED |
 | 4 | — | → `/onboarding/goal` | `onboardingCompleted=false` | — |
 | 5 | 목표 입력 → 다음 | 1단계 | draft 저장 | — |
@@ -2380,7 +2380,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 - 6에서 `HINT_CONFIRMATION_REQUIRED`(확인 플래그 누락 버그) → 확인 대화상자를 다시 띄운다.
 - 8에서 submission `FAILED` → "다시 평가" → `POST …/submissions/{no}/retry` (IK) → 8로.
 - 7에서 `EVALUATION_IN_PROGRESS` → 제출 버튼 잠금 + polling 시작. `SUBMISSION_LIMIT_REACHED` → 제출 영역 비활성.
-- 7에서 `429 AI_*` → 토스트(§5), 입력 유지. `aiStatus=DISABLED`면 7 버튼이 처음부터 비활성.
+- 7에서 `429 AI_*` → 토스트(§5), 입력 유지. `aiAvailable`이 false면(`DISABLED` 또는 `BALANCE_EXHAUSTED`) 7 버튼이 처음부터 비활성.
 
 ### 4.6 진단 challenge
 
@@ -2681,7 +2681,7 @@ challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `F
 |---|---|---|---|
 | `AiUnavailableBanner` | `meProvider.aiStatus ∈ {DISABLED, BALANCE_EXHAUSTED}` | 앱 바 아래 전체 폭, `color.surfaceVariant` 배경, 아이콘 `cloud_off`, 닫기 없음 | `DISABLED` → `ai.unavailable.banner` = "AI 기능을 지금 쓸 수 없어요. 복습·계획·Today는 그대로 쓸 수 있어요." / `BALANCE_EXHAUSTED` → `ai.balanceExhausted.banner` = "AI 잔액이 떨어졌어요. 충전하면 다시 쓸 수 있어요. 복습·계획·Today는 그대로예요." |
 | `BudgetWarningNote` | `aiStatus == BUDGET_WARNING` | AI 실행 버튼 바로 아래 한 줄, 아이콘 `info` + `color.warning` 텍스트 | `ai.budgetWarning.note` = "이번 달 AI 사용량이 예산의 80%를 넘었어요." |
-| AI 버튼 비활성 사유 | `aiStatus == DISABLED` | 버튼 아래 `bodySmall` | `ai.disabledReason` = "AI를 쓸 수 없어 잠시 막아 두었어요." |
+| AI 버튼 비활성 사유 | `aiAvailable == false` | 버튼 아래 `bodySmall` | `DISABLED` → `ai.disabledReason` = "AI를 쓸 수 없어 잠시 막아 두었어요." / `BALANCE_EXHAUSTED` → `ai.balanceExhaustedReason` = "AI 잔액이 떨어져 잠시 막아 두었어요." |
 
 - 배너 표시 화면: SCR-TRAINING-LIST, SCR-CHALLENGE-DETAIL, SCR-TRAINING-ATTEMPT, SCR-COACH-LIST, SCR-COACH-NEW, SCR-COACH-DETAIL(마치기 전), SCR-EVIDENCE-DETAIL(초안 생성 중·실패), SCR-JOBS-LIST, SCR-JOB-NEW, SCR-MORE. **SCR-TODAY, SCR-REVIEW-\*, SCR-PLAN에는 표시하지 않는다**(AI 없이 동작하는 화면).
 - `aiStatus`는 `meProvider` 갱신 시점(§2.4)에 바뀐다. AI 관련 429/503 응답을 받으면 즉시 갱신한다.

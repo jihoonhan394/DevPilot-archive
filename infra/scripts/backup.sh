@@ -2,7 +2,7 @@
 # DevPilot daily backup: pg_dump -Fc -> /opt/devpilot/backups/devpilot-<UTC ts>.dump, 7일 보관 (결정 C)
 # 기준: docs/10-deployment-and-operations.md §8, §13.2 (db-restore) (2026-09-18)
 #
-# 실행: systemd devpilot-backup.timer (매일 18:30 UTC = KST 03:30), deploy.sh --backup-first, 또는 수동
+# 실행: systemd devpilot-backup.timer (매일 19:00 UTC = KST 04:00), deploy.sh --backup-first, 또는 수동
 #   sudo systemctl start devpilot-backup.service && journalctl -u devpilot-backup.service -n 30
 #
 # 입력 (source 하지 않고 필요한 키만 읽는다)

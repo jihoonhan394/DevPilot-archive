@@ -140,7 +140,7 @@ Bean Validation code: `NotNull`, `NotBlank`, `NotEmpty`, `Size`, `Min`, `Max`, `
 | 400 | `INVALID_CURSOR` | Invalid cursor | 목록 위치 정보가 올바르지 않습니다. 처음부터 다시 조회해 주세요. | `cursor`를 받는 모든 목록 |
 | 401 | `AUTHENTICATION_REQUIRED` | Authentication required | 로그인이 필요합니다. | 모든 인증 endpoint (토큰 없음·만료·서명/iss/aud 오류. 세부 사유는 로그에만) |
 | 403 | `USER_NOT_ALLOWED` | User not allowed | 이 서비스를 사용할 수 있는 계정이 아닙니다. | 모든 인증 endpoint (allowlist 거부 `03-system-architecture.md` §4.3, 익명 토큰 `is_anonymous = true` `03-system-architecture.md` §4.1) |
-| 403 | `FORBIDDEN` | Forbidden | 이 작업을 수행할 권한이 없습니다. | 삭제 요청 상태 사용자의 요청(§1.4.2), ADMIN 전용 경로 |
+| 403 | `FORBIDDEN` | Forbidden | 이 작업을 수행할 권한이 없습니다. | 삭제 요청 상태 사용자의 요청(§1.4.2). MVP에 ADMIN 전용 endpoint는 없다(§1.4.2) |
 | 403 | `RECENT_LOGIN_REQUIRED` | Recent login required | 보안을 위해 다시 로그인한 뒤 5분 안에 시도해 주세요. | `DELETE /me` |
 | 404 | `RESOURCE_NOT_FOUND` | Resource not found | 요청한 항목을 찾을 수 없습니다. | id로 조회하는 모든 endpoint, 없는 경로, 캘린더 토큰 불일치 |
 | 404 | `CAREER_GOAL_NOT_FOUND` | Career goal not found | 커리어 목표가 없습니다. 먼저 목표를 설정해 주세요. | `GET/PUT /career-goal`, `POST /plans`, replan preview, `GET /plans/active/budget` |
@@ -194,7 +194,7 @@ Bean Validation code: `NotNull`, `NotBlank`, `NotEmpty`, `Size`, `Min`, `Max`, `
 
 | 항목 | 규칙 |
 |---|---|
-| 방식 | `Authorization: Bearer <access token>` — `devtoken` 모드(기본)는 `POST /dev/token`(§1.4.5)이 발급한 JWT, `supabase` 모드(Later)는 Supabase access token (`03-system-architecture.md` §4.2) |
+| 방식 | `Authorization: Bearer <access token>` — `devtoken` 모드(기본)는 `POST /api/v1/dev/token`(§1.4.5)이 발급한 JWT, `supabase` 모드(Later)는 Supabase access token (`03-system-architecture.md` §4.2) |
 | 인증 없음 | `GET /actuator/health`, `GET /api/v1/calendar/{token}.ics`(토큰 해시 인증, §3.6). `local` profile의 `/v3/api-docs/**`, `/swagger-ui/**` |
 | 사용자 프로비저닝 | 첫 요청에서 JIT 생성, allowlist 확인 (`03-system-architecture.md` §4.3). 거부 시 403 `USER_NOT_ALLOWED` |
 | 익명 토큰 | JWT `is_anonymous = true`이면 403 `USER_NOT_ALLOWED` (`03-system-architecture.md` §4.1, §4.2) |
@@ -246,7 +246,7 @@ Bean Validation code: `NotNull`, `NotBlank`, `NotEmpty`, `Size`, `Min`, `Max`, `
 
 `devpilot.security.auth-mode = devtoken`(기본값, 운영 포함 — 2026-09-18 결정 A, `03-system-architecture.md` §4.2)일 때만 bean이 등록되는 endpoint다. `supabase` 모드에서는 존재하지 않아 404 `RESOURCE_NOT_FOUND`다. 둘 다 인증·IK·온보딩 가드 밖이며, `RateLimitFilter`가 **IP당 30회/시간**(`devpilot.security.rate-limit.dev-token-per-hour-per-ip`)으로 제한한다. tailnet 밖에서 닿을 수 없다는 배포 전제(`07-security-and-privacy.md` §3) 위에서만 허용된다.
 
-##### `POST /dev/token` — 개발 토큰 발급
+##### `POST /api/v1/dev/token` — 개발 토큰 발급
 
 | 항목 | 값 |
 |---|---|
@@ -274,7 +274,7 @@ public record DevTokenResponse(String accessToken, String tokenType, Instant exp
 { "accessToken": "eyJhbGciOiJFUzI1NiIs…", "tokenType": "Bearer", "expiresAt": "2026-10-18T09:00:00Z" }
 ```
 
-##### `GET /dev/jwks.json` — 검증용 공개키
+##### `GET /api/v1/dev/jwks.json` — 검증용 공개키
 
 | 항목 | 값 |
 |---|---|
@@ -315,7 +315,7 @@ backend 자신은 이 endpoint를 호출하지 않는다(메모리의 공개키�
 
 | 항목 | 규칙 |
 |---|---|
-| 대상 | 인증이 필요한 `POST` 중 **리소스를 만들거나 AI를 호출하는 것**(각 endpoint 표의 "인증 / IK" 열이 `IK`인 것). 예외(IK 열이 `—`): `POST /plans/{planId}/replan/preview`(계산만), `POST /learning-sessions/{id}/abandon`, `POST /challenge-attempts/{id}/abandon`(상태 전이가 자연히 멱등 — 두 번째 호출은 409 또는 같은 결과), `POST /dev/token`(인증 없음). 예외 endpoint는 헤더를 받아도 무시하고 record를 만들지 않는다 |
+| 대상 | 인증이 필요한 `POST` 중 **리소스를 만들거나 AI를 호출하는 것**(각 endpoint 표의 "인증 / IK" 열이 `IK`인 것). 예외(IK 열이 `—`): `POST /plans/{planId}/replan/preview`(계산만), `POST /learning-sessions/{id}/abandon`, `POST /challenge-attempts/{id}/abandon`(상태 전이가 자연히 멱등 — 두 번째 호출은 409 또는 같은 결과), `POST /api/v1/dev/token`(인증 없음). 예외 endpoint는 헤더를 받아도 무시하고 record를 만들지 않는다 |
 | 헤더 | `Idempotency-Key: <key>`. 형식 `^[A-Za-z0-9_-]{8,100}$`. 없으면 400 `IDEMPOTENCY_KEY_REQUIRED`, 형식 오류면 400 `VALIDATION_FAILED`(field `Idempotency-Key`, code `Pattern`) |
 | 클라이언트 | 사용자 행동 1회마다 UUID v4를 새로 만든다. 네트워크 재시도에는 같은 키를 쓴다 |
 | 범위 | `(user_id, key)` 단위(`idempotency_record` PK). 다른 사용자의 같은 키는 무관 |
@@ -581,7 +581,7 @@ public record DisclosedHintView(
 
 ### 2.7 사용하는 enum
 
-요청·응답의 enum 타입은 모두 `04-domain-model-and-db.md` §3 레지스트리의 것이다. 레지스트리에 없는 enum은 coach context의 `CoachProjectType`(`coach.domain`) 하나이며 값은 `04-domain-model-and-db.md` §5.5 `projectType` 목록과 같다(§12.1).
+요청·응답의 enum 타입은 모두 `04-domain-model-and-db.md` §3 레지스트리의 것이다. `CoachProjectType`(`coach.domain`)의 값은 `04-domain-model-and-db.md` §5.5 `projectType` 목록과 같다(§12.1).
 
 ---
 
@@ -3249,7 +3249,7 @@ public record JobCreateRequest(
 | 스냅샷 | `docs/api/openapi.yaml`. `test` profile 통합 테스트가 `/v3/api-docs.yaml`을 받아 스냅샷과 비교한다. 다르면 CI 실패. API를 바꾸는 PR은 스냅샷 갱신을 함께 커밋한다 |
 | 클라이언트 모델 | Flutter는 스냅샷을 기준으로 freezed 모델을 수기 작성한다(DEC-12) |
 | operationId | `<module><Action>` lowerCamelCase. 각 endpoint 절의 값을 `@Operation(operationId = ...)`로 고정한다 |
-| tag | 모듈 이름: `user`, `onboarding`, `career`, `skill`, `plan`, `today`, `learning`, `training`, `review`, `coach`, `dashboard`, `evidence`, `job` |
+| tag | 모듈 이름: `user`, `onboarding`, `career`, `skill`, `plan`, `today`, `learning`, `training`, `review`, `coach`, `dashboard`, `evidence`, `job`, `dev`(`devIssueToken`, `devJwks` — `auth-mode=devtoken`일 때만 스키마에 나타난다) |
 | security scheme | `bearerAuth` (HTTP bearer, JWT). 전역 적용, `userGetCalendarFeed`만 `security: []` |
 | 공통 component | header parameter `IdempotencyKey`(IK endpoint에 `required: true`, preview에는 `required: false`), schema `ProblemDetail`(§1.2 확장 필드 포함), `FieldError`, `AsyncStatusView`, `AiMeta`, `SkillRef`, `AxisLevels`, `CursorPage_<T>` |
 | 오류 응답 | 모든 operation에 `default` 응답 `application/problem+json` → `ProblemDetail`. 각 endpoint 표의 오류 status를 명시적으로 나열한다 |

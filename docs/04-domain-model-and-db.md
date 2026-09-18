@@ -17,7 +17,7 @@
 | 시각 | `Instant` ↔ `timestamptz`(UTC). 사용자 날짜는 `LocalDate` ↔ `date` (plan-day 기준, `06` §2) |
 | 동시성 | 수정 가능한 aggregate root는 `@Version Long version` |
 | 계획 버전 번호 | `learning_plan.plan_version` (JPA `@Version`과 이름을 구분) |
-| enum 매핑 | `@Enumerated(EnumType.STRING)`, DB는 varchar + CHECK |
+| enum 매핑 | `@Enumerated(EnumType.STRING)`, DB는 varchar + CHECK. **CHECK를 두지 않는 예외 둘**: (1) `failure_code`(`AsyncFailureCode`)는 Sprint마다 값이 늘어 migration이 계속 따라와야 하므로 애플리케이션에서만 검증한다 (2) enum **배열** 컬럼(`learning_task.reason_codes`, `review_answer.adjusted_by`, `coach_review.self_review_axes`)도 같은 이유로 애플리케이션 검증이다. 둘 다 §3 레지스트리 값만 쓰는 것은 동일하고, 위반은 테스트로 잡는다 |
 | 비율 | 정수 basis point(`*_bp`, 0~10000). 부동소수점 비교를 쓰지 않는다 |
 | JSON 컬럼 | `jsonb` ↔ Java record (Hibernate JSON 매핑). 각 컬럼의 스키마는 §5 |
 | 배열 컬럼 | `varchar[]`/`uuid[]` ↔ `List<String>`/`List<UUID>` (Hibernate array 매핑) |
@@ -69,6 +69,7 @@
 | `ExperienceProfile` (user.domain) | `EXPERIENCED_TRANSITION`, `DEVELOPER_STARTER`, `OTHER` | app_user |
 | `UserRole` (common.security) | `USER`, `ADMIN` | app_user |
 | `UserStatus` (user.domain) | `ACTIVE`, `DELETION_REQUESTED` | app_user |
+| `AiProvider` 값 (설정 문자열, Java enum 아님) | `deepseek`, `anthropic`(대안), `fake`, `disabled` — **소문자**. `devpilot.ai.provider` 설정값이 그대로 `ai_call_log.provider`에 들어가므로 이 표의 다른 enum과 달리 소문자다 | ai_call_log |
 | `AiStatus` (integration.ai.api) | `ENABLED`, `BUDGET_WARNING`, `BALANCE_EXHAUSTED`(공급자 선불 잔액 소진·402, `17` §8.7), `DISABLED` | `GET /me` 응답 (저장 안 함). `BALANCE_EXHAUSTED`는 클라이언트가 `DISABLED`와 같게 다루되 이유 문구만 다르다 |
 | `EnergyLevel` (today.domain) | `LOW`, `NORMAL`, `HIGH` | daily_plan |
 | `HintLevel` (learning.domain) | `SELF_EXPLAIN`(0), `QUESTION_ONLY`(1), `CONCEPT_HINT`(2), `DIRECTION`(3), `PSEUDOCODE`(4), `PARTIAL_CODE`(5), `FULL_EXAMPLE`(6) | attempt, finding, review_answer, hint_disclosure |

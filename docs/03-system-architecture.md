@@ -10,7 +10,7 @@
 
 ```text
 ┌───────────────────────────┐
-│ Flutter Web (PWA)         │  Tailscale 앱이 설치된 기기에서만 접근 (공개 인터넷 노출 없음)
+│ Flutter Web (PWA)         │  현재 배포 기준(임시): Tailscale 앱이 설치된 기기에서만 접근
 │ (Android: Later)          │
 └─────────────┬─────────────┘
               │ HTTPS  https://<tailnet-host>  /api/v1/*  Bearer JWT
@@ -43,10 +43,10 @@
 | 결정 | 내용 |
 |---|---|
 | 배포 단위 | 단일 Spring Boot 애플리케이션(modular monolith), 단일 인스턴스 |
-| 노출 | tailnet 전용. TLS는 `tailscale serve`가 종단하고 Caddy는 `127.0.0.1:18080`에만 바인딩(`10` §2.3). 공개 도메인·ACME 없음 |
+| 노출 | **현재 배포 기준(임시)**: tailnet 전용. TLS는 `tailscale serve`가 종단하고 Caddy는 `127.0.0.1:18080`에만 바인딩(`10` §2.3). 공개 도메인·ACME 없음. 공개 배포(자체 서버 웹 공개 또는 OCI Always Free)는 별도 게이트이고 선행 조건은 `supabase` 모드 전환 + ACME TLS다(`11` §3.10, `13` BL-SEC-18) |
 | 웹 제공 | Caddy가 Flutter web 정적 파일과 `/api`를 **같은 origin**으로 제공 → 운영 CORS 불필요 |
-| 인증 | `devpilot.security.auth-mode=devtoken`(기본, 운영 포함): backend가 EC P-256 키로 서명한 JWT를 `POST /dev/token`으로 발급하고 같은 키로 검증(§4.2). tailnet 밖에서 접근할 수 없고 allowlist 이메일만 발급받으므로 허용. `supabase` 모드(Later)는 Supabase Auth JWT를 JWKS로 검증 |
-| DB 접근 | backend만 JDBC로 접근(서버의 공용 PostgreSQL 16, `devpilot` DB/role, TLS 없음 — Tailscale 구간 암호화). 클라이언트의 DB 직접 접근 없음 |
+| 인증 | `devpilot.security.auth-mode=devtoken`(현재 기본, 운영 포함): backend가 EC P-256 키로 서명한 JWT를 `POST /api/v1/dev/token`으로 발급하고 같은 키로 검증(§4.2). **비공개 네트워크 배포 전용**이다 — tailnet 밖에서 접근할 수 없다는 전제 하나로만 안전하다. 공개 노출 전에 `supabase` 모드(Supabase Auth JWT를 JWKS로 검증)로 전환한다 |
+| DB 접근 | backend만 JDBC로 접근(서버의 공용 PostgreSQL 16, `devpilot` DB/role, TLS 없음 — 현재는 같은 호스트이거나 Tailscale 구간 암호화). 클라이언트의 DB 직접 접근 없음 |
 | AI | backend만 DeepSeek을 호출(Spring `RestClient`, `POST /responses`). 클라이언트에는 API key 없음. 다른 공급자는 `AiProvider` 구현 추가로 교체 |
 | 메시지 큐 · 캐시 서버 | 사용하지 않음 (ADR-002, ADR-012) |
 
@@ -112,11 +112,14 @@ Base package: `com.devpilot`
 | `integration.ai.api.AiPendingJobCounter` | `coach`, `training`, `review`, `evidence`, `job` | 사용자의 PENDING/RUNNING 비동기 AI 작업 수 |
 | `plan.application.StudyHistoryProvider` | `today` | plan-day별 `available_minutes`(daily_plan)와 COMPLETED 세션 `actual_minutes` 합계 (`06` §3.3 completion rate) |
 | `evidence.application.JobCoverageProvider` | `job` | 최근 분석 JD 5개의 REQUIRED 요구사항 수와 READY 수 (`06` §12 `requirementCoverageBp`) |
+| `common.job.RetentionCleanupTarget` | `integration.ai`(`log.AiCallLogRetentionService`), `job`(`application.JobPostingPurgeService`) | 보존 기간이 지난 소유 데이터의 삭제·purge 실행과 건수. `dailySummary(day)`(기본 구현 빈 map)로 일일 요약 항목도 같이 제공한다 (§6, §8) |
+| `common.job.OrphanAsyncTaskSweeper` | `coach`, `training`, `review`(Later), `evidence`, `job` | 지정 시각보다 오래 갱신되지 않은 `PENDING`/`RUNNING` 작업을 `FAILED(INTERRUPTED)`로 전이하고 건수를 돌려준다 (§5.3, §6) |
 
 규칙:
 1. 다른 모듈을 쓸 때는 그 모듈의 **`application` 패키지에 있는 public 서비스와 DTO**, 그리고 **`domain` 패키지의 enum과 불변 record(이벤트 포함, entity 제외)**만 쓴다. 다른 모듈의 entity와 `infrastructure` repository는 직접 쓰지 않는다.
 2. 역방향 알림이 필요하면 **Spring application event**를 쓴다. 예: `learning`이 `LearningEventRecorded`를 발행하고 `skill`이 구독한다. `learning`은 `skill`을 모른다.
 3. `common.security`는 사용자 조회가 필요하므로 `common`에 interface `AuthenticatedUserResolver`를 정의하고 `user`가 구현한다. 의존 방향은 `user → common`이다.
+4. `common`의 스케줄 job(`RetentionCleanupJob`, `OrphanAsyncTaskJob`, §6)도 같은 방식이다. job 본체는 `common.job`에 두고, 실제 삭제·purge·전이는 위 두 port의 구현을 **`List<T>`로 주입받아** 호출한다. `common`은 도메인 모듈을 알지 못하고(표의 `common` 행은 "(없음)" 그대로), 구현이 하나도 없는 Sprint에서는 job이 자기 소유 데이터(`idempotency_record`)만 정리한다.
 
 ### 2.3 모듈 내부 패키지
 
@@ -165,6 +168,10 @@ com.devpilot.<module>
 | `common.security.CurrentUserArgumentResolver` | 컨트롤러 파라미터 `CurrentUser currentUser` 주입 |
 | `common.idempotency.IdempotencyService` | `<T> IdempotentResult<T> execute(userId, key, method, path, requestHash, Supplier<ResponseEntity<T>>)` — §5.4 |
 | `common.async.AsyncConfig` | `aiTaskExecutor` (core 2, max 2, queue 20) |
+| `common.job.RetentionCleanupTarget` | interface: `String name()`, `int purgeExpired(Instant now)`, `default Map<String,Object> dailySummary(LocalDate day)`. 데이터를 소유한 모듈이 구현 (§2.2) |
+| `common.job.OrphanAsyncTaskSweeper` | interface: `String name()`, `int markInterrupted(Instant staleBefore)`. 비동기 작업을 소유한 모듈이 구현 (§2.2) |
+| `common.job.RetentionCleanupJob` | `idempotency_record` 만료 삭제(자기 소유) + 주입받은 `RetentionCleanupTarget` 전부 호출 + 일일 요약 INFO 1줄 (§6, §8) |
+| `common.job.OrphanAsyncTaskJob` | 주입받은 `OrphanAsyncTaskSweeper` 전부를 `now − orphan-timeout`으로 호출 (§5.3, §6) |
 | `common.jpa.BaseTimeEntity` | `createdAt`, `updatedAt` (JPA Auditing), `@Version version`은 필요한 entity에만 |
 
 ### 3.2 도메인 모듈 (주요 클래스)
@@ -176,12 +183,12 @@ com.devpilot.<module>
 | `skill` | `SkillController` | `SkillCatalogQueryService`, `UserSkillStateQueryService`, `SkillStateUpdater`(이벤트 구독) | `Skill`, `RoleSkillTarget`, `UserSkillState`, `SkillStateChange`, **`SkillLevelRules`**, **`PlanningLevelPolicy`** | repositories |
 | `learning` | `LearningSessionController` | `LearningSessionService`, `LearningEventRecorder`, `LearningEventQueryService`(사용자·skill의 최근 N일 이벤트 — `skill`이 사용), `HintService` | `LearningSession`, `LearningEvent`, `LearningEventType`, `HintDisclosure`, `HintLevel`, **`HintLadderPolicy`**, **`ComebackModePolicy`**(세션 이력만 입력, today·review가 사용), **`RubricScorer`**(rubric coverage, training·review가 사용), event record `LearningEventRecorded` | repositories |
 | `plan` | `PlanController` | `PlanQueryService`, `PlanCommandService`, `ReplanService`, `StudyBudgetService`, `PlanTemplateRegistry`(메모리 보관, `content`가 기동 시 등록) | `LearningPlan`, `PlanMilestone`, `PlanSkillTarget`, `PlanProgressSnapshot`, `PlanTemplate`(record), **`StudyBudgetCalculator`**, **`DeadlineRiskEvaluator`**, **`ReplanSuggestionPolicy`**, **`PlanTemplatePlacement`** | repositories, `ProgressSnapshotJob` |
-| `review` | `ReviewController`, `ReviewItemController` | `ReviewService`, `ReviewItemService`, `ReviewQueryService`(다른 모듈 공개), `SeedCardAssignmentService`(`assignForNewUser`, `backfillAll`), `SeedCardRegistry`(메모리 보관, `content`가 기동 시 등록) | `ReviewItem`, `ReviewAnswer`, `SeedCard`(record), **`FinalRatingPolicy`**, `ReviewSchedulingStrategy`, **`RuleBasedV1Scheduler`**, **`DueReviewSelector`** | repositories, `ReviewVariantTask`(async, Later) |
+| `review` | `ReviewController`, `ReviewItemController` | `ReviewService`, `ReviewItemService`(Later: implements `OrphanAsyncTaskSweeper` — review variant), `ReviewQueryService`(다른 모듈 공개), `SeedCardAssignmentService`(`assignForNewUser`, `backfillAll`), `SeedCardRegistry`(메모리 보관, `content`가 기동 시 등록) | `ReviewItem`, `ReviewAnswer`, `SeedCard`(record), **`FinalRatingPolicy`**, `ReviewSchedulingStrategy`, **`RuleBasedV1Scheduler`**, **`DueReviewSelector`** | repositories, `ReviewVariantTask`(async, Later) |
 | `today` | `TodayController` | `TodayPlanService`, `TodayQueryService` | `DailyPlan`, `LearningTask`, **`PlannerScoring`**, **`TaskProposalPolicy`**, **`TimeAllocator`**, **`ReasonTemplates`** (`ComebackModePolicy`는 `learning.domain`) | repositories |
-| `training` | `ChallengeController`, `ChallengeAttemptController` | `ChallengeGenerationService`, `ChallengeValidationService`, `AttemptService`, `SubmissionService`, `ChallengeQueryService`(today가 사용) | `Challenge`, `ChallengeAttempt`, `ChallengeSubmission`, **`AttemptOutcomeCalculator`** (`RubricScorer`는 `learning.domain`) | repositories, `ChallengeGenerationTask`, `SubmissionEvaluationTask` (async) |
-| `coach` | `CoachReviewController` | `CoachReviewService`, `CoachFindingService`, `ThinkingPatternRecorder` | `CoachReview`, `CoachFinding`, `ThinkingPatternObservation`, **`DiscoveredByResolver`** | repositories, `CoachAnalysisTask`(async), `CoachContentPurgeJob` |
-| `evidence` | `EvidenceController`, `WeeklyReviewController` | `EvidenceService`, `EvidenceExportService`, `WeeklyReviewService` | `EvidenceCandidate`, `WeeklyReview`, **`MetricsCalculator`** | repositories, `WeeklyReviewJob`, `EvidenceDraftTask` |
-| `job` | `JobController` | `JobAnalysisService` | `JobPosting`, `JobRequirement`, **`JobFitClassifier`** | repositories, `JobAnalysisTask` |
+| `training` | `ChallengeController`, `ChallengeAttemptController` | `ChallengeGenerationService`, `ChallengeValidationService`, `AttemptService`, `SubmissionService`, `ChallengeQueryService`(today가 사용), `TrainingAsyncTaskSweeper`(implements `OrphanAsyncTaskSweeper` — challenge 생성·submission 평가) | `Challenge`, `ChallengeAttempt`, `ChallengeSubmission`, **`AttemptOutcomeCalculator`** (`RubricScorer`는 `learning.domain`) | repositories, `ChallengeGenerationTask`, `SubmissionEvaluationTask` (async) |
+| `coach` | `CoachReviewController` | `CoachReviewService`(implements `OrphanAsyncTaskSweeper`), `CoachFindingService`, `ThinkingPatternRecorder` | `CoachReview`, `CoachFinding`, `ThinkingPatternObservation`, **`DiscoveredByResolver`** | repositories, `CoachAnalysisTask`(async), `CoachContentPurgeJob` |
+| `evidence` | `EvidenceController`, `WeeklyReviewController` | `EvidenceService`(implements `OrphanAsyncTaskSweeper`), `EvidenceExportService`, `WeeklyReviewService` | `EvidenceCandidate`, `WeeklyReview`, **`MetricsCalculator`** | repositories, `WeeklyReviewJob`, `EvidenceDraftTask` |
+| `job` | `JobController` | `JobAnalysisService`(implements `OrphanAsyncTaskSweeper`), `JobPostingPurgeService`(implements `RetentionCleanupTarget` — `job_description` 180일 purge) | `JobPosting`, `JobRequirement`, **`JobFitClassifier`** | repositories, `JobAnalysisTask` |
 | `onboarding` | `OnboardingController` | `OnboardingService`, `DiagnosticSuggestionService` | `SelfAssessmentPropagation` | — |
 | `dashboard` | `DashboardController` | `DashboardQueryService` | — | — |
 | `account` | `AccountExportController` (`GET /me/export`) | `AccountExportService` | — | — |
@@ -198,16 +205,20 @@ com.devpilot.<module>
 | `integration.ai.api.AiResult<T>` | `status(AiCallStatus)`, `value(T)`, `aiCallId`, `model`, `promptVersion`, `guardActions` |
 | `integration.ai.api.AiOperation`, `AiCallStatus`, `AiStatus` | enum (`04-domain-model-and-db.md` §3) |
 | `integration.ai.api.AiUsageSnapshot`, `AiBudgetDecision`, `AiConcurrencyReservation` | 도메인 모듈에 노출되는 불변 record: 사용량 요약(`GET /me`), 예산 판정, 동시 실행 예약(`17` §8) |
+| `integration.ai.api.output` (패키지) | operation 출력 record 9종(`CoachReviewOutput` 등, `17` §4). 도메인 모듈은 이 record만 받는다 |
 | `integration.ai.deepseek.DeepSeekAiProvider` | Spring `RestClient`로 `POST /responses` 호출(`instructions`, `input`, `text.format json_schema`, `max_output_tokens`, `thinking`, `reasoning_effort`, `store:false`), 응답 `output[]`에서 `type=message`의 `output_text` 추출, 종료 상태·HTTP 오류 → `AiCallStatus` 매핑, `Retry-After` 대기(`17` §5) |
 | `integration.ai.deepseek.DeepSeekBalanceClient` | `GET /user/balance` 조회 (`AiBalanceCheckJob`, 402 처리) |
 | `integration.ai.fake.FakeAiProvider` | fixture 기반 응답 (`local`, `test`, `demo`). `@ConditionalOnProperty(devpilot.ai.provider=fake)` |
 | `integration.ai.disabled.DisabledAiProvider` | 항상 `AI_UNAVAILABLE` |
 | `integration.ai.prompt.PromptRegistry` | `classpath:prompts/<id>/<version>/` 로딩, 활성 버전 선택, 템플릿 치환 |
+| `integration.ai.schema.OutputSchemaRegistry` | `classpath:ai/schemas/<OPERATION>.schema.json`(규범) 로딩 → wire 스키마 생성(`$schema`·`$id` 제거), operation → 출력 record 매핑, 전용 `ObjectMapper` 제공 (`17` §4.0). `integration.ai` 안에서만 쓴다 |
 | `integration.ai.guard.OutputGuardChain` | `VerificationGuard`, `CodeLeakGuard`, `FindingCountGuard`, `EnumGuard`, `SkillCodeGuard`, `LanguageGuard` |
 | `integration.ai.budget.AiBudgetGuard` | 일일 호출 수, 월 비용, 동시 실행 수, 잔액 소진 플래그 확인 |
 | `integration.ai.budget.AiCostCalculator` | usage × 모델 단가 × `peak-multiplier` → micro USD (`17` §8.4) |
 | `integration.ai.budget.AiBalanceMonitor` / `AiBalanceCheckJob` | 잔액 상태(메모리 플래그): 402 수신 또는 잔액 < `min-balance-usd`이면 `BALANCE_EXHAUSTED`, 다음 정상 조회에서 해제. 감사 이벤트 `AI_BALANCE_LOW` (`17` §8.7) |
 | `integration.ai.log.AiCallLog` / `AiCallLogRepository` | 호출 기록 |
+| `integration.ai.log.AiCallLogWriter` | `ai_call_log` 쓰기 전용 (`write`, `writeBlocked`). 쓰기 메서드는 `REQUIRES_NEW`라서 호출 모듈 트랜잭션과 섞이지 않는다 (`17` §5.5, `08` TX-1·TX-4·ARCH-21) |
+| `integration.ai.log.AiCallLogRetentionService` | `ai_call_log` 보존 기간(`privacy.ai-call-log-retention-days`) 초과 행 삭제. `common.job.RetentionCleanupJob`이 port로 호출한다 (§6) |
 | `integration.ai.masking.SecretMasker` | 패턴 기반 마스킹 → `MaskingResult(maskedText, maskedCount, blocked)` |
 | `integration.ai.AiGateway` | **도메인 모듈이 쓰는 유일한 진입점**: 예산·잔액 확인(차단 시 `BUDGET_BLOCKED` 로그) → provider 호출 → 종료 상태 처리 → 출력 가드 → (위반 시 1회 재시도) → `ai_call_log` 기록. secret masking은 입력을 **저장하기 전에** 호출 모듈이 먼저 수행한다 |
 
@@ -261,8 +272,8 @@ com.devpilot.<module>
 
 ```yaml
 spring.security.oauth2.resourceserver.jwt:
-  jwk-set-uri: ${SUPABASE_URL}/auth/v1/.well-known/jwks.json
-  issuer-uri: ${SUPABASE_URL}/auth/v1
+  jwk-set-uri: ${SUPABASE_URL:}/auth/v1/.well-known/jwks.json     # 기본값을 비워 SUPABASE_URL 없이도
+  issuer-uri: ${SUPABASE_URL:}/auth/v1                            # 기동이 막히지 않게 한다 (13 BL-SEC-03)
   audiences: authenticated
   jws-algorithms: ${SUPABASE_JWT_ALGORITHM:ES256}
 ```
@@ -270,7 +281,8 @@ spring.security.oauth2.resourceserver.jwt:
 - 검증 항목(공통): 서명, `iss`, `aud=authenticated`, `exp`/`nbf`(clock skew 60초)
 - 사용 claim: `sub`(UUID) → `external_auth_id`, `email`(allowlist 비교), `is_anonymous`(true면 거부), `amr[].timestamp`(계정 삭제 전 최근 로그인 확인: 가장 최근 인증 시각이 5분 이내. devtoken은 발급 시각. `amr`이 없으면 `iat`로 대체)
 - `supabase` 모드에서 JWKS는 Spring decoder가 캐시한다. 키 회전 시 새 `kid`가 들어오면 다시 조회한다.
-- `devtoken` 모드는 tailnet 밖에서 endpoint에 닿을 수 없다는 전제 위에 있다(`07` §3). 공개 인터넷에 노출하는 배포에서는 쓰지 않는다.
+- **`devtoken`은 임시 수단이다.** 안전성의 근거는 "tailnet 밖에서 `POST /api/v1/dev/token`에 닿을 수 없다" 하나뿐이다(`07` §3). 공개 URL이 되면 allowlist 이메일만 알면 누구나 로그인한다. **공개 노출 전에 반드시 `supabase` 모드로 전환한다(`13` BL-SEC-18, `11` §3.10). 이 방식은 비공개 네트워크 배포에서만 쓴다.**
+- **기동 시 경고**: `prod` profile + `auth-mode = devtoken`이면 기동은 하되 `SecurityConfig`가 WARN 1줄을 남긴다 — "이 인스턴스는 tailnet 등 비공개 네트워크에서만 노출해야 한다. 공개 배포 전 `DEVPILOT_AUTH_MODE=supabase`로 전환". 기동을 막지는 않는다(현재 운영 모드이므로). 확인은 `09` §6.4.
 
 ### 4.3 사용자 프로비저닝 (`UserProvisioningService.resolve`)
 
@@ -391,9 +403,9 @@ IdempotencyService.execute(userId, key, method, path, requestHash, action):
 | `ProgressSnapshotJob` | plan | `0 5 * * * *` (매시 5분) | 로컬 시각이 `dayStartHour`인 사용자만: budget/risk 계산 → `plan_progress_snapshot` upsert |
 | `WeeklyReviewJob` | evidence | `0 10 * * * *` (매시 10분) | 로컬 시각이 월요일 `dayStartHour`인 사용자만: 지난주 지표 → `weekly_review` |
 | `CoachContentPurgeJob` | coach | `0 20 18 * * *` (KST 03:20) | `content_retention_until < now` → `content=null`, `content_purged_at=now` |
-| `RetentionCleanupJob` | common | `0 30 18 * * *` | `ai_call_log` 180일 초과 삭제, `idempotency_record` 만료 삭제, `job_posting.job_description` 180일 purge |
+| `RetentionCleanupJob` | common | `0 30 18 * * *` | `idempotency_record` 만료 삭제(직접) + `RetentionCleanupTarget` 구현 호출: `ai_call_log` 180일 초과 삭제(`integration.ai`), `job_posting.job_description` 180일 purge(`job`). 대상 모듈을 직접 의존하지 않는다 (§2.2) |
 | `AccountDeletionJob` | user | `0 */5 * * * *` | `DELETION_REQUESTED` 사용자 삭제 (cascade) + 감사 로그 |
-| `OrphanAsyncTaskJob` | common | 기동 시 1회 + `0 */10 * * * *` | 10분 넘게 갱신되지 않은 `PENDING`/`RUNNING` 작업(coach review, challenge 생성, submission 평가, review variant, evidence 초안, job 분석) → `FAILED(INTERRUPTED)` |
+| `OrphanAsyncTaskJob` | common | 기동 시 1회 + `0 */10 * * * *` | `OrphanAsyncTaskSweeper` 구현 호출: 10분 넘게 갱신되지 않은 `PENDING`/`RUNNING` 작업(coach review, challenge 생성, submission 평가, review variant, evidence 초안, job 분석) → `FAILED(INTERRUPTED)`. 대상 모듈을 직접 의존하지 않는다 (§2.2) |
 | `AiBalanceCheckJob` | integration.ai | `0 15 * * * *` (매시 15분, `balance-check-cron`) | `provider=deepseek`일 때만. `GET /user/balance` → 잔액 < `min-balance-usd`이면 `AiBalanceMonitor`를 `BALANCE_EXHAUSTED`로, 이상이면 해제. 상태가 바뀔 때 감사 이벤트 `AI_BALANCE_LOW`/`AI_BALANCE_RESTORED` + WARN/INFO. 조회 실패는 상태를 바꾸지 않는다 (S3) |
 
 - `@EnableScheduling`을 쓰고 단일 인스턴스를 전제로 한다. 인스턴스를 늘리면 분산 락을 도입한다(현재 범위 밖).
@@ -433,7 +445,7 @@ IdempotencyService.execute(userId, key, method, path, requestHash, action):
 | 감사 이벤트 | `AuditLogger.log(AuditEvent, Map<String,Object>)` → INFO, 필드 `event`. 목록은 `07-security-and-privacy.md` §6.3 |
 | 금지 | Authorization 헤더, request/response body, 사용자 코드, AI 프롬프트·응답 원문, 이메일 원문 |
 | 지표 | Micrometer: `devpilot.ai.calls`, `devpilot.ai.latency`, `devpilot.ai.cost.usd`, `devpilot.jobs.runs` (외부 비노출) |
-| 일일 요약 | `RetentionCleanupJob` 끝에 전날 AI 호출 수, 비용, 오류 수, job 실패 수를 INFO 1줄로 기록 |
+| 일일 요약 | `RetentionCleanupJob` 끝에 전날 AI 호출 수, 비용, 오류 수, job 실패 수를 INFO 1줄로 기록. AI 항목은 `RetentionCleanupTarget.dailySummary`(`integration.ai` 구현)가 넘긴 값을 그대로 쓴다 (§2.2) |
 | Health | `/actuator/health` (liveness, readiness 포함, 상세 비노출) |
 
 ---
@@ -459,7 +471,7 @@ devpilot:
       requests-per-minute: 120
       calendar-feed-per-hour: 60
       calendar-invalid-token-per-hour-per-ip: 30
-      dev-token-per-hour-per-ip: 30                      # POST /dev/token (05 §1.4.5)
+      dev-token-per-hour-per-ip: 30                      # POST /api/v1/dev/token (05 §1.4.5)
   web:
     app-base-url: ${APP_BASE_URL}                        # 캘린더 피드 URL 생성 (prod 필수)
     cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # local만 사용
@@ -476,6 +488,7 @@ devpilot:
       fatigue-one-day: 0.80
       fatigue-two-days: 0.60
       continuation-bonus: 1.15
+      comeback-hard-task: 0.70             # 06 §5.5 COMEBACK_HARD_TASK (7_000bp)
     low-energy-long-task-minutes: 30
     min-prerequisite-readiness: 0.5
     overrun-tolerance: 1.10

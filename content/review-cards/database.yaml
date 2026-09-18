@@ -1,6 +1,6 @@
 # Seed review cards — DATABASE
 # Spec: docs/19-content-spec.md §3.5 (schema), §7.3 (작성 가이드)
-# 기준: PostgreSQL 17 / Jakarta Persistence / Hibernate 7
+# 기준: PostgreSQL 16 / Jakarta Persistence / Hibernate 7
 cards:
   - conceptKey: DATABASE.SQL_BASICS.LEFT_JOIN_WHERE_FILTER
     skill: DATABASE.SQL_BASICS
@@ -49,7 +49,7 @@ cards:
     skill: DATABASE.INDEX
     reviewType: EXPLAIN
     prompt: >-
-      orders 테이블에 (user_id, created_at) 복합 B-tree 인덱스가 있습니다. PostgreSQL 17에서 (1) WHERE
+      orders 테이블에 (user_id, created_at) 복합 B-tree 인덱스가 있습니다. PostgreSQL 16에서 (1) WHERE
       user_id = ? AND created_at >= ? 와 (2) WHERE created_at >= ? 의 인덱스 효율 차이를 설명하세요.
     expectedAnswer: >-
       복합 B-tree 인덱스는 선두(왼쪽) 컬럼에 조건이 있을 때 가장 효율적이다. (1)은 선두 컬럼 user_id의
@@ -126,7 +126,7 @@ cards:
     skill: DATABASE.TRANSACTION
     reviewType: CHOICE
     prompt: |-
-      PostgreSQL 17에서 격리 수준을 READ UNCOMMITTED로 설정하고 다른 트랜잭션이 아직 커밋하지 않은 변경을
+      PostgreSQL 16에서 격리 수준을 READ UNCOMMITTED로 설정하고 다른 트랜잭션이 아직 커밋하지 않은 변경을
       조회하면 어떻게 되나요?
       A) 커밋되지 않은 변경이 보인다 (dirty read)
       B) READ COMMITTED처럼 동작해 커밋되지 않은 변경은 보이지 않는다

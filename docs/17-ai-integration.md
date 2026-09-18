@@ -1,10 +1,10 @@
 # 17. AI Integration
 
-> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: DEC-05, DEC-06, DEC-16, ADR-011, ADR-012, ADR-013, `03-system-architecture.md` §3.3 · §5.3 · §9, `04-domain-model-and-db.md` §3 · §5, `06-learning-engine-rules.md` §8 · §9 · §10
+> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: DEC-05, DEC-06, DEC-16, ADR-032(ADR-011 대체), ADR-035(ADR-029 보완), ADR-012, ADR-013, `03-system-architecture.md` §3.3 · §5.3 · §9, `04-domain-model-and-db.md` §3 · §5, `06-learning-engine-rules.md` §8 · §9 · §10
 >
 > 이 문서는 AI 호출의 **입력 변수, 출력 스키마(규범), 호출 파이프라인, 출력 가드, secret masking, 예산·잔액, 프롬프트 관리, 비용, 테스트·eval**을 정의한다. operation 목록·mode·timeout·thinking·reasoning-effort 값은 `03` §9 설정이 기준이고, 이 문서는 그 값을 바꾸지 않는다.
 >
-> 공급자는 **DeepSeek**이다(2026-09-18 확정, `_PENDING-CHANGES.md` §1). DeepSeek API 관련 사실(모델 ID, 단가, 파라미터, 응답 형식)은 2026-09-18에 실제 키로 호출해 확인한 값이다. 표에 **(구현 시 실제 응답으로 확인)**이 붙은 항목은 구현 착수 시 다시 확인하고, 다르면 이 문서를 먼저 고친다. Anthropic Claude는 `AiProvider` 구현을 추가하면 붙일 수 있는 대안이며 이 문서는 그 구현을 정의하지 않는다.
+> 공급자는 **DeepSeek**이다(2026-09-18 확정, `14-adrs.md` ADR-032 · `20-decisions-and-risks.md` DEC-05). DeepSeek API 관련 사실(모델 ID, 단가, 파라미터, 응답 형식)은 2026-09-18에 실제 키로 호출해 확인한 값이다. 표에 **(구현 시 실제 응답으로 확인)**이 붙은 항목은 구현 착수 시 다시 확인하고, 다르면 이 문서를 먼저 고친다. Anthropic Claude는 `AiProvider` 구현을 추가하면 붙일 수 있는 대안이며 이 문서는 그 구현을 정의하지 않는다.
 
 ---
 
@@ -37,7 +37,7 @@ AI 결과가 쓰이는 결정적 계산:
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 공급자 | DeepSeek API — `POST https://api.deepseek.com/responses`(OpenAI 호환 형식, 구조화 출력은 `text.format`). 공식 Java SDK가 없으므로 Spring `RestClient`로 직접 호출한다 | DEC-05(개정), ADR-011, `_PENDING-CHANGES.md` §1 |
+| 공급자 | DeepSeek API — `POST https://api.deepseek.com/responses`(OpenAI 호환 형식, 구조화 출력은 `text.format`). 공식 Java SDK가 없으므로 Spring `RestClient`로 직접 호출한다 | DEC-05(개정), ADR-032 (ADR-011 대체) |
 | 기본 모델 | `deepseek-flash` (모든 operation 공통). 선택지 `deepseek-v4-pro`(§2.3 절차로만 교체) | DEC-05 |
 | 모델 선택 | `devpilot.ai.model` (환경변수 `DEVPILOT_AI_MODEL`). 코드에 모델 ID 문자열 금지. `pricing.models`에 단가가 없는 모델이면 **기동 실패** | `03` §9 |
 | provider 선택 | `devpilot.ai.provider`: `deepseek` \| `fake` \| `disabled` | `03` §9, §10 |
@@ -45,7 +45,7 @@ AI 결과가 쓰이는 결정적 계산:
 | HTTP 클라이언트 | `integration.ai.deepseek.DeepSeekAiProvider`가 `RestClient`를 쓴다. `RestClient`는 요청 단위로 timeout을 바꿀 수 없으므로 timeout 값이 다른 operation마다 read timeout을 고정한 `RestClient`를 기동 시 만든다(값이 같은 operation은 공유). connect timeout 5s | §5.2 |
 | 재시도 | `RestClient`에 자동 재시도 없음. 재시도는 `AiGateway`가 직접 한다(§5). 호출마다 `ai_call_log` 행을 남기기 위함. 전송 오류 뒤 대기는 `Retry-After`(없으면 `devpilot.ai.deepseek.retry-after-default` 2s) | |
 | 요청 방식 | non-streaming. `store: false`(공급자 측 응답 저장을 요청하지 않음). 요청에 `user`·`user_id`를 넣지 않는다(캐시가 사용자별로 분리됨, §9.5) | |
-| thinking | DeepSeek 기본값이 `enabled`(high)이므로 **값싼 operation은 명시적으로 `disabled`를 보낸다.** op 설정 `thinking: true\|false` + `reasoning-effort: low\|high\|max` (`03` §9) | `_PENDING-CHANGES.md` §1 |
+| thinking | DeepSeek 기본값이 `enabled`(high)이므로 **값싼 operation은 명시적으로 `disabled`를 보낸다.** op 설정 `thinking: true\|false` + `reasoning-effort: low\|high\|max` (`03` §9) | ADR-032 |
 | 비용 조절 순서 | `reasoning-effort` 낮춤 → thinking off → 입력 축소(`input-token-budget`) → (품질 문제일 때만) 모델 교체. `deepseek-v4-pro`는 비용이 4배 이상이므로 예산 재검토와 함께 | §11.4 |
 
 ### 2.2 모델별 파라미터 매핑
@@ -1587,8 +1587,8 @@ DeepSeek은 선불 잔액이 유일한 공급자 측 상한이다(§8.2). 잔액
 
 | 항목 | 값 |
 |---|---|
-| 상태 | `integration.ai.balance.AiBalanceMonitor` (단일 인스턴스, 메모리): `exhausted`(boolean, 기동 시 `false`), `lastCheckedAt`, `lastBalanceUsd`(`BigDecimal` 또는 null), `reason` |
-| job | `integration.ai.balance.AiBalanceCheckJob` — `@Scheduled(cron = "${devpilot.ai.balance-check-cron}")` = `0 15 * * * *`(매시 15분, UTC) + 기동 완료 후 1회(`ApplicationReadyEvent`). `03` §6 job 목록에 포함 (S3) |
+| 상태 | `integration.ai.budget.AiBalanceMonitor` (단일 인스턴스, 메모리): `exhausted`(boolean, 기동 시 `false`), `lastCheckedAt`, `lastBalanceUsd`(`BigDecimal` 또는 null), `reason` |
+| job | `integration.ai.budget.AiBalanceCheckJob` — `@Scheduled(cron = "${devpilot.ai.balance-check-cron}")` = `0 15 * * * *`(매시 15분, UTC) + 기동 완료 후 1회(`ApplicationReadyEvent`). `03` §6 job 목록에 포함 (S3) |
 | 조회 | `AiProvider.checkBalance()` → `DeepSeekAiProvider`: `GET /user/balance` → `AiBalance(available, totalBalanceUsd)`. 응답 `is_available`, `balance_infos[]`에서 `currency = "USD"`인 항목의 `total_balance`(문자열 → `BigDecimal`). USD 항목이 없으면 `totalBalanceUsd = null`이고 `is_available`만 쓴다 **(구현 시 실제 응답으로 확인)** |
 | 소진 판정 | `available == false` → reason `UNAVAILABLE` / `totalBalanceUsd != null && totalBalanceUsd < devpilot.ai.min-balance-usd`(1.00) → `BALANCE_BELOW_MIN` / `AiGateway`가 402를 받음(§5.3) → `INSUFFICIENT_BALANCE_RESPONSE`(`onInsufficientBalance()`, 즉시) |
 | 전이 | 정상 → 소진: `exhausted = true`, 감사 `AI_BALANCE_LOW` 1회(§8.6), ERROR 로그 1회 / 소진 → 정상: 다음 job 조회에서 `available && totalBalanceUsd >= min-balance-usd`이면 `exhausted = false`, INFO 로그 1회. 402로 전환된 상태도 job 조회로만 해제된다(호출 성공으로 해제하지 않음 — 그 전에 0단계가 막는다) |
@@ -1789,8 +1789,8 @@ user content  →
 | `EVIDENCE_DRAFT` | 1 | 0.0039 | 0.0069 |
 | **합계** | **15** | **0.0363** | **0.0612** |
 
-- 하루 ≈ **USD 0.04–0.06**. 30일 매일 이렇게 쓰면 월 ≈ **USD 1.1–1.8**. 코치 리뷰 하루 3~6회만 따로 보면 ≈ USD 0.03–0.07/일 → 월 USD 1~2.
-- **월 예산 USD 3(DEC-06 개정)의 근거**: 상한 시나리오(1.84)의 약 1.6배로, 피크 ×2를 이미 넣은 보수 값이다. 서비스 전체 합계이므로(§8.2) 초대 사용자 3명이 모두 상한으로 쓰면(≈ 5.5) 20일 무렵 `AI_MONTHLY_BUDGET_EXCEEDED`가 난다. 그때는 실측(`BL-AIP-14`)을 보고 예산을 조정한다. 비-AI 기능은 계속 쓸 수 있다(§3.10).
+- 하루 ≈ **USD 0.04–0.06**(0.0363 × 30 = 1.09, 0.0612 × 30 = 1.84). 30일 매일 이렇게 쓰면 월 ≈ **USD 1.1–1.8**. `COACH_REVIEW`(5KB) 하루 3~6회만 따로 보면 0.0065 × 3 = 0.020 ~ 0.0113 × 6 = 0.068/일 → 월 **USD 0.6~2.0**.
+- **월 예산 USD 3(DEC-06 개정)의 근거**: 상한 시나리오(1.84)의 약 1.6배로, 피크 ×2를 이미 넣은 보수 값이다. 서비스 전체 합계이므로(§8.2) 초대 사용자 3명이 모두 상한으로 쓰면(0.0612 × 3 = 0.1836/일, 30일 ≈ 5.5) **3 ÷ 0.1836 ≈ 16.3일**, 즉 16일 무렵 `AI_MONTHLY_BUDGET_EXCEEDED`가 난다(경고 80% = USD 2.4는 13일 무렵). 그때는 실측(`BL-AIP-14`)을 보고 예산을 조정한다. 비-AI 기능은 계속 쓸 수 있다(§3.10).
 - **가벼운 날** (`REVIEW_EVALUATE` 3, `CHALLENGE_EVALUATE` 1, `HINT_GENERATE` 1): 0.0024+0.0036+0.0014 = 0.0074 ~ 0.0042+0.0060+0.0019 = 0.0121 → **USD 0.01**.
 - 일일 호출 한도 60회는 많이 쓰는 날(15회)의 4배다. 한도는 비용보다 오작동(반복 호출) 방지용이다.
 - 선불 잔액은 월 예산보다 크고 소액(USD 10 이하)으로 유지한다(§8.7, `07` §7.4).

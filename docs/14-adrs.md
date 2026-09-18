@@ -25,7 +25,7 @@
 | ADR-003 | Flutter Web 우선 클라이언트 | Accepted (조건: SP-1 통과) | DEC-10, DEC-18 |
 | ADR-004 | 자체 IDE를 만들지 않는다 | Accepted | — |
 | ADR-005 | Java 25 + Spring Boot 4.1.x | Accepted (v1 "Java 21 + Boot 3.5.x"를 대체) | DEC-02, DEC-03 |
-| ADR-006 | OCI Ampere A1 + Oracle Linux 9 | **Superseded by ADR-031** | DEC-07, DEC-13 |
+| ADR-006 | OCI Ampere A1 + Oracle Linux 9 | **Deferred** — 공개 전환 시 채택 후보 | DEC-07, DEC-13 |
 | ADR-007 | DB가 장기 학습 기억 | Accepted | — |
 | ADR-008 | 결정적 planner, LLM은 콘텐츠만 | Accepted | — |
 | ADR-009 | Verification 분류 + 서버 가드 + DB CHECK | Accepted | — |
@@ -50,9 +50,9 @@
 | ADR-028 | Public GitHub 저장소 + secret scanning | Accepted | DEC-04 |
 | ADR-029 | AI 월 예산은 서비스 전체 한도 | Accepted (Console 한도 부분은 **ADR-035**가 대체) | DEC-06 |
 | ADR-030 | 자체 서버의 공용 PostgreSQL 16 | Accepted | DEC-15 |
-| ADR-031 | 자체 Linux 서버 + Tailscale HTTPS (OCI·도메인 없음) | Accepted | DEC-07, DEC-13 |
+| ADR-031 | 자체 Linux 서버 + Tailscale HTTPS (**임시 배포**) | Accepted (임시) | DEC-07, DEC-13, DEC-19 |
 | ADR-032 | AI 공급자 DeepSeek `deepseek-flash`, RestClient 직접 호출 | Accepted | DEC-05 |
-| ADR-033 | 개발 토큰(devtoken) 인증을 운영에도 사용 | Accepted | DEC-01, DEC-08 |
+| ADR-033 | 개발 토큰(devtoken) 인증 — **비공개 배포 전용** | Accepted (조건부) | DEC-01, DEC-08 |
 | ADR-034 | 배포는 수동 트리거, Actions는 이미지 빌드까지 | Accepted | DEC-13 |
 | ADR-035 | AI 지출 상한은 선불 잔액 + 앱 예산 (외부 하드 캡 없음) | Accepted | DEC-06 |
 
@@ -130,7 +130,8 @@
 
 ## ADR-006 OCI Ampere A1 + Oracle Linux 9
 
-- **Status**: **Superseded by ADR-031** (2026-09-18) · **Date (원)**: 2026-09-17 · **Date**: 2026-09-17 · **Related DEC**: DEC-07, DEC-13
+- **Status**: **Deferred** (2026-09-18) — 대체된 것이 아니라 **공개 전환 시 채택 후보**다. 아래 내용은 그대로 유효하며, 현재는 ADR-031의 임시 배포를 쓴다 · **Date (원)**: 2026-09-17
+- **2026-09-18 메모**: 사용자 확인 — 최종 목표는 공개 배포이고, 방식은 (a) 자체 서버를 웹서버로 공개 (b) **OCI Always Free 배포** 둘 중 그때 결정한다. 그래서 이 ADR의 OCI 절차(A1 인스턴스, arm64 이미지, idle reclamation 대응, 도메인·ACME)는 폐기하지 않고 보존한다. 컨테이너 이미지를 `linux/amd64,linux/arm64` 멀티아치로 빌드하는 이유도 이것이다(Ampere A1은 arm64) · **Date**: 2026-09-17 · **Related DEC**: DEC-07, DEC-13
 
 **Context** — 인프라 비용 0이 목표다. OCI Always Free A1(arm64)은 2026년 한도가 축소되었고(구현 시 확인), 7일 저사용 인스턴스 회수 정책이 있다. Oracle Linux 7은 신규 사용 금지.
 
@@ -282,6 +283,7 @@
 ## ADR-016 Tailscale 배포 접속, 공개 SSH 차단
 
 - **Status**: Accepted · **Date**: 2026-09-17 · **Related DEC**: DEC-04, DEC-13
+- **2026-09-18 부분 대체 (ADR-034)**: "접속은 Tailscale로만, 공개 SSH 없음"이라는 **원칙은 유효**하다. 다만 아래 Decision의 자동화 부분(deploy workflow가 Tailscale OAuth client `tag:ci`로 tailnet에 합류해 Tailscale SSH로 `deploy.sh`를 실행)은 **쓰지 않는다**. 현재는 Actions가 amd64 이미지와 `web.zip`을 만들어 GHCR·Release에 올리는 데서 멈추고, 배포는 운영자 PC에서 `ssh <server>`로 수동 실행한다(ADR-034). Tailscale OAuth·ACL·노드 태깅은 Later다.
 
 **Context** — GitHub-hosted runner IP는 고정되지 않아 "SSH를 특정 IP로 제한"과 "CI에서 SSH 배포"가 함께 성립하지 않는다. 저장소가 public이므로 self-hosted runner는 쓸 수 없다(외부 PR이 VM 코드 실행 권한을 얻음).
 
@@ -289,7 +291,7 @@
 
 **Alternatives considered** — VM self-hosted runner(public repo에서 금지) · SSH 22 전체 개방 + key + fail2ban(공격 면적) · 수동 배포(S0 fallback만).
 
-**Consequences** — Tailscale 계정이 배포 경로의 외부 의존이 되고 2FA가 필요하다(RISK-12). 공개 SSH는 firewalld에서도 닫으므로(`10-deployment-and-operations.md` §3.6.2) Tailscale 장애 시 security list만 열어서는 접속할 수 없다. 이때는 `10-deployment-and-operations.md` §13.6 vm-rebuild runbook 절차를 따른다.
+**Consequences** — Tailscale 계정이 배포 경로의 외부 의존이 되고 2FA가 필요하다(RISK-12). 공개 SSH는 열지 않으므로(`10-deployment-and-operations.md` §3.2) Tailscale 장애 시 원격 접속 수단이 없다. 이때는 서버에 물리적·LAN으로 접근하거나 `10-deployment-and-operations.md` §13.6 server-restore runbook 절차를 따른다.
 
 ---
 
@@ -451,11 +453,11 @@
 
 - **Status**: Accepted · **Date**: 2026-09-17 · **Related DEC**: DEC-04
 
-**Context** — 이 프로젝트는 이직 포트폴리오다. public 저장소는 arm64 runner·CodeQL 사용에도 유리하다. 대신 secret 유출과 외부 PR을 통한 공격 면적이 생긴다.
+**Context** — DevPilot은 사용자가 **이직에 필요한 실력을 쌓기 위해 매일 쓰는 학습 코치 도구**다(포트폴리오로 내보이는 결과물이 아니다 — 2026-09-18 정정). 공개해서 곤란한 데이터는 코드에 없고, public 저장소는 Actions 무료 한도와 보안 도구(secret scanning, Dependabot)를 제약 없이 쓸 수 있다. 대신 secret 유출과 외부 PR을 통한 공격 면적이 생긴다.
 
-**Decision** — 저장소는 public. GitHub secret scanning + push protection 활성, CI gitleaks, Dependabot, Trivy, CodeQL. third-party action은 commit SHA로 고정. 실제 secret은 저장소에 두지 않고(`.env.example`은 키 이름만), 배포 secret은 GitHub environment secret과 VM env 파일(권한 600)에만 둔다. self-hosted runner는 쓰지 않는다(ADR-016). eval workflow의 API key는 environment 승인으로 보호한다.
+**Decision** — 저장소는 public. GitHub secret scanning + push protection 활성, CI gitleaks, Dependabot(S0), Trivy·CodeQL(S2 P1). third-party action은 commit SHA로 고정. 실제 secret은 저장소에 두지 않고(`.env.example`은 키 이름만), 배포 secret은 GitHub environment secret과 서버 env 파일(권한 600)에만 둔다. **서버 IP·tailnet 호스트명·계정·개인 이메일도 저장소에 쓰지 않는다**(자리표시자만, 실제 값은 저장소 밖). self-hosted runner는 쓰지 않는다(ADR-016). eval workflow의 API key는 environment 승인으로 보호한다.
 
-**Alternatives considered** — private 저장소(포트폴리오 공개 불가, 일부 무료 기능 제한) · public + self-hosted runner(금지).
+**Alternatives considered** — private 저장소(개인 도구이므로 공개할 이유가 강하지는 않으나, 일부 무료 기능이 제한된다. 언제든 전환 가능 — DEC-04) · public + self-hosted runner(금지).
 
 **Consequences** — 유출 대응 runbook(`incident-api-key-leak`)과 키 교체 절차가 필수다. 커밋 이력에 개인 데이터·실제 JD·회사 코드를 넣지 않는다.
 
@@ -464,6 +466,7 @@
 ## ADR-029 AI 월 예산은 서비스 전체 한도
 
 - **Status**: Accepted · **Date**: 2026-09-17 · **Related DEC**: DEC-06
+- **2026-09-18 부분 대체 (ADR-035)**: "서비스 전체 합계 + Asia/Seoul 달력 월"이라는 **판정 방식은 유효**하다. 다만 아래 Decision의 두 가지는 바뀌었다: (1) 월 예산 기본값 **USD 25 → USD 3** (2) Anthropic Console workspace 지출 한도(`devpilot-prod` 30 / `devpilot-dev` 10 / 조직 40)는 공급자가 DeepSeek으로 바뀌면서 **존재하지 않는다** — 외부 상한은 선불 잔액뿐이고 `AiBalanceCheckJob`이 이를 감시한다(ADR-035).
 
 **Context** — 인프라가 무료이므로 AI 비용이 사실상 전체 비용이다. 비용 부담자는 소유자 1명이고 사용자는 최대 3명이다. 사용자별 월 예산은 합계가 USD 25를 넘을 수 있다.
 
@@ -489,17 +492,27 @@
 
 ---
 
-## ADR-031 자체 Linux 서버 + Tailscale HTTPS (OCI·도메인 없음)
+## ADR-031 자체 Linux 서버 + Tailscale HTTPS (임시 배포)
 
-- **Status**: Accepted · **Date**: 2026-09-18 · **Supersedes**: ADR-006 · **Related DEC**: DEC-07, DEC-13
+- **Status**: Accepted (**임시** — 공개 전환 시 ADR-006 또는 후속 ADR로 교체) · **Date**: 2026-09-18 · **Related DEC**: DEC-07, DEC-13, DEC-19
 
-**Context** — OCI Always Free는 계정 생성·한도 축소·7일 저사용 회수 정책이 있고 도메인은 유료다. 사용자는 Rocky Linux 9(x86_64, Proxmox VM, Docker 29.6.1, Tailscale 1.98.8)를 이미 운영 중이고 tailnet이 있다. 사용자는 이 프로젝트를 혼자(최대 3명) 쓴다.
+**Context** — **지금 당장 필요한 것은 개발용 DB와 초기 실사용(2026-10-26) 환경이다.** 사용자는 Rocky Linux 9(x86_64, Proxmox VM, Docker 29.6.1, Tailscale 1.98.8)와 그 위의 PostgreSQL 16을 이미 운영 중이고 tailnet이 있어, 계정 생성·도메인 구매 없이 오늘 바로 쓸 수 있다. 최종 목표는 공개 배포이지만(사용자 확인, 2026-09-18) 그건 나중 일이다.
 
-**Decision** — 운영은 **기존 자체 서버**에서 Docker Compose(api + Caddy)로 돌린다. 공개 인터넷에 노출하지 않고 **Tailscale로만** 접근한다. TLS는 호스트에서 `tailscale serve --bg --https=443 http://127.0.0.1:18080`이 종단하고, Caddy는 `127.0.0.1:18080`에만 바인딩해 보안 헤더·정적 파일·`/api` 프록시만 한다. 도메인·ACME·공개 80/443을 쓰지 않는다. 이미지는 **linux/amd64**로 빌드한다. 서버 준비는 `prepare-server.sh`가 `deploy` 사용자·`/opt/devpilot`·systemd 유닛만 만들고 **OS 설정(dockerd, firewalld, sshd, podman)은 건드리지 않는다**(공용 서버). 백업은 서버에서 매일 `pg_dump -Fc`(7일 보관) + 로컬 PC가 주 1회 pull(8주 보관).
+**Decision** — **S0~S2(~2026-10-26)의 임시 배포**로 기존 자체 서버에서 Docker Compose(api + Caddy)를 돌린다. 이 기간에는 공개 인터넷에 노출하지 않고 **Tailscale로만** 접근한다. TLS는 호스트에서 `tailscale serve --bg --https=443 http://127.0.0.1:18080`이 종단하고, Caddy는 `127.0.0.1:18080`에만 바인딩해 보안 헤더·정적 파일·`/api` 프록시만 한다. 도메인·ACME·공개 80/443을 쓰지 않는다. 이미지는 **`linux/amd64,linux/arm64` 멀티아치**로 빌드한다(현재 서버는 x86_64, OCI Always Free의 Ampere A1은 arm64 — 어느 쪽으로 가든 같은 태그를 쓴다). 서버 준비는 `prepare-server.sh`가 `deploy` 사용자·`/opt/devpilot`·systemd 유닛만 만들고 **OS 설정(dockerd, firewalld, sshd, podman)은 건드리지 않는다**(공용 서버). 백업은 서버에서 매일 `pg_dump -Fc`(7일 보관) + 로컬 PC가 주 1회 pull(8주 보관).
 
-**Alternatives considered** — OCI 무료 VM + 구매 도메인(계정·비용·회수 위험, ADR-006) · Cloudflare Tunnel(공개 노출이 다시 생김) · Caddy가 `tailscale cert`로 직접 인증서 발급(tailscaled 소켓 마운트 필요, `tailscale serve`가 더 단순).
+**Alternatives considered** — 처음부터 OCI + 구매 도메인으로 공개 배포(계정·도메인·인증 작업이 S0에 들어와 2주 이상 밀린다 — ADR-006으로 보존, 공개 전환 시 채택 후보) · Cloudflare Tunnel(공개 노출이 생겨 devtoken을 못 씀) · Caddy가 `tailscale cert`로 직접 발급(tailscaled 소켓 마운트 필요, `tailscale serve`가 더 단순).
 
-**Consequences** — **Tailscale이 없으면 접근할 수 없다**(모바일 복습도 Tailscale 앱 필요). 단일 서버 SPOF(전원·ISP·하드웨어)와 공용 Docker/PG 간섭을 받는다(20 §4). JVM은 `-Xmx1g`, `mem_limit 1.5g`로 제한해 다른 컨테이너를 밀어내지 않는다(가용 4.7GB). 외부 모니터링(UptimeRobot)이 닿지 않아 호스트 systemd timer가 health를 확인하고 healthchecks.io로 ping한다. 공개 배포가 필요해지면 OCI·도메인 안(ADR-006)을 되살린다.
+**Consequences** — **Tailscale이 없으면 접근할 수 없다**(모바일 복습도 Tailscale 앱 필요). 단일 서버 SPOF(전원·ISP·하드웨어)와 공용 Docker/PG 간섭을 받는다(20 §4). JVM은 `-Xmx1g`, `mem_limit 1.5g`로 제한해 다른 컨테이너를 밀어내지 않는다(가용 4.7GB). 외부 모니터링(UptimeRobot)이 닿지 않아 호스트 systemd timer가 health를 확인하고 healthchecks.io로 ping한다. **공개 전환 시 바뀌는 것** — 이 ADR은 임시이므로 아래를 교체 대상으로 미리 적어 둔다.
+
+| 항목 | 지금 (임시) | 공개 전환 후 |
+|---|---|---|
+| 인증 | `devtoken` | **`supabase`(필수 선행, ADR-033·`BL-SEC-18`)** |
+| TLS | `tailscale serve` | Caddy 자동 HTTPS(ACME) + 도메인 또는 OCI 공개 IP |
+| Caddy publish | `127.0.0.1:18080` | `0.0.0.0:80,443` |
+| 호스트 | 자체 서버 | 자체 서버 웹 공개 또는 OCI Always Free(ADR-006) — 그때 결정 |
+| 접근 | Tailscale 설치 기기만 | 아무 브라우저 |
+
+전환은 Sprint 범위가 아니라 별도 게이트다(`11` §3). 전환 시 이 ADR을 `Superseded by ADR-036+`로 바꾸고 새 ADR을 쓴다.
 
 ---
 
@@ -517,17 +530,24 @@
 
 ---
 
-## ADR-033 개발 토큰(devtoken) 인증을 운영에도 사용
+## ADR-033 개발 토큰(devtoken) 인증 — 비공개 배포 전용
 
-- **Status**: Accepted · **Date**: 2026-09-18 · **Supersedes**: ADR-023 · **Related DEC**: DEC-01, DEC-08
+- **Status**: Accepted (**조건부** — 비공개 네트워크 배포에서만. 공개 전환 시 ADR-023의 Supabase Auth로 되돌아간다) · **Date**: 2026-09-18 · **Related DEC**: DEC-01, DEC-08
 
-**Context** — Supabase 도입을 연기하면서(ADR-030) Supabase Auth도 빠졌다. 그런데 S0부터 서버에 배포하고 2026-10-26부터 실사용하려면 운영 인증 경로가 필요하다. 서비스는 **tailnet 안에서만** 접근된다(ADR-031). 사용자는 1~3명이고 모두 소유자가 초대한다.
+**Context** — Supabase 도입을 연기하면서(ADR-030) Supabase Auth도 빠졌다. 그런데 S0부터 서버에 배포하고 2026-10-26부터 실사용하려면 인증 경로가 필요하다. 이 기간의 배포는 **tailnet 안에서만** 접근된다(ADR-031, 임시). 사용자는 1~3명이고 모두 소유자가 초대한다. **공개 배포는 나중에 하며, 그때는 이 방식을 쓸 수 없다**(사용자 확인, 2026-09-18).
 
-**Decision** — `devpilot.security.auth-mode = devtoken`(기본값, **운영 포함**)을 둔다. backend가 EC P-256 키(`DEVPILOT_DEV_JWT_KEY`, prod 필수)로 JWT를 서명하고 같은 키의 공개키로 검증한다. `POST /dev/token {email}`은 allowlist에 있는 이메일에만 720시간 토큰을 발급하고, `GET /dev/jwks.json`이 공개키를 제공한다. 검증·프로비저닝·allowlist·JIT 생성은 기존 경로(`03` §4.2~§4.3)를 그대로 쓴다. Flutter는 `AUTH_MODE=dev|supabase` dart-define으로 로그인 화면을 고른다. **Supabase Auth(GitHub OAuth)는 Later**이고, 그때 `auth-mode=supabase`로 바꾸면 이 endpoint는 등록되지 않는다.
+**Decision** — `devpilot.security.auth-mode = devtoken`을 **비공개 네트워크 배포의 기본값**으로 둔다. backend가 EC P-256 키(`DEVPILOT_DEV_JWT_KEY`, prod 필수)로 JWT를 서명하고 같은 키의 공개키로 검증한다. `POST /api/v1/dev/token {email}`은 allowlist에 있는 이메일에만 720시간 토큰을 발급하고, `GET /api/v1/dev/jwks.json`이 공개키를 제공한다. 검증·프로비저닝·allowlist·JIT 생성은 기존 경로(`03` §4.2~§4.3)를 그대로 쓴다. Flutter는 `AUTH_MODE=dev|supabase` dart-define으로 로그인 화면을 고른다. **Supabase Auth(GitHub OAuth)는 Later**이고, 그때 `auth-mode=supabase`로 바꾸면 이 endpoint는 등록되지 않는다.
 
 **Alternatives considered** — Supabase Auth를 10-26 전에 도입(S0가 2주 늘어남, 지금 필요 없는 외부 의존) · local profile 전용으로만 두고 운영은 Supabase(운영 인증이 없어 배포 자체가 불가) · Basic 인증(JWT 검증 경로를 두 벌 만들게 됨) · 인증 없음(allowlist·소유권 검사·감사 로그가 모두 무의미해짐).
 
-**Consequences** — **이 방식은 "tailnet 밖에서 endpoint에 닿을 수 없다"는 전제 위에서만 안전하다.** 공개 인터넷에 노출하는 순간 이메일만 알면 토큰을 받는 구조가 되므로, 노출 전에 반드시 `auth-mode=supabase`로 바꾼다(`07` §3 위협 모델에 전제로 기록). 키가 비어 기동 시 생성되면 재기동마다 기존 토큰이 무효가 되므로 운영은 PEM을 `api.env`에 고정한다. 토큰 폐기 수단은 allowlist 제거뿐이다(720시간 안에는 기존 토큰이 살아 있으나 `UserContextFilter`가 요청마다 allowlist를 다시 검사하므로 즉시 차단된다).
+**Consequences** — **이 방식은 "tailnet 밖에서 endpoint에 닿을 수 없다"는 전제 위에서만 안전하다.** 공개 인터넷에 노출하는 순간 **허용 이메일만 알면 누구나 토큰을 받는다**(비밀번호도 OAuth도 없다).
+
+**공개 전환의 필수 선행 조건 (게이트)** — 공개 노출 전에 반드시:
+1. `BL-SEC-18`(Supabase Auth 도입) 완료 → `DEVPILOT_AUTH_MODE=supabase`
+2. `devtoken` 관련 bean이 prod에서 등록되지 않음을 확인(`/api/v1/dev/token`·`/api/v1/dev/jwks.json` 404)
+3. `07` §2.4 잔여 위험의 "tailnet 밖 도달 불가" 전제 해제를 기록
+
+방어 장치로 **`prod` profile + `auth-mode=devtoken`이면 기동 시 WARN 1줄**("이 인스턴스는 비공개 네트워크에서만 노출해야 한다")을 남긴다(`03` §4.2). 기동을 막지는 않는다 — 지금의 임시 배포가 바로 그 조합이기 때문이다. 키가 비어 기동 시 생성되면 재기동마다 기존 토큰이 무효가 되므로 운영은 PEM을 `api.env`에 고정한다. 토큰 폐기 수단은 allowlist 제거뿐이다(720시간 안에는 기존 토큰이 살아 있으나 `UserContextFilter`가 요청마다 allowlist를 다시 검사하므로 즉시 차단된다).
 
 ---
 

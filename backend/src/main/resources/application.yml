@@ -104,6 +104,7 @@ devpilot:
       requests-per-minute: 120
       calendar-feed-per-hour: 60
       calendar-invalid-token-per-hour-per-ip: 30
+      dev-token-per-hour-per-ip: 30                      # POST /dev/token (05 §1.4.5)
   web:
     app-base-url: ${APP_BASE_URL}                        # 캘린더 피드 URL 생성 (prod 필수)
     cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # local만 사용
@@ -120,6 +121,7 @@ devpilot:
       fatigue-one-day: 0.80
       fatigue-two-days: 0.60
       continuation-bonus: 1.15
+      comeback-hard-task: 0.70             # 06 §5.5 COMEBACK_HARD_TASK (7_000bp)
     low-energy-long-task-minutes: 30
     min-prerequisite-readiness: 0.5
     overrun-tolerance: 1.10
@@ -130,6 +132,13 @@ devpilot:
     review-minutes-per-card: 1.5
     review-max-share: 0.25
     default-career-importance: 0.30
+    milestone-urgency-floor: 0.20          # 06 §5.4 진행 중 milestone 하한 (200_000 micro)
+    next-milestone-urgency: 0.10           # 06 §5.4 다음 milestone 고정값
+    review-urgency-base: 0.30              # 06 §5.4 due review 기저
+    review-urgency-per-overdue-day: 0.10   # 06 §5.4 연체 일당 가산
+    leech-review-urgency: 1.00             # 06 §6.4 LEECH_DETECTED 다음 plan-day
+    reason-high-threshold: 0.70            # 06 §5.8 HIGH_* reason 임계값
+    reason-medium-threshold: 0.40          # 06 §5.8 *_GAP reason 임계값
   budget:
     completion-window-days: 28
     completion-min-history-days: 14
@@ -156,6 +165,9 @@ devpilot:
     rule-window-days: 60
     axis-change-cooldown: 24h
     self-assessment-cap: 3
+    diagnostic-max-level: 3                # 06 §7.4 min(claimedLevel, 3)
+  job:
+    default-target: { knowledge: 3, implementation: 3, explanation: 3, debugging: 2 }   # 06 §13 target 없을 때
   training:
     max-submissions-per-attempt: 5
   coach:

@@ -626,7 +626,7 @@ else                                             → MISSED
 | `VERIFIED` | `COMPILER`, `TEST_RESULT`, `CURATED_SOURCE` | **서버가 실행한 도구 결과**(MVP에는 없음) 또는 `content/curated-sources.yaml`에 등록된 근거 ID |
 | `SUPPORTED` | `STATIC_ANALYSIS`, `OFFICIAL_DOC`, `SECURITY_GUIDE` | STATIC_ANALYSIS는 서버 도구 실행 결과만(MVP에는 없음). OFFICIAL_DOC, SECURITY_GUIDE는 `sourceReference` URL의 호스트가 allowlist에 있을 때 |
 | `AI_JUDGMENT` | `AI_REASONING` | AI 판단 |
-| `UNCERTAIN` | 모두 | 맥락 부족 |
+| `UNCERTAIN` | `OFFICIAL_DOC`, `SECURITY_GUIDE`, `CURATED_SOURCE`, `AI_REASONING` | 맥락 부족. 도구 결과 계열(`COMPILER`, `TEST_RESULT`, `STATIC_ANALYSIS`)과는 조합할 수 없다 — `schema.sql`의 CHECK와 `04` §7 I-08이 거부한다 |
 
 AI 출력 파싱 직후 finding마다 순서대로 적용한다.
 

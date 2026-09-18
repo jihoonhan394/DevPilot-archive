@@ -82,7 +82,10 @@ check_prerequisites() {
 
   local arch
   arch="$(uname -m)"
-  [[ "${arch}" == "x86_64" ]] || die "x86_64 서버 전용이다 (uname -m = ${arch}). release.yml 이미지는 linux/amd64"
+  # release.yml이 linux/amd64 + linux/arm64 멀티아치 이미지를 만든다 (docs/10 §1.4, §7.2).
+  # x86_64 = 현재 자체 서버, aarch64 = 공개 전환 후보인 OCI Always Free Ampere A1
+  [[ "${arch}" == "x86_64" || "${arch}" == "aarch64" ]] \
+    || die "지원하지 않는 아키텍처다 (uname -m = ${arch}). 이미지는 linux/amd64 와 linux/arm64 만 만든다"
 
   command -v docker >/dev/null || die "docker 명령이 없다"
   docker info >/dev/null 2>&1 || die "docker daemon에 접근할 수 없다 (docker info 실패)"
@@ -249,7 +252,7 @@ install_systemd_units() {
 
   if grep -Eq '^DATABASE_PASSWORD=.+' "${DEVPILOT_HOME}/api.env"; then
     systemctl enable --now devpilot-backup.timer >/dev/null
-    log "devpilot-backup.timer 활성 (매일 18:30 UTC)"
+    log "devpilot-backup.timer 활성 (매일 19:00 UTC)"
   else
     log "api.env 의 DATABASE_PASSWORD 가 비어 있어 devpilot-backup.timer 를 켜지 않았다. 값을 채운 뒤:"
     log "  systemctl enable --now devpilot-backup.timer && systemctl start devpilot-backup.service"

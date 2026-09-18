@@ -17,7 +17,7 @@ name: devpilot
 services:
   api:
     # 자체 이미지: 불변 tag(v0.<sprint>.<patch>)로 참조한다. release.yml이 linux/amd64로 빌드해 GHCR에 push (docs/10 §7.2)
-    image: ${API_IMAGE:-ghcr.io/<owner>/devpilot-api}:${TAG:?set TAG (deploy.sh writes /opt/devpilot/.env)}
+    image: ${API_IMAGE:?set API_IMAGE (deploy.sh writes /opt/devpilot/.env)}:${TAG:?set TAG (deploy.sh writes /opt/devpilot/.env)}
     restart: unless-stopped
     env_file:
       - /opt/devpilot/api.env

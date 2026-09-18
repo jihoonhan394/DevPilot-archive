@@ -122,7 +122,7 @@
 | Cursor pagination | `(sortKey, id)`를 인코딩한 불투명 문자열로 다음 페이지를 조회하는 방식 |
 | JWKS | JWT 서명 검증용 공개키 목록 endpoint |
 | Allowlist | 서비스를 쓸 수 있는 이메일·subject 목록 |
-| devtoken | 운영을 포함한 기본 인증 모드. backend가 EC P-256 키로 서명·검증하는 JWT를 `POST /dev/token`으로 발급한다(`03` §4.2). tailnet 전용 배포를 전제로 한다 |
+| devtoken | 운영을 포함한 기본 인증 모드. backend가 EC P-256 키로 서명·검증하는 JWT를 `POST /api/v1/dev/token`으로 발급한다(`03` §4.2). tailnet 전용 배포를 전제로 한다 |
 | tailnet | Tailscale로 연결된 사설 네트워크. DevPilot은 여기에서만 접근된다 |
 | Session pooler | (Supabase 도입 시) Supavisor의 session mode 연결(포트 5432) |
 | Data API | (Supabase 도입 시) publishable key로 제공되는 REST/GraphQL 자동 API. DevPilot은 비활성 |

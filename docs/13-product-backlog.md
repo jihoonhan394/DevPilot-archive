@@ -2,7 +2,7 @@
 
 > Status: Accepted (v2) · Last updated: 2026-09-18 · Related: `11-development-roadmap.md`, `12-acceptance-criteria.md`, `16-definition-of-ready-done.md`, `03-system-architecture.md`, `06-learning-engine-rules.md`
 >
-> 2026-09-18 반영: 자체 서버 + Tailscale HTTPS, 서버 PostgreSQL 16, `devtoken` 운영 인증(BL-SEC-16), DeepSeek(BL-AIP-03·11·15·17), 수동 배포·`pg_dump` 백업(BL-OPS-07·11), git 전략(BL-OPS-21). Supabase·OCI·도메인·Anthropic 항목은 `~~취소~~` 또는 Later로 옮겼다. "(검토 제안, 미결정)" 표시 항목은 착수 전에 사용자 결정이 필요하다.
+> 2026-09-18 반영: 자체 서버 + Tailscale HTTPS, 서버 PostgreSQL 16, `devtoken` 운영 인증(BL-SEC-16), DeepSeek(BL-AIP-03·11·15·17), 수동 배포·`pg_dump` 백업(BL-OPS-07·11), git 전략(BL-OPS-21). Anthropic·도메인 항목은 `~~취소~~` 또는 Later로 옮겼다. Tailscale 전용·`devtoken`은 **임시 수단**이고 최종은 공개 배포다 — Supabase Auth(`BL-SEC-18`)는 그 필수 선행이고 OCI Always Free(arm64)는 배포지 후보다(`11` §3.10). "(검토 제안, 미결정)" 표시 항목은 착수 전에 사용자 결정이 필요하다.
 >
 > 모든 구현 작업의 단위 목록이다. 에이전트 작업 지시(`11-development-roadmap.md` §7)는 이 문서의 `BL-*` ID 하나 또는 같은 Sprint의 인접 ID 묶음 단위로 한다. 요구사항 ID(`FR-*`, `NFR-*`)의 상세는 `01-product-requirements.md`, 화면 ID(`SCR-*`)는 `02-user-scenarios-and-ux.md`를 따른다.
 
@@ -21,7 +21,7 @@
 
 - ID: `BL-<EPIC>-<nn>`. 한번 부여한 ID는 재사용하지 않는다. 항목을 삭제하면 행을 지우지 않고 제목 앞에 `~~취소~~`를 붙인다.
 - **굵은 클래스 이름**은 `03-system-architecture.md` §3.2의 도메인 규칙 클래스다. 규칙과 test vector는 `06-learning-engine-rules.md`가 기준이다.
-- "(직접 구현)" 표시 항목은 사용자가 구현하고, 에이전트는 test vector 테스트 작성과 리뷰만 한다(`11-development-roadmap.md` §5).
+- 구현은 **전부 에이전트가 한다.** 사용자는 결정(ADR 승인)·PR 리뷰·계정/서버 설정만 한다(`11-development-roadmap.md` §5).
 - "(DoR 미충족)" 표시 항목은 규칙 정의가 canonical 문서에 없다. 착수 전에 문서를 먼저 보강한다(`16-definition-of-ready-done.md` §1).
 - Depends on에는 선행 BL만 적는다. Spike 결과가 선행 조건이면 해당 Spike BL을 적는다.
 - Sprint 기간: S0 2026-09-17~09-27 · S1 09-28~10-11 · S2 10-12~10-25 · S3 10-26~11-15 · S4 11-16~12-06 · S5 12-07~12-20 · S6 12-21~2027-01-04 · S7 2027-01-05~01-25 · Later 2027-02~
@@ -56,7 +56,7 @@
 | BL-FND-01 | SP-4 툴체인 호환 spike | seed 빌드 파일로 Gradle 9.7.1 + Boot 4.1.1 + Temurin 25.0.4에서 compile(-Werror)·Spotless·Checkstyle·PMD·SpotBugs·bootJar는 확인됨(09-17). 서버 Docker 터널 Testcontainers 실행과 RestClient + DeepSeek `/responses` smoke는 확인됨(09-18). 남은 확인: ArchUnit·springdoc 동작, 도구별 위반 검출. Java SDK·WireMock 의존성 없음. 절차는 `11-development-roadmap.md` §4 SP-4 | P0 | S0 | — | — | NFR-07, NFR-10 |
 | BL-FND-02 | Monorepo 구조·루트 파일 | `backend/ app/ content/ evals/ infra/ docs/` 구조, `CLAUDE.md`(`@AGENTS.md`), `AGENTS.md`, `.gitattributes`(sh·gradlew·yml LF), `.editorconfig`, `.gitignore`, `.env.example`(키 이름만) | P0 | S0 | — | — | NFR-07 |
 | BL-FND-03 | Backend bootstrap | Initializr 좌표 그대로 사용, Gradle Kotlin DSL + `libs.versions.toml`, toolchain은 SP-4 결과. `application.yml` 기본값(open-in-view=false, ddl-auto=validate, Flyway schema `devpilot`, actuator health만 노출), `GET /actuator/health` | P0 | S0 | BL-FND-01, BL-FND-02 | — | NFR-03 |
-| BL-FND-04 | 품질 게이트 | Spotless(google-java-format AOSP, 100열), Checkstyle(명명 규칙 전용, ASCII 정규식), PMD 7, SpotBugs, JaCoCo(`com.devpilot.*.domain` 패키지 기준 gate, 수치는 `09-test-and-quality.md`) → `./gradlew check` 하나로 실행 | P0 | S0 | BL-FND-03 | — | NFR-07 |
+| BL-FND-04 | 품질 게이트 | Spotless(google-java-format AOSP, 100열), Checkstyle(명명 규칙 전용, ASCII 정규식), PMD 7, SpotBugs, JaCoCo(`09-test-and-quality.md` §15가 열거한 패키지 목록 기준 gate — 와일드카드 금지, 수치도 `09` §15) → `./gradlew check` 하나로 실행 | P0 | S0 | BL-FND-03 | — | NFR-07 |
 | BL-FND-05 | ArchUnit 기본 규칙 | `08-coding-conventions.md`의 ARCH-* 규칙: 계층 의존, 필드 주입 금지, 무인자 `now()` 금지, `System.out` 금지, `@RestController` 위치, 모듈 의존표(`03` §2.2). 모듈이 추가될 때마다 규칙 대상 확장 | P0 | S0 | BL-FND-03 | — | NFR-07 |
 | BL-FND-06 | Flyway V1 + migration 통합 테스트 | `V1__baseline.sql`(schema 생성 + 조건부 하드닝 DO 블록 — 순수 PostgreSQL에서는 no-op, Supabase 도입 시 revoke). Testcontainers `postgres:16`(서버 개발 DB와 같은 major)에서 빈 DB → 전체 migration → `ddl-auto=validate` 기동 테스트 | P0 | S0 | BL-FND-03, BL-OPS-01 | AC-20 | NFR-07 |
 | BL-FND-07 | TraceId·요청 크기·Clock | `TraceIdFilter`(32 hex, MDC, 응답 헤더), `RequestBodySizeLimitFilter`(64KB 초과 413 `REQUEST_TOO_LARGE`), `ClockConfig`(UTC) + 테스트용 `MutableClock` | P0 | S0 | BL-FND-03 | AC-08 | NFR-06 |
@@ -75,8 +75,8 @@
 | BL-FND-20 | 구조화 로그·감사 로그 | prod JSON structured logging, `AuditLogger`(감사 이벤트 목록은 `07-security-and-privacy.md`), `userRef` = HMAC 앞 12 hex, `DEVPILOT_LOG_HASH_KEY` 없으면 prod 기동 실패 | P0 | S1 | BL-FND-07 | AC-08 | NFR-06 |
 | BL-FND-21 | 프로필 API | `MeController`, `ProfileService`. `GET /me`(profile, onboardingCompleted, `aiStatus`, `aiUsage` — S3 전에는 provider `disabled`이므로 `aiStatus=DISABLED`, `aiUsage`는 호출 0·월 비용 0·예산값. record는 BL-AIP-16), `PATCH /me`(displayName, timezone IANA 검증, dayStartHour 0~6, weekday/weekendStudyMinutes 0~720, version) | P0 | S1 | BL-SEC-04, BL-FND-10, BL-AIP-16 | AC-17 | FR-24 |
 | BL-FND-22 | OpenAPI 스냅샷 | springdoc(Swagger UI는 local만), `docs/api/openapi.yaml` 생성 task, `./gradlew openApiCheck`로 스냅샷 diff 발생 시 CI 실패. `ci.yml` `backend` job이 S0부터 실행하므로 S0 | P0 | S0 | BL-FND-03, BL-OPS-06 | — | NFR-07 |
-| BL-FND-23 | 비동기 실행기·AI 작업 공통 | `AsyncConfig`(`aiTaskExecutor` core 2 / max 2 / queue 20), 비동기 AI task 템플릿(`@TransactionalEventListener(AFTER_COMMIT)` + `@Async`, `PENDING → RUNNING → COMPLETED/FAILED`, `AsyncFailureCode` 매핑, 최상위 catch 1곳), `OrphanAsyncTaskJob`(기동 1회 + 10분, `RUNNING` 10분 초과 → `FAILED(INTERRUPTED)`) | P0 | S3 | BL-FND-25, BL-FND-16 | AC-12 | NFR-03 |
-| BL-FND-24 | `RetentionCleanupJob` | `ai_call_log` 180일 삭제, 만료 `idempotency_record` 삭제, 전날 AI 호출·비용·오류·job 실패 수 일일 요약 INFO 1줄 | P1 | S3 | BL-FND-25, BL-AIP-07 | — | NFR-05, NFR-06 |
+| BL-FND-23 | 비동기 실행기·AI 작업 공통 | `AsyncConfig`(`aiTaskExecutor` core 2 / max 2 / queue 20), 비동기 AI task 템플릿(`@TransactionalEventListener(AFTER_COMMIT)` + `@Async`, `PENDING → RUNNING → COMPLETED/FAILED`, `AsyncFailureCode` 매핑, 최상위 catch 1곳), `common.job.OrphanAsyncTaskSweeper` port 정의 + `OrphanAsyncTaskJob`(`common.job`, 기동 1회 + 10분, `RUNNING` 10분 초과 → `FAILED(INTERRUPTED)`). job은 `List<OrphanAsyncTaskSweeper>`만 주입받고 도메인 모듈을 직접 의존하지 않는다(`03` §2.2 규칙 4, ARCH-01). 구현은 coach·training·review(Later)·evidence·job이 각자 한다 | P0 | S3 | BL-FND-25, BL-FND-16 | AC-12 | NFR-03 |
+| BL-FND-24 | `RetentionCleanupJob` | `common.job.RetentionCleanupTarget` port 정의 + `RetentionCleanupJob`(`common.job`): 만료 `idempotency_record` 삭제(자기 소유) + 주입받은 target 전부 호출 + 전날 AI 호출·비용·오류·job 실패 수 일일 요약 INFO 1줄(`dailySummary`). `ai_call_log` 180일 삭제는 `integration.ai.log.AiCallLogRetentionService`가 구현한다 — `common`은 도메인 모듈을 의존하지 않는다(`03` §2.2 규칙 4, ARCH-01) | P1 | S3 | BL-FND-25, BL-AIP-07 | — | NFR-05, NFR-06 |
 | BL-FND-25 | 스케줄 job 공통 규약 | `@EnableScheduling`, test profile 스케줄러 비활성, job 시작·건수·소요시간 INFO 1줄, 실패 `JOB_FAILED` WARN, 사용자 단위 트랜잭션 분리 템플릿 | P0 | S3 | BL-FND-20 | — | NFR-06 |
 | BL-FND-26 | Job 지표 | `devpilot.jobs.runs{job,result}` Micrometer 지표 (외부 비노출). AI 지표는 BL-AIP-07 | P2 | S3 | BL-FND-25 | — | NFR-06 |
 
@@ -99,9 +99,9 @@
 | BL-SEC-13 | 데이터 export | `account` 모듈 `AccountExportService` + `GET /me/export`: 사용자 소유 aggregate 전체 JSON, 타 사용자 데이터 0건, `calendar_token_hash`·`idempotency_record` 제외, `DATA_EXPORTED` 감사 로그 | P1 | S6 | BL-FND-21 | AC-15 | FR-23, NFR-05 |
 | BL-SEC-14 | 계정 삭제 요청 | `AccountDeletionService` + `DELETE /me`(`amr[].timestamp` 최댓값 — devtoken은 발급 시각 — 5분 초과 403 `RECENT_LOGIN_REQUIRED`, `DELETION_REQUESTED`, 캘린더 토큰 null, 202, `ACCOUNT_DELETION_REQUESTED` 감사 로그). 이후 `GET /me`·`DELETE /me` 외 403(BL-SEC-04). 실제 삭제 job은 BL-SEC-17(Later) | P1 | S1 | BL-SEC-04 | AC-15 | FR-23, NFR-05 |
 | BL-SEC-15 | 하드닝 점검 | `07-security-and-privacy.md` 체크리스트 전체 점검, OWASP Top 10 대응표 갱신, AC-08·AC-18·AC-25 전체 재검증(AC-20은 Supabase 도입 시) | P1 | S6 | BL-SEC-05, BL-SEC-08 | AC-08, AC-18, AC-25 | NFR-04 |
-| BL-SEC-16 | devtoken 모드 백엔드 | `DevTokenController` + `DevTokenService`(`auth-mode=devtoken`일 때만 bean): EC P-256 키(`DEVPILOT_DEV_JWT_KEY` PEM, 비면 기동 시 생성 → 재기동 시 기존 토큰 무효, prod는 필수), `POST /dev/token {email}` → 200 `{accessToken, expiresAt}`(permitAll, allowlist 검사, 불허 403 `USER_NOT_ALLOWED`, IK 불필요), `GET /dev/jwks.json`(permitAll). JWT `iss=${APP_BASE_URL}/dev`, `aud=authenticated`, `sub=uuid v5(email)`, `email`, `amr=[{method:"devtoken",timestamp}]`, ttl 720h. `JwtDecoder`는 같은 키의 공개키로 직접 구성. test profile은 `TestJwksServer` 대신 이 키를 공유(`09` §6.2). tailnet 밖 노출 없음이 전제(`07` §3) | P0 | S0 | BL-SEC-03 | AC-25, AC-18 | FR-01, NFR-04 |
+| BL-SEC-16 | devtoken 모드 백엔드 | `DevTokenController` + `DevTokenService`(`auth-mode=devtoken`일 때만 bean): EC P-256 키(`DEVPILOT_DEV_JWT_KEY` PEM, 비면 기동 시 생성 → 재기동 시 기존 토큰 무효, prod는 필수), `POST /api/v1/dev/token {email}` → 200 `{accessToken, expiresAt}`(permitAll, allowlist 검사, 불허 403 `USER_NOT_ALLOWED`, IK 불필요), `GET /api/v1/dev/jwks.json`(permitAll). JWT `iss=${APP_BASE_URL}/dev`, `aud=authenticated`, `sub=uuid v5(email)`, `email`, `amr=[{method:"devtoken",timestamp}]`, ttl 720h. `JwtDecoder`는 같은 키의 공개키로 직접 구성. test profile은 `TestJwksServer` 대신 이 키를 공유(`09` §6.2). **비공개 네트워크 배포 전용** — tailnet 밖 노출 없음이 전제이고(`07` §3), 공개 노출 전에 `auth-mode=supabase`로 전환한다(`BL-SEC-18`, `03` §4.2). prod + devtoken이면 기동 시 WARN 1줄 | P0 | S0 | BL-SEC-03 | AC-25, AC-18 | FR-01, NFR-04 |
 | BL-SEC-17 | 계정 삭제 job | `AccountDeletionJob`(5분 주기, `DELETION_REQUESTED` 사용자 cascade 삭제, `ai_call_log.user_id=null`, `ACCOUNT_DELETION_COMPLETED` 감사 로그). 그 전까지는 `account-deletion` runbook(allowlist 제거 + 수동 SQL) | P3 | Later | BL-SEC-14, BL-FND-25 | AC-15 | FR-23, NFR-05 |
-| BL-SEC-18 | Supabase Auth 도입 | `auth-mode=supabase` 활성: Supabase 프로젝트·GitHub OAuth provider·가입 비활성·Data API 비활성(DEC-15)·publishable key만 클라이언트 사용, `SUPABASE_URL`·`SUPABASE_JWT_ALGORITHM`, JWKS 검증 경로, Flutter `AUTH_MODE=supabase`(SCR-LOGIN GitHub 버튼, SCR-AUTH-CALLBACK), `account-deletion` runbook에 Auth 사용자 수동 삭제 추가, AC-20 S2·S3, 구 SP-5 절차를 spike로 재실행. BL-SEC-01·02 흡수 | P3 | Later | BL-SEC-03 | AC-20 | FR-01, NFR-04 |
+| BL-SEC-18 | Supabase Auth 도입 | `auth-mode=supabase` 활성: Supabase 프로젝트·GitHub OAuth provider·가입 비활성·Data API 비활성(DEC-15)·publishable key만 클라이언트 사용, `SUPABASE_URL`·`SUPABASE_JWT_ALGORITHM`, JWKS 검증 경로, Flutter `AUTH_MODE=supabase`(SCR-LOGIN GitHub 버튼, SCR-AUTH-CALLBACK), `account-deletion` runbook에 Auth 사용자 수동 삭제 추가, AC-20 S2·S3, 구 SP-5 절차를 spike로 재실행. BL-SEC-01·02 흡수. **공개 노출의 필수 선행 조건** — `devtoken`은 비공개 배포 전용이다(ADR-033, `03` §4.2). 착수 시점은 Sprint가 아니라 공개 전환 게이트가 정한다(`11` §3.10) | P0 | 공개 배포 전 | BL-SEC-03 | AC-20 | FR-01, NFR-04 |
 
 ### 4.3 OPS — Deploy · Ops
 
@@ -111,13 +111,13 @@
 | BL-OPS-02 | SP-3 amd64 이미지 → GHCR → 서버 pull + Tailscale HTTPS | `ubuntu-24.04` runner에서 linux/amd64 이미지 빌드 → GHCR → 서버 `deploy.sh` pull → Caddy `127.0.0.1:18080`(TLS 없음) → `tailscale serve --bg --https=443` → tailnet 안 유효 인증서 접속, 자동 롤백, 메모리(`-Xmx1g`, `mem_limit 1.5g`) 확인. 절차는 `11-development-roadmap.md` §4 SP-3 | P0 | S0 | BL-OPS-04 | — | NFR-10 |
 | BL-OPS-03 | ~~취소~~ 도메인·DNS | 2026-09-18 취소(DEC-07: 도메인 미사용, Tailscale MagicDNS 호스트명 `https://<tailnet-host>` 사용) | — | ~~S0~~ | — | — | — |
 | BL-OPS-04 | 서버 준비 `prepare-server.sh` | 기존 자체 서버(Rocky 9.8 x86_64, 2 vCPU/8GB 공용, Docker 29.6.1, Tailscale 1.98.8)에서 root 1회 멱등 실행: 전제 조건 확인(docker, tailscale, 18080 비어 있음) → `deploy` 사용자(+docker 그룹) → `/opt/devpilot/{backups,web}` + `api.env`·`ops.env` 템플릿(0600) → systemd 유닛(`devpilot-backup`, `devpilot-healthping`) 설치·enable → 안내 출력. OS 설정(daemon.json, podman, sshd, firewalld, dnf-automatic, `tailscale up`)은 건드리지 않는다(공용 서버). 구 `bootstrap-vm.sh` 삭제. 사용자 직접 작업: tailnet MagicDNS + HTTPS Certificates 활성화, `tailscale serve` 1회 | P0 | S0 | — | — | NFR-03 |
-| BL-OPS-05 | 이미지·compose·Caddy | `Dockerfile`(temurin 25 JRE amd64, 비root), `compose.prod.yml`(api: publish 없음, `JAVA_TOOL_OPTIONS=-Xmx1g`, `mem_limit 1.5g`, read_only, no-new-privileges; caddy: `127.0.0.1:18080:80`만 publish, `mem_limit 128m`; ACME·80/443·443/udp·certs 볼륨·`DOMAIN`·`SUPABASE_HOST` 없음), `Caddyfile`(TLS 없음, 보안 헤더, 정적 파일 `/srv/web` no-cache·SPA rewrite, `/api/*`·`/actuator/health` → `api:8080`), `/opt/devpilot/api.env` 권한 600 | P0 | S0 | BL-OPS-04, BL-FND-03 | — | NFR-10 |
+| BL-OPS-05 | 이미지·compose·Caddy | `Dockerfile`(temurin 25 JRE, 현재 빌드는 amd64 — 공개 전환 시 arm64 추가, `11` §3.10; 비root), `compose.prod.yml`(api: publish 없음, `JAVA_TOOL_OPTIONS=-Xmx1g`, `mem_limit 1.5g`, read_only, no-new-privileges; caddy: `127.0.0.1:18080:80`만 publish, `mem_limit 128m`; ACME·80/443·443/udp·certs 볼륨·`DOMAIN`·`SUPABASE_HOST` 없음), `Caddyfile`(TLS 없음, 보안 헤더, 정적 파일 `/srv/web` no-cache·SPA rewrite, `/api/*`·`/actuator/health` → `api:8080`), `/opt/devpilot/api.env` 권한 600 | P0 | S0 | BL-OPS-04, BL-FND-03 | — | NFR-10 |
 | BL-OPS-06 | CI `ci.yml` | job 4개 = branch protection 필수 check(`main`·`developer` 둘 다) `security`(actions SHA 고정 검사, gitleaks — Trivy fs는 S2 BL-SEC-10), `backend`(`spotlessCheck check`, `openApiCheck`), `app`(format, analyze, `app/tool/check_identifiers.sh`, test, `build web`), `content`(`python3 content/tools/validate_content.py`). 트리거: `main`·`developer` push + 두 브랜치 대상 PR | P0 | S0 | BL-FND-04, BL-CLI-02, BL-OPS-21 | — | NFR-07 |
-| BL-OPS-07 | CD `release.yml` + 수동 `deploy.sh` | 태그 `v0.<sprint>.<patch>` push → `ubuntu-24.04` runner → Flutter web 빌드(릴리스 아티팩트 zip) → 백엔드 이미지 linux/amd64 → GHCR `ghcr.io/<owner>/devpilot-api:<tag>`(Trivy image는 S2). 배포는 로컬에서 `ssh <server>` → `sudo -u deploy /opt/devpilot/deploy.sh v0.x.y`(web zip → `/opt/devpilot/web`, GHCR pull, `docker compose -f /opt/devpilot/compose.prod.yml up -d`, `curl http://127.0.0.1:18080/actuator/health` 60초, 실패 시 이전 태그 롤백) → `infra/scripts/smoke-headers.sh`(서버 안 `127.0.0.1:18080` 기준). 구 `deploy.yml` 삭제. Actions → tailnet 자동 배포는 BL-OPS-22(Later) | P0 | S0 | BL-OPS-05 | AC-08 | NFR-10 |
+| BL-OPS-07 | CD `release.yml` + 수동 `deploy.sh` | 태그 `v0.<sprint>.<patch>` push → `ubuntu-24.04` runner → Flutter web 빌드(릴리스 아티팩트 zip) → 백엔드 이미지 linux/amd64(현재 서버) → GHCR `ghcr.io/<owner>/devpilot-api:<tag>`(Trivy image는 S2). 공개 전환 시 `linux/amd64,linux/arm64` 멀티아치로 바꾼다(OCI Always Free는 Ampere arm64, `11` §3.10). 배포는 로컬에서 `ssh <server>` → `sudo -u deploy /opt/devpilot/deploy.sh v0.x.y`(web zip → `/opt/devpilot/web`, GHCR pull, `docker compose -f /opt/devpilot/compose.prod.yml up -d`, `curl http://127.0.0.1:18080/actuator/health` 60초, 실패 시 이전 태그 롤백) → `infra/scripts/smoke-headers.sh`(서버 안 `127.0.0.1:18080` 기준). 구 `deploy.yml` 삭제. Actions → tailnet 자동 배포는 BL-OPS-22(Later) | P0 | S0 | BL-OPS-05 | AC-08 | NFR-10 |
 | BL-OPS-08 | ~~취소~~ Tailscale 배포 경로 | 2026-09-18 취소(결정 D: CI OAuth client·`tag:ci` ACL·Tailscale SSH는 Later BL-OPS-22). 운영자 접속은 이미 Tailscale, 공개 SSH 없음 | — | ~~S0~~ | — | — | — |
 | BL-OPS-09 | 로컬 개발 환경 | `local` profile은 `DATABASE_URL/USERNAME/PASSWORD` 필수(기본값 없음, 서버 PG16을 Tailscale 경유로 사용), `infra/scripts/dev-docker-tunnel.ps1`(서버 Docker 소켓 포워딩 — Docker Desktop 불필요), `infra/compose.dev.yml`(오프라인 대체, `postgres:16`, 포트 55432), `.env` import, Flutter `config/local.example.json`(`AUTH_MODE=dev`). 절차는 `18-project-setup-and-local-dev.md` | P0 | S0 | BL-FND-03 | — | NFR-07 |
 | BL-OPS-10 | Runbook: 배포·롤백 | 태그 → `release.yml` 확인 → `deploy.sh` 실행, 수동 롤백 명령(`deploy.sh <이전 태그>`), migration 포함 배포 전 `backup.sh` 1회 실행 (`10-deployment-and-operations.md`) | P0 | S0 | BL-OPS-07 | — | NFR-03 |
-| BL-OPS-11 | 백업 자동화 | `infra/scripts/backup.sh`(`pg_dump -Fc` → `/opt/devpilot/backups/devpilot-<UTC ts>.dump`, 7일 보관), systemd `devpilot-backup.timer` 매일 18:30 UTC, 로컬 PC `infra/scripts/pull-backup.ps1` 주 1회 scp pull → `%USERPROFILE%\DevPilot-backups\`(8주 보관), `db-restore` 절차(`pg_restore --clean --if-exists --no-owner -d devpilot`)로 로컬 복구 1회 확인. 오브젝트 스토리지·rclone·age 없음(tailnet 내부). 실사용 시작(10-26) 전에 활성 | P0 | S2 | BL-OPS-01, BL-OPS-04 | — | NFR-03, NFR-05 |
+| BL-OPS-11 | 백업 자동화 | `infra/scripts/backup.sh`(`pg_dump -Fc` → `/opt/devpilot/backups/devpilot-<UTC ts>.dump`, 7일 보관), systemd `devpilot-backup.timer` 매일 19:00 UTC, 로컬 PC `infra/scripts/pull-backup.ps1` 주 1회 scp pull → `%USERPROFILE%\DevPilot-backups\`(8주 보관), `db-restore` 절차(`pg_restore --clean --if-exists --no-owner -d devpilot`)로 로컬 복구 1회 확인. 오브젝트 스토리지·rclone·age 없음(tailnet 내부). 실사용 시작(10-26) 전에 활성 | P0 | S2 | BL-OPS-01, BL-OPS-04 | — | NFR-03, NFR-05 |
 | BL-OPS-12 | Runbook: 서버·DB 복구 | `server-restore`(서버 재설치 시 `prepare-server.sh` → `tailscale serve` → `api.env` 복원 → `deploy.sh` → `db-restore`), `db-restore`(로컬 사본 또는 서버 `backups/`에서 `pg_restore`) | P0 | S2 | BL-OPS-11 | — | NFR-03 |
 | BL-OPS-13 | 헬스 모니터(healthchecks.io) | `infra/scripts/healthping.sh` + `devpilot-healthping.timer`(5분): `http://127.0.0.1:18080/actuator/health` 200이면 `HEALTHCHECKS_PING_URL`(`/opt/devpilot/ops.env`) GET, 실패면 `${HEALTHCHECKS_PING_URL}/fail`. healthchecks.io 누락·실패 알림 이메일. 외부 uptime 서비스 없음(tailnet 전용이라 외부에서 닿지 않음) | P1 | S2 | BL-OPS-04 | — | NFR-03 |
 | BL-OPS-14 | ~~취소~~ 무료 플랜 운영 점검 | 2026-09-18 취소(Supabase·OCI 미사용). 공용 서버 자원 점검은 BL-OPS-16 `host-check.sh` | — | ~~S2~~ | — | — | — |
@@ -137,8 +137,8 @@
 | ID | 제목 | 설명 | P | Sprint | Depends on | AC | FR/NFR |
 |---|---|---|---|---|---|---|---|
 | BL-CLI-01 | SP-1 Flutter Web 한글 입력 spike | 한글 IME 조합·커서·붙여넣기, 코드 붙여넣기, 폰트 번들, 첫 로드 시간 확인. 절차는 `11-development-roadmap.md` §4 SP-1 | P0 | S0 | — | AC-10 | NFR-08 |
-| BL-CLI-02 | Flutter bootstrap | FVM 버전 고정, `flutter_riverpod`, `go_router`, `dio`, `freezed`/`json_serializable`, ARB l10n(ko), 한글 폰트 번들, `--dart-define=AUTH_MODE=dev\|supabase`(기본 `dev`; `supabase_flutter`는 BL-SEC-18 Later), lint 경고 0건 | P0 | S0 | BL-CLI-01 | — | NFR-08 |
-| BL-CLI-03 | Walking skeleton 화면 · dev 로그인 | SCR-LOGIN dev 모드(이메일 입력 1칸 + 로그인 버튼 → `POST /dev/token` → 토큰을 메모리 + `sessionStorage`에 보관 → `GET /me`; 403 → SCR-NOT-ALLOWED; 초대 시 1회 DeepSeek 안내 문구), `AuthInterceptor`(Bearer, 401이면 토큰 삭제 → `/login?reason=expired`), SCR-NOT-FOUND, 로그인 후 `GET /api/v1/me` 결과 표시, widget test 1개(`login_screen_test.dart`). SCR-AUTH-CALLBACK·GitHub 버튼은 supabase 모드(Later) | P0 | S0 | BL-CLI-02, BL-SEC-16 | AC-25 | FR-01 |
+| BL-CLI-02 | Flutter bootstrap | FVM 버전 고정, `flutter_riverpod`, `go_router`, `dio`, `freezed`/`json_serializable`, ARB l10n(ko), 한글 폰트 번들, `--dart-define=AUTH_MODE=dev\|supabase`(기본 `dev`; `supabase_flutter`는 BL-SEC-18 — 공개 전환 게이트), lint 경고 0건 | P0 | S0 | BL-CLI-01 | — | NFR-08 |
+| BL-CLI-03 | Walking skeleton 화면 · dev 로그인 | SCR-LOGIN dev 모드(이메일 입력 1칸 + 로그인 버튼 → `POST /api/v1/dev/token` → 토큰을 메모리 + `sessionStorage`에 보관 → `GET /me`; 403 → SCR-NOT-ALLOWED; 초대 시 1회 DeepSeek 안내 문구), `AuthInterceptor`(Bearer, 401이면 토큰 삭제 → `/login?reason=expired`), SCR-NOT-FOUND, 로그인 후 `GET /api/v1/me` 결과 표시, widget test 1개(`login_screen_test.dart`). SCR-AUTH-CALLBACK·GitHub 버튼은 supabase 모드(Later) | P0 | S0 | BL-CLI-02, BL-SEC-16 | AC-25 | FR-01 |
 | BL-CLI-04 | 앱 셸 | go_router redirect 규칙(세션·allowlist·온보딩), SCR-NOT-ALLOWED, 반응형 내비(모바일 하단 탭 / 데스크톱 rail), 테마 토큰, 360px 폭 대응 | P0 | S1 | BL-CLI-03 | AC-10, AC-18 | NFR-08 |
 | BL-CLI-05 | API 클라이언트 | dio interceptor: Bearer, `Idempotency-Key`(사용자 행동당 UUID v4, 네트워크 재시도는 같은 키), `X-Trace-Id`, Problem Details `code` 분기, 알 수 없는 enum → `unknown`. OpenAPI 스냅샷 기준 수기 freezed 모델(DEC-12) | P0 | S1 | BL-CLI-03, BL-FND-22 | AC-23 | NFR-07 |
 | BL-CLI-06 | 공통 상태 UI | loading skeleton, empty(다음 행동 1개), error(`detail` + 문제 신고 영역의 traceId), 409 `CONCURRENT_MODIFICATION` 새로고침 안내 | P0 | S1 | BL-CLI-05 | AC-08 | NFR-08 |
@@ -163,7 +163,7 @@
 | BL-CLI-25 | Replan 미리보기 | SCR-REPLAN: 미리보기(risk, `ratioBp`, defer·축소 제안 체크, `riskAfterSuggestions`) → 새 버전 저장, SCR-PLAN budget·risk 표시 | P0 | S5 | BL-CAR-11, BL-CAR-12, BL-CAR-13 | AC-03 | FR-05 |
 | BL-CLI-26 | Dashboard 완성·Weekly | SCR-DASHBOARD(risk 추세, skill 카테고리 요약, 약한 thinking 축 Top 3), SCR-WEEKLY-LIST, SCR-WEEKLY-DETAIL(지표, 회고 작성) | P1 | S5 | BL-TDY-12, BL-EVD-03, BL-EVD-04 | AC-19, AC-21 | FR-13, FR-16, FR-17 |
 | BL-CLI-27 | Evidence 화면 | SCR-EVIDENCE-LIST, SCR-EVIDENCE-DETAIL(수동 작성, AI 초안 polling, 편집, accept/reject, Markdown export 다운로드) | P1 | S6 | BL-EVD-05, BL-EVD-06, BL-EVD-07, BL-EVD-08 | AC-21 | FR-18 |
-| BL-CLI-28 | Export·계정 삭제 화면 | SCR-SETTINGS export 다운로드, SCR-ACCOUNT-DELETE(403 `RECENT_LOGIN_REQUIRED` → 재로그인(dev 모드: `/dev/token` 재발급으로 새 `amr` timestamp) → 자동 재요청, 202 후 로그아웃) | P1 | S6 | BL-SEC-13, BL-SEC-14 | AC-15 | FR-23 |
+| BL-CLI-28 | Export·계정 삭제 화면 | SCR-SETTINGS export 다운로드, SCR-ACCOUNT-DELETE(403 `RECENT_LOGIN_REQUIRED` → 재로그인(dev 모드: `/api/v1/dev/token` 재발급으로 새 `amr` timestamp) → 자동 재요청, 202 후 로그아웃) | P1 | S6 | BL-SEC-13, BL-SEC-14 | AC-15 | FR-23 |
 | BL-CLI-29 | Job Radar 화면 | SCR-JOBS-LIST, SCR-JOB-NEW, SCR-JOB-DETAIL(분류별 개수·목록만, 확률·점수·퍼센트 없음) | P1 | S7 | BL-JOB-02, BL-JOB-03 | AC-22 | FR-19 |
 | BL-CLI-30 | Android 앱 | Android 빌드·서명·배포 (DEC-18) | P3 | Later | — | — | — |
 | BL-CLI-31 | 세션 완료 화면 즉시 진전 표시 | (검토 제안, 미결정) 세션 완료 직후 오늘 학습 시간·연속 일수·이번 주 완료 세션 수를 완료 시트에 바로 표시. 사용자 결정 후 착수 | P3 | Later | BL-CLI-12 | — | FR-08, FR-16 |
@@ -179,9 +179,9 @@
 | BL-CAR-05 | Replan 최소판 | `ReplanService` + `POST /plans/{planId}/replan`: milestone 구조 변경, 기존 plan `SUPERSEDED` + **flush** 후 새 version INSERT, id mapping, `plan_skill_target` 복사. `acceptedDeferrals`/`acceptedTargetReductions`/`restoredDeferrals`가 비어 있지 않으면 400. `PLAN_REPLANNED` 이벤트는 BL-CAR-07, snapshot은 BL-CAR-13 | P0 | S1 | BL-CAR-04 | AC-01, AC-24 | FR-04 |
 | BL-CAR-06 | 온보딩 API | `OnboardingService` + `POST /onboarding`(201, 한 트랜잭션): 프로필·timezone·dayStartHour·학습 시간, career goal, **`SelfAssessmentPropagation`**(카테고리 최대 13개 → 활성 skill 전체 `user_skill_state`), plan v1(템플릿, BL-CAR-03), 409 `ONBOARDING_ALREADY_COMPLETED`, `OnboardingRequiredInterceptor`(409 `ONBOARDING_REQUIRED`). **S1은 8·9단계 생략**: 응답 `assignedSeedCardCount = 0`, `latestRiskLevel = null`. seed 카드 복사는 BL-MEM-08(S2, 기동 backfill), snapshot은 BL-CAR-13(S5)에서 연결 | P0 | S1 | BL-CAR-01, BL-CAR-03, BL-SKL-02, BL-CNT-05 | AC-11 | FR-02 |
 | BL-CAR-07 | `PLAN_REPLANNED` 이벤트 연결 | V4 적용 후 replan에서 `LearningEventRecorder`로 `PLAN_REPLANNED` 기록 + 감사 로그 | P1 | S2 | BL-SKL-03, BL-CAR-05 | AC-01 | FR-04 |
-| BL-CAR-08 | **`StudyBudgetCalculator`** | horizon, nominal, completion rate, effective (`06` §3, test vector 전부). (직접 구현) | P0 | S5 | BL-FND-09, BL-FND-10 | AC-03 | FR-05 |
-| BL-CAR-09 | **`DeadlineRiskEvaluator`** | skill별 required minutes, risk level, `ratioBp` (`06` §4.1~4.3, test vector 전부). (직접 구현) | P0 | S5 | BL-SKL-02 | AC-03 | FR-05 |
-| BL-CAR-10 | **`ReplanSuggestionPolicy`** | 제안 순서 = MUST 목표 축소를 먼저 `requiredMust ≤ effective`까지 → 그다음 SHOULD defer, `riskAfterSuggestions` (`06` §4.4 test vector 1·2, 2026-09-18 개정). (직접 구현) | P0 | S5 | BL-CAR-09 | AC-03 | FR-05 |
+| BL-CAR-08 | **`StudyBudgetCalculator`** | horizon, nominal, completion rate, effective (`06` §3, test vector 전부). | P0 | S5 | BL-FND-09, BL-FND-10 | AC-03 | FR-05 |
+| BL-CAR-09 | **`DeadlineRiskEvaluator`** | skill별 required minutes, risk level, `ratioBp` (`06` §4.1~4.3, test vector 전부). | P0 | S5 | BL-SKL-02 | AC-03 | FR-05 |
+| BL-CAR-10 | **`ReplanSuggestionPolicy`** | 제안 순서 = MUST 목표 축소를 먼저 `requiredMust ≤ effective`까지 → 그다음 SHOULD defer, `riskAfterSuggestions` (`06` §4.4 test vector 1·2, 2026-09-18 개정). | P0 | S5 | BL-CAR-09 | AC-03 | FR-05 |
 | BL-CAR-11 | Budget API | `StudyBudgetService` + `GET /plans/active/budget`. completion 입력은 port `plan.application.StudyHistoryProvider`(plan 정의, `today` 모듈 구현: plan-day별 `available_minutes`와 COMPLETED 세션 `actual_minutes` 합)로 받는다 | P0 | S5 | BL-CAR-08, BL-CAR-09, BL-TDY-10 | AC-03 | FR-05 |
 | BL-CAR-12 | Replan preview API | `POST /plans/{planId}/replan/preview`: 저장 없음, IK 무시, risk + 제안 + `riskAfterSuggestions` | P0 | S5 | BL-CAR-10, BL-CAR-11 | AC-03 | FR-05 |
 | BL-CAR-13 | Replan 완성 | `acceptedDeferrals`(`DEFERRED`), `acceptedTargetReductions`(`TARGET_REDUCED`), `restoredDeferrals`(defer 해제) 적용, 새 plan 기준 오늘 snapshot upsert. 온보딩 처리의 snapshot upsert도 연결 | P0 | S5 | BL-CAR-12 | AC-03, AC-24 | FR-05 |
@@ -194,10 +194,10 @@
 | ID | 제목 | 설명 | P | Sprint | Depends on | AC | FR/NFR |
 |---|---|---|---|---|---|---|---|
 | BL-SKL-01 | Skill catalog API | `Skill`, `SkillPrerequisite`, `RoleSkillTarget` 매핑, `SkillCatalogQueryService`, `GET /skills/tree?role=JAVA_BACKEND` | P0 | S1 | BL-FND-14, BL-CNT-02 | AC-11 | FR-06 |
-| BL-SKL-02 | Skill state API | `UserSkillState`, **`PlanningLevelPolicy`**(`06` §7.5, vector 13~14), `UserSkillStateQueryService`, `GET /skills/me`. (직접 구현: `PlanningLevelPolicy`) | P0 | S1 | BL-SKL-01 | AC-09 | FR-06 |
+| BL-SKL-02 | Skill state API | `UserSkillState`, **`PlanningLevelPolicy`**(`06` §7.5, vector 13~14), `UserSkillStateQueryService`, `GET /skills/me`. | P0 | S1 | BL-SKL-01 | AC-09 | FR-06 |
 | BL-SKL-03 | 학습 이벤트 기록 | `LearningEvent`, `LearningEventType`, payload record(`04` §6), `LearningEventRecorder`(dedupe_key 중복 시 기존 반환, `plan_date`), `LearningEventRecorded` 발행 | P0 | S2 | BL-FND-15 | AC-09 | FR-06 |
-| BL-SKL-04 | **`SkillLevelRules`** | 상승·하락·진단 규칙(`06` §7.1~7.4, vector 1~12, 15). 입력은 60일 이벤트 payload만. (직접 구현) | P0 | S3 | BL-SKL-03 | AC-09 | FR-06 |
-| BL-SKL-05 | `SkillStateUpdater` | 동기 `@EventListener`, 무효화 이벤트 제외, 하락 우선, 축당 1단계, 24시간 cooldown, `skill_state_change`, `evidence_count`, `last_practiced_at`, `self_assessment_active`. ArchUnit: 레벨 setter는 이 경로만(I-12). (직접 구현) | P0 | S3 | BL-SKL-04 | AC-09 | FR-06 |
+| BL-SKL-04 | **`SkillLevelRules`** | 상승·하락·진단 규칙(`06` §7.1~7.4, vector 1~12, 15). 입력은 60일 이벤트 payload만. | P0 | S3 | BL-SKL-03 | AC-09 | FR-06 |
+| BL-SKL-05 | `SkillStateUpdater` | 동기 `@EventListener`, 무효화 이벤트 제외, 하락 우선, 축당 1단계, 24시간 cooldown, `skill_state_change`, `evidence_count`, `last_practiced_at`, `self_assessment_active`. ArchUnit: 레벨 setter는 이 경로만(I-12). | P0 | S3 | BL-SKL-04 | AC-09 | FR-06 |
 | BL-SKL-06 | Skill 이력 API | `GET /skills/{skillId}/history?cursor=` (`skill_state_change`, rule_code, 근거 이벤트 요약) | P1 | S3 | BL-SKL-05 | AC-09 | FR-06 |
 | BL-SKL-07 | 하루 1회 skill 재평가 | (검토 제안, 미결정) `SkillStateUpdater`는 새 이벤트가 올 때만 재평가하므로 시간 경과로만 성립하는 하락 규칙(`06` §7.3)이 늦게 적용된다. `ProgressSnapshotJob`(plan-day 시작 시)에서 사용자 skill 전체를 1회 재평가하는 방식을 검토. 사용자 결정 후 착수 | P2 | S5 | BL-SKL-05, BL-CAR-14 | AC-09 | FR-06 |
 
@@ -206,11 +206,11 @@
 | ID | 제목 | 설명 | P | Sprint | Depends on | AC | FR/NFR |
 |---|---|---|---|---|---|---|---|
 | BL-TDY-01 | Daily plan 도메인 | `DailyPlan`, `LearningTask` 매핑, 상태 전이 메서드(`04` §4.1, 위반 409 `INVALID_STATE_TRANSITION`), WIP unique index 위반 변환 | P0 | S2 | BL-FND-15 | AC-02 | FR-07 |
-| BL-TDY-02 | **`PlannerScoring`** | factor, weight, modifier, 동점 처리(`06` §5.4~5.5, §5.7 vector 전부). (직접 구현) | P0 | S2 | BL-FND-09 | AC-02 | FR-07 |
-| BL-TDY-03 | **`TaskProposalPolicy`** | 후보 skill별 main task 제안과 제목 템플릿(`06` §5.3). (직접 구현) | P0 | S2 | BL-FND-09 | AC-02 | FR-07 |
-| BL-TDY-04 | **`TimeAllocator`** | reviewMinutes, mainBudget, limit, 초과 시 조정(`06` §5.6 vector 전부). (직접 구현) | P0 | S2 | BL-FND-09 | AC-02 | FR-07 |
-| BL-TDY-05 | **`ReasonTemplates`** | reason 1~3개, modifier reason 우선, 최소 1개 보장(`06` §5.8). (직접 구현) | P0 | S2 | BL-TDY-02 | AC-02 | FR-07 |
-| BL-TDY-06 | **`ComebackModePolicy`** | 복귀 모드 판정(`06` §5.5 정의), cap 10, difficulty ≤ 2. (직접 구현) | P0 | S2 | BL-FND-10 | AC-02 | FR-21 |
+| BL-TDY-02 | **`PlannerScoring`** | factor, weight, modifier, 동점 처리(`06` §5.4~5.5, §5.7 vector 전부). | P0 | S2 | BL-FND-09 | AC-02 | FR-07 |
+| BL-TDY-03 | **`TaskProposalPolicy`** | 후보 skill별 main task 제안과 제목 템플릿(`06` §5.3). | P0 | S2 | BL-FND-09 | AC-02 | FR-07 |
+| BL-TDY-04 | **`TimeAllocator`** | reviewMinutes, mainBudget, limit, 초과 시 조정(`06` §5.6 vector 전부). | P0 | S2 | BL-FND-09 | AC-02 | FR-07 |
+| BL-TDY-05 | **`ReasonTemplates`** | reason 1~3개, modifier reason 우선, 최소 1개 보장(`06` §5.8). | P0 | S2 | BL-TDY-02 | AC-02 | FR-07 |
+| BL-TDY-06 | **`ComebackModePolicy`** | 복귀 모드 판정(`06` §5.5 정의), cap 10, difficulty ≤ 2. | P0 | S2 | BL-FND-10 | AC-02 | FR-21 |
 | BL-TDY-07 | Today 생성 API | `TodayPlanService` + `POST /today/generate`: availableMinutes 5~720, 후보(`06` §5.2), 재생성 표(`06` §5.9, PLANNED 삭제 후 flush), `generation_count`, 활성 plan 없음 404 `PLAN_NOT_FOUND`. S2에는 challenge 후보를 빈 목록으로 전달(BL-TDY-14) | P0 | S2 | BL-TDY-01, BL-TDY-02, BL-TDY-03, BL-TDY-04, BL-TDY-05, BL-TDY-06, BL-MEM-04, BL-TDY-10 | AC-02, AC-17 | FR-07, FR-21 |
 | BL-TDY-08 | Today 조회 API | `TodayQueryService` + `GET /today`(없으면 404 `TODAY_NOT_GENERATED`) | P0 | S2 | BL-TDY-01 | AC-02, AC-17 | FR-07 |
 | BL-TDY-09 | Task 상태 API | `PATCH /today/tasks/{taskId}`(status, version, SKIPPED→PLANNED는 활성 main 없을 때만) | P0 | S2 | BL-TDY-01 | AC-02 | FR-07 |
@@ -226,9 +226,9 @@
 | ID | 제목 | 설명 | P | Sprint | Depends on | AC | FR/NFR |
 |---|---|---|---|---|---|---|---|
 | BL-MEM-01 | Review 도메인 | `ReviewItem`, `ReviewAnswer` 매핑, 상태 전이(`04` §4.5), `unique(user_id, concept_key)` 위반 변환 | P0 | S2 | BL-FND-15 | AC-05 | FR-11 |
-| BL-MEM-02 | **`FinalRatingPolicy`** | 자기평가 → 최종 등급, `adjustedBy`(`06` §6.1). (직접 구현) | P0 | S2 | BL-FND-09 | AC-05 | FR-11 |
-| BL-MEM-03 | **`RuleBasedV1Scheduler`** | `ReviewSchedulingStrategy` 구현: 간격, clamp 1~60, horizon cap, `hard-strategy`(MULTIPLY/FIXED_2), due 계산(`06` §6.2, §6.6 vector 전부). (직접 구현) | P0 | S2 | BL-FND-09, BL-FND-10 | AC-05 | FR-11 |
-| BL-MEM-04 | **`DueReviewSelector`** | 오늘 due 대상·정렬·상한(20 / 복귀 모드 10)(`06` §6.5). (직접 구현) | P0 | S2 | BL-FND-10 | AC-05, AC-17 | FR-11 |
+| BL-MEM-02 | **`FinalRatingPolicy`** | 자기평가 → 최종 등급, `adjustedBy`(`06` §6.1). | P0 | S2 | BL-FND-09 | AC-05 | FR-11 |
+| BL-MEM-03 | **`RuleBasedV1Scheduler`** | `ReviewSchedulingStrategy` 구현: 간격, clamp 1~60, horizon cap, `hard-strategy`(MULTIPLY/FIXED_2), due 계산(`06` §6.2, §6.6 vector 전부). | P0 | S2 | BL-FND-09, BL-FND-10 | AC-05 | FR-11 |
+| BL-MEM-04 | **`DueReviewSelector`** | 오늘 due 대상·정렬·상한(20 / 복귀 모드 10)(`06` §6.5). | P0 | S2 | BL-FND-10 | AC-05, AC-17 | FR-11 |
 | BL-MEM-05 | Due 조회 API | `ReviewQueryService`(다른 모듈 공개) + `GET /reviews/due?limit=`: prompt + expectedAnswer + rubric. variant 출제(`variant_status=READY`)는 BL-MEM-10(Later)과 함께 | P0 | S2 | BL-MEM-01, BL-MEM-04 | AC-05, AC-10 | FR-11 |
 | BL-MEM-06 | 복습 답변 API | `ReviewService.answer` + `POST /reviews/{reviewItemId}/answer`(evaluate=false 경로): `review_answer` INSERT, 스케줄, leech(`06` §6.4 — 최근 1 plan-day 안 `LEECH_DETECTED` 이벤트가 있으면 planner reviewUrgency 최댓값), `REVIEW_ANSWERED`/`LEECH_DETECTED` 이벤트 | P0 | S2 | BL-MEM-02, BL-MEM-03, BL-MEM-05, BL-SKL-03 | AC-05, AC-10 | FR-11 |
 | BL-MEM-07 | 복습 카드 관리 API | `ReviewItemService`: `GET /review-items?skillId=&status=&cursor=`, `POST /review-items`(수동, `concept_key = MANUAL:{uuid}`, 첫 due 다음 plan-day), `PATCH /review-items/{reviewItemId}`(status/prompt/expectedAnswer/version, SUSPENDED→ACTIVE due 재설정). 2026-09-18 S2 → S3(수동 카드 CRUD 범위 축소). S2의 leech 자동 SUSPENDED는 BL-MEM-06에서 처리하고 재활성화는 S3 | P0 | S3 | BL-MEM-01 | AC-05 | FR-11 |
@@ -317,7 +317,7 @@
 | BL-JOB-01 | **`JobFitClassifier`** | requirement skill의 축별 `gap = max(target − evidence level)` → `READY`(≤ 0), `STRETCH`(= 1), `LATER`(≥ 2), skill 없음 → null. `matchedEvidenceIds`. 확률·점수 없음 (`06-learning-engine-rules.md`) | P1 | S7 | BL-SKL-02, BL-EVD-07 | AC-22 | FR-19 |
 | BL-JOB-02 | JD 분석 요청 | `JobAnalysisService` + `POST /jobs`(202, `sourceUrl` fetch 금지) + `JobAnalysisTask`(`JOB_EXTRACT`, `SkillCodeGuard`). `AiPendingJobCounter` 구현(job: 분석 중 JD의 PENDING/RUNNING 수) | P1 | S7 | BL-JOB-01, BL-FND-19, BL-FND-23, BL-AIP-07, BL-CNT-13, BL-AIP-10 | AC-22, AC-23 | FR-19 |
 | BL-JOB-03 | Job 조회·삭제 API | `JobController`: `GET /jobs/{jobId}`, `GET /jobs?cursor=`, `DELETE /jobs/{jobId}` | P1 | S7 | BL-FND-19 | AC-08, AC-22 | FR-19 |
-| BL-JOB-04 | JD purge·지표 | `RetentionCleanupJob`에 `job_description` 180일 purge 추가, `requirementCoverageBp` 지표. `JobCoverageProvider` 구현(최근 분석 JD 5개의 REQUIRED 수와 READY 수) | P2 | S7 | BL-FND-24, BL-EVD-01, BL-JOB-02 | AC-22 | NFR-05 |
+| BL-JOB-04 | JD purge·지표 | `job.application.JobPostingPurgeService`(`common.job.RetentionCleanupTarget` 구현)로 `job_description` 180일 purge, `requirementCoverageBp` 지표. `JobCoverageProvider` 구현(최근 분석 JD 5개의 REQUIRED 수와 READY 수) | P2 | S7 | BL-FND-24, BL-EVD-01, BL-JOB-02 | AC-22 | NFR-05 |
 | BL-JOB-05 | 공개 채용 소스 어댑터 | 약관 검토 후 공개 API만 (자동 크롤링 금지 유지) | P3 | Later | — | — | FR-19 |
 
 ### 4.14 CNT — Content
@@ -349,40 +349,44 @@
 
 ### 5.1 Epic × Sprint 항목 수
 
+`~~취소~~` 표시 6개(`BL-SEC-01`, `BL-SEC-02`, `BL-OPS-03`, `BL-OPS-08`, `BL-OPS-14`, `BL-AIP-04`)는 P·Sprint가 비어 있어 표에서 빠진다. `BL-SEC-18`(Supabase Auth, P0)은 Sprint가 아니라 **공개 배포 게이트**에 걸려 있어 Sprint 열에 넣지 않는다(`11` §3.10).
+
+§4 본문 행 216개 − 취소 6개 − 게이트 1개(`BL-SEC-18`) = **표 합계 209개**.
+
 | Epic | S0 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | Later | 합계 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| FND | 7 | 10 | 1 | 5 | 1 | 1 | — | 1 | — | 26 |
-| SEC | 7 | 3 | 1 | 1 | — | — | 3 | — | — | 15 |
-| OPS | 10 | — | 5 | 1 | — | — | 3 | — | 1 | 20 |
-| CLI | 3 | 8 | 8 | 4 | 1 | 2 | 2 | 1 | 1 | 30 |
-| CAR | — | 6 | 1 | — | — | 7 | — | — | 1 | 15 |
-| SKL | — | 2 | 1 | 3 | — | — | — | — | — | 6 |
-| TDY | — | — | 12 | 1 | — | 1 | — | — | — | 14 |
-| MEM | — | — | 8 | 2 | — | — | — | — | 1 | 11 |
-| TRN | — | — | — | 13 | — | — | — | — | 1 | 14 |
-| AIP | — | — | — | 13 | 1 | 1 | — | — | — | 15 |
+| FND | 8 | 9 | 1 | 5 | 1 | 1 | — | 1 | — | 26 |
+| SEC | 5 | 4 | 2 | 1 | — | — | 2 | — | 1 | 15 |
+| OPS | 9 | — | 4 | 1 | — | — | 3 | — | 2 | 19 |
+| CLI | 3 | 8 | 6 | 6 | 1 | 2 | 2 | 1 | 2 | 31 |
+| CAR | — | 6 | 1 | — | — | 7 | — | — | 2 | 16 |
+| SKL | — | 2 | 1 | 3 | — | 1 | — | — | — | 7 |
+| TDY | — | — | 11 | 2 | — | 1 | — | — | 1 | 15 |
+| MEM | — | — | 7 | 2 | — | — | — | — | 2 | 11 |
+| TRN | — | — | — | 13 | — | — | — | — | 2 | 15 |
+| AIP | — | 1 | — | 13 | 1 | 1 | — | — | — | 16 |
 | COA | — | — | — | — | 10 | — | — | — | 1 | 11 |
 | EVD | — | — | — | — | — | 4 | 4 | — | — | 8 |
 | JOB | — | — | — | — | — | — | — | 4 | 1 | 5 |
 | CNT | — | 5 | 1 | 4 | 1 | 1 | 1 | 1 | — | 14 |
-| **합계** | **27** | **34** | **38** | **47** | **14** | **17** | **13** | **7** | **7** | **204** |
+| **합계** | **25** | **35** | **34** | **50** | **14** | **18** | **12** | **7** | **14** | **209** |
 
 ### 5.2 Sprint × Priority 항목 수
 
 | Sprint | P0 | P1 | P2 | P3 | 합계 |
 |---|---:|---:|---:|---:|---:|
-| S0 | 26 | 1 | — | — | 27 |
-| S1 | 33 | 1 | — | — | 34 |
-| S2 | 29 | 8 | 1 | — | 38 |
-| S3 | 35 | 11 | 1 | — | 47 |
+| S0 | 25 | — | — | — | 25 |
+| S1 | 33 | 2 | — | — | 35 |
+| S2 | 28 | 5 | 1 | — | 34 |
+| S3 | 36 | 13 | 1 | — | 50 |
 | S4 | — | 14 | — | — | 14 |
-| S5 | 8 | 8 | 1 | — | 17 |
-| S6 | 1 | 12 | — | — | 13 |
+| S5 | 8 | 8 | 2 | — | 18 |
+| S6 | 1 | 11 | — | — | 12 |
 | S7 | — | 6 | 1 | — | 7 |
-| Later | — | — | — | 7 | 7 |
-| **합계** | **132** | **61** | **4** | **7** | **204** |
+| Later | — | — | — | 14 | 14 |
+| **합계** | **131** | **59** | **5** | **14** | **209** |
 
-- S3가 가장 무겁다(47개, 3주). S3의 P1·P2 12개는 S4로 1회 이월할 수 있고, 이월 순서는 `BL-FND-26` → `BL-CLI-22` → `BL-SKL-06` → `BL-CNT-09` → `BL-SEC-08` → `BL-MEM-10` → `BL-MEM-09` → `BL-TRN-04` → 나머지다.
+- S3가 가장 무겁다(50개, 3주). S3의 P1·P2 **14개**(P1 13 + P2 1)는 S4로 1회 이월할 수 있고, 이월 순서는 `BL-FND-26` → `BL-CLI-22` → `BL-SKL-06` → `BL-CNT-09` → `BL-SEC-08` → `BL-MEM-09` → `BL-TRN-04` → 나머지다(`BL-CLI-14`, `BL-CLI-18`, `BL-CLI-23`, `BL-FND-24`, `BL-TDY-13`, `BL-TRN-13`, `BL-CNT-08`). `BL-MEM-10`은 REVIEW_VARIANT 축소로 P3·Later라 대상이 아니다.
 - 항목 수는 작업량이 아니다. 작업량 추정과 재추정 규칙은 `11-development-roadmap.md` §2.
 
 ---
@@ -452,9 +456,9 @@
 | `ProgressSnapshotJob` | job | BL-CAR-14 |
 | `WeeklyReviewJob` | job | BL-EVD-02 |
 | `CoachContentPurgeJob` | job | BL-COA-10 |
-| `RetentionCleanupJob` | job | BL-FND-24, BL-JOB-04 |
+| `RetentionCleanupJob` (+ port `RetentionCleanupTarget`) | job | BL-FND-24, BL-JOB-04 |
 | `AccountDeletionJob` | job | BL-SEC-14 |
-| `OrphanAsyncTaskJob` | job | BL-FND-23 |
+| `OrphanAsyncTaskJob` (+ port `OrphanAsyncTaskSweeper`) | job | BL-FND-23 |
 | `CoachAnalysisTask` | async | BL-COA-03 |
 | `ChallengeGenerationTask` | async | BL-TRN-04 |
 | `SubmissionEvaluationTask` | async | BL-TRN-09 |
@@ -466,19 +470,19 @@
 
 | 클래스 | `06` 절 | BL | 구현 주체 |
 |---|---|---|---|
-| `PlanningLevelPolicy` | §7.5 | BL-SKL-02 | 사용자 |
-| `SkillLevelRules` | §7.1~7.4 | BL-SKL-04 | 사용자 |
-| `StudyBudgetCalculator` | §3 | BL-CAR-08 | 사용자 |
-| `DeadlineRiskEvaluator` | §4.1~4.3 | BL-CAR-09 | 사용자 |
-| `ReplanSuggestionPolicy` | §4.4 | BL-CAR-10 | 사용자 |
-| `PlannerScoring` | §5.4~5.5, §5.7 | BL-TDY-02 | 사용자 |
-| `TaskProposalPolicy` | §5.3 | BL-TDY-03 | 사용자 |
-| `TimeAllocator` | §5.6 | BL-TDY-04 | 사용자 |
-| `ReasonTemplates` | §5.8 | BL-TDY-05 | 사용자 |
-| `ComebackModePolicy` | §5.5 | BL-TDY-06 | 사용자 |
-| `FinalRatingPolicy` | §6.1 | BL-MEM-02 | 사용자 |
-| `RuleBasedV1Scheduler` | §6.2, §6.6 | BL-MEM-03 | 사용자 |
-| `DueReviewSelector` | §6.5 | BL-MEM-04 | 사용자 |
+| `PlanningLevelPolicy` | §7.5 | BL-SKL-02 | 에이전트 |
+| `SkillLevelRules` | §7.1~7.4 | BL-SKL-04 | 에이전트 |
+| `StudyBudgetCalculator` | §3 | BL-CAR-08 | 에이전트 |
+| `DeadlineRiskEvaluator` | §4.1~4.3 | BL-CAR-09 | 에이전트 |
+| `ReplanSuggestionPolicy` | §4.4 | BL-CAR-10 | 에이전트 |
+| `PlannerScoring` | §5.4~5.5, §5.7 | BL-TDY-02 | 에이전트 |
+| `TaskProposalPolicy` | §5.3 | BL-TDY-03 | 에이전트 |
+| `TimeAllocator` | §5.6 | BL-TDY-04 | 에이전트 |
+| `ReasonTemplates` | §5.8 | BL-TDY-05 | 에이전트 |
+| `ComebackModePolicy` | §5.5 | BL-TDY-06 | 에이전트 |
+| `FinalRatingPolicy` | §6.1 | BL-MEM-02 | 에이전트 |
+| `RuleBasedV1Scheduler` | §6.2, §6.6 | BL-MEM-03 | 에이전트 |
+| `DueReviewSelector` | §6.5 | BL-MEM-04 | 에이전트 |
 | `HintLadderPolicy` | §9.1~9.2 | BL-TRN-07 | 에이전트 |
 | `RubricScorer`, `AttemptOutcomeCalculator` | §8.1~8.2 | BL-TRN-11 | 에이전트 |
 | `DiscoveredByResolver` | §9.3 | BL-COA-09 | 에이전트 |
@@ -494,11 +498,13 @@
 | `DevPilotProperties.ai` | BL-AIP-02 |
 | `DeepSeekAiProvider`, `DeepSeekBalanceClient` | BL-AIP-03 |
 | `PromptRegistry` | BL-AIP-05 |
-| 출력 스키마 record | BL-AIP-06 |
-| `AiGateway`, `AiCallLog`, `AiCallLogRepository` | BL-AIP-07 |
+| `OutputSchemaRegistry`, `integration.ai.api.output` record 9종, 전용 `ObjectMapper` | BL-AIP-06 |
+| `AiGateway`, `AiCallLog`, `AiCallLogRepository`, `AiCallLogWriter`(REQUIRES_NEW) | BL-AIP-07 |
 | `OutputGuardChain` (6종) | BL-AIP-08 |
 | `SecretMasker` | BL-AIP-09 |
 | `AiBudgetGuard` | BL-AIP-10 |
+| `AiBalanceMonitor`, `AiBalanceCheckJob` (`integration.ai.budget`) | BL-AIP-17 |
+| `AiCallLogRetentionService` (`common.job.RetentionCleanupTarget` 구현) | BL-FND-24 |
 | `AiCostCalculator` | BL-AIP-11 |
 | AI ArchUnit 규칙 | BL-AIP-12 |
 | evals | BL-AIP-13 |

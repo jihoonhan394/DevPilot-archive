@@ -12,12 +12,12 @@
 
 | # | 원칙 | 적용 규칙 |
 |---|---|---|
-| R-1 | **Walking skeleton** | S0에서 브라우저 → Tailscale HTTPS(`tailscale serve`) → Caddy(`127.0.0.1:18080`) → API → 서버 PostgreSQL 16 전 구간을 먼저 연결한다(인증은 `devtoken` 모드, `POST /dev/token`). 기능은 이 골격 위에 세로로 한 조각씩 붙인다 |
+| R-1 | **Walking skeleton** | S0에서 브라우저 → Tailscale HTTPS(`tailscale serve`) → Caddy(`127.0.0.1:18080`) → API → 서버 PostgreSQL 16 전 구간을 먼저 연결한다(인증은 `devtoken` 모드, `POST /api/v1/dev/token`). 기능은 이 골격 위에 세로로 한 조각씩 붙인다 |
 | R-2 | **S0부터 배포** | S0 이후 모든 Sprint의 exit criteria에는 "배포 환경 확인"이 들어간다. 배포는 `release.yml`이 만든 이미지·web zip을 로컬에서 `ssh <server>` → `deploy.sh v0.<sprint>.<patch>`로 올리는 수동 절차다(결정 D). 로컬에서만 동작하는 기능은 완료가 아니다 |
 | R-3 | **AI 없이 먼저 쓴다** | S1~S2는 AI 호출이 없다(prod `DEVPILOT_AI_PROVIDER=disabled`, `GET /me` `aiStatus=DISABLED`). Today·Review·Plan이 AI 없이 동작한 뒤 AI(DeepSeek)를 붙인다(NFR-03) |
 | R-4 | **날짜 고정 Sprint** | Sprint 기간은 바꾸지 않는다. 남은 작업은 `13-product-backlog.md` §1 우선순위 규칙으로 이월하거나 Later로 보낸다 |
 | R-5 | **결정적 규칙은 test vector 먼저** | `06-learning-engine-rules.md`의 vector를 `@ParameterizedTest`로 옮긴 실패 테스트가 구현보다 먼저 merge된다 |
-| R-6 | **Spike로 기술 리스크를 S0에 소진** | 신규 스택(Boot 4.1, Java 25, Flutter Web 한글 입력, 자체 서버 amd64 배포 + Tailscale HTTPS, DeepSeek `/responses` 구조화 출력)의 불확실성은 S0 spike에서 확인하고 ADR로 결론을 남긴다. SP-2·SP-4 6번은 2026-09-18에 이미 확인됐다(§4) |
+| R-6 | **Spike로 기술 리스크를 S0에 소진** | 신규 스택(Boot 4.1, Java 25, Flutter Web 한글 입력, 자체 서버 amd64 배포 + Tailscale HTTPS(공개 전환 시 arm64 추가, §3.10), DeepSeek `/responses` 구조화 출력)의 불확실성은 S0 spike에서 확인하고 ADR로 결론을 남긴다. SP-2·SP-4 6번은 2026-09-18에 이미 확인됐다(§4) |
 | R-7 | **DevPilot 개발 = 학습 과제** | DevPilot 구현 작업을 사용자 학습 plan의 `PROJECT_TASK`와 evidence 후보로 쓴다. 개발 시간과 학습 시간이 따로 경쟁하지 않게 한다 |
 | R-8 | **레벨 도달 상한을 Sprint 목표에 맞춘다** | skill 레벨 4·5의 상승 규칙 입력(evidence 승인, coach finding, variant 답변, difficulty 5 challenge)은 S4·S6 이후에야 생긴다. S3까지는 K·I·E ≤ 3, D = 0이 실질 상한이다(`06` §7.2 "도달 가능 상한"). 그 전 Sprint의 데모·AC에 레벨 4·5를 기대하지 않는다 |
 
@@ -29,22 +29,22 @@
 
 | 항목 | 값 |
 |---|---|
-| 사용자 투입 | 주 8~10시간 (리뷰·결정·직접 구현·수동 운영 작업 포함) |
+| 사용자 투입 | 주 4시간 이하 (PR 리뷰·결정·수동 운영 작업. 구현은 하지 않는다 — §5) |
 | 에이전트 | 구현의 대부분(골격, DTO·Controller, 화면, 인프라 스크립트, 테스트 작성). 사용자 리뷰 없이 merge하지 않는다 |
-| 사용자 시간 배분 기준 | 직접 구현 40% · PR 리뷰 40% · 수동 운영·결정 20% |
+| 사용자 시간 배분 기준 | PR 리뷰 60% · 결정·수동 운영 40%. 남는 시간은 DevPilot으로 공부하는 데 쓴다(RISK-01) |
 
 사용자가 직접 해야 하는 운영 작업(에이전트가 대신할 수 없는 것, S0): tailnet에서 MagicDNS + HTTPS Certificates 활성화(`tailscale serve`의 전제), healthchecks.io 계정·check 생성(`HEALTHCHECKS_PING_URL`), DeepSeek 잔액 소액 충전(USD 10 안팎)과 API 키 발급, GitHub secrets(`ai-eval` environment의 `DEEPSEEK_API_KEY`) 등록, 서버에서 `prepare-server.sh` 1회 실행과 `api.env`·`ops.env` 채우기. 실제 값은 `DevPilot-ops/`에만 기록한다.
 
-| Sprint | 기간 | 일수 | 사용자 시간 | 사용자 직접 구현 대상 |
+| Sprint | 기간 | 일수 | 사용자 시간 (리뷰·결정·운영) | 사용자 수동 작업 |
 |---|---|---:|---:|---|
-| S0 | 2026-09-17 ~ 09-27 | 11 | 13~16h | spike 수동 확인, 위 운영 작업(tailnet HTTPS, healthchecks.io, DeepSeek 충전, GitHub secrets, 서버 준비) |
-| S1 | 09-28 ~ 10-11 | 14 | 16~20h | `PlanningLevelPolicy` |
-| S2 | 10-12 ~ 10-25 | 14 | 16~20h | planner 5종, review scheduler 3종 |
-| S3 | 10-26 ~ 11-15 | 21 | 24~30h | `SkillLevelRules`, `SkillStateUpdater` |
-| S4 | 11-16 ~ 12-06 | 21 | 24~30h | (없음 — Coach로 자기 코드 리뷰 시작) |
-| S5 | 12-07 ~ 12-20 | 14 | 16~20h | budget·risk·replan 제안 3종 |
-| S6 | 12-21 ~ 2027-01-04 | 15 | 12~20h (연말 변동) | (없음) |
-| S7 | 2027-01-05 ~ 01-25 | 21 | 24~30h | (없음) |
+| S0 | 2026-09-17 ~ 09-27 | 11 | 6~7h | spike 수동 확인, 위 운영 작업(tailnet HTTPS, healthchecks.io, DeepSeek 충전, GitHub secrets, 서버 준비) |
+| S1 | 09-28 ~ 10-11 | 14 | 8h | (없음 — PR 리뷰·결정) |
+| S2 | 10-12 ~ 10-25 | 14 | 8h | (없음 — PR 리뷰·결정) |
+| S3 | 10-26 ~ 11-15 | 21 | 12h | (없음 — PR 리뷰·결정) |
+| S4 | 11-16 ~ 12-06 | 21 | 12h | (없음 — Coach로 자기 코드 리뷰 시작) |
+| S5 | 12-07 ~ 12-20 | 14 | 8h | (없음 — PR 리뷰·결정) |
+| S6 | 12-21 ~ 2027-01-04 | 15 | 8h (연말 변동) | (없음) |
+| S7 | 2027-01-05 ~ 01-25 | 21 | 12h | (없음) |
 
 ### 2.2 재추정 (S1 종료일 2026-10-11)
 
@@ -52,15 +52,15 @@ S1 종료 회고에서 다음 3개를 기록한다(`20-decisions-and-risks.md` R
 
 | 측정 | 계산 |
 |---|---|
-| BL 완료율 | S1 완료 BL 수 / S1 계획 BL 수(34) |
+| BL 완료율 | S1 완료 BL 수 / S1 계획 BL 수(35, `13-product-backlog.md` §5.1) |
 | 사용자 실제 투입 | S1 2주 합계 시간 / 2 |
 | 재작업률 | 에이전트 PR 중 리뷰 후 2회 이상 수정 요청한 PR 수 / 전체 PR 수 |
 
 | 결과 | 조치 |
 |---|---|
-| 완료율 ≥ 90%, 투입 ≤ 10h/주 | 계획 유지 |
-| 완료율 70~89% 또는 투입 10~12h/주 | S2의 P1·P2(`BL-SEC-10`, `BL-SEC-11`, `BL-OPS-13`, `BL-OPS-19`, `BL-CLI-19`, `BL-CAR-07`)를 S3으로 미리 옮긴다 |
-| 완료율 < 70% 또는 투입 > 12h/주 | 위 조치 + S3의 P1·P2를 S4로 미리 옮기고(순서는 `13-product-backlog.md` §5), S4 Coach 범위를 `BL-COA-01~06, 08~10`으로 줄인다(`BL-COA-07` finding hint는 S5). 결정은 `20-decisions-and-risks.md`에 기록 |
+| 완료율 ≥ 90%, 투입 ≤ 3h/주 | 계획 유지 |
+| 완료율 70~89% 또는 투입 3~4h/주 | S2의 P1·P2(`BL-SEC-10`, `BL-SEC-11`, `BL-OPS-13`, `BL-OPS-19`, `BL-CLI-19`, `BL-CAR-07`)를 S3으로 미리 옮긴다 |
+| 완료율 < 70% 또는 투입 > 4h/주 | 위 조치 + S3의 P1·P2를 S4로 미리 옮기고(순서는 `13-product-backlog.md` §5), S4 Coach 범위를 `BL-COA-01~06, 08~10`으로 줄인다(`BL-COA-07` finding hint는 S5). 결정은 `20-decisions-and-risks.md`에 기록 |
 
 S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판정(§6)은 이와 별개로 실행한다.
 
@@ -74,7 +74,7 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 
 | Sprint | 목표 | 범위 (BL, `13-product-backlog.md` §5) | Exit criteria |
 |---|---|---|---|
-| **S0** | Bootstrap + walking skeleton + 수동 배포 + spike | FND-01~07·22, SEC-03·07·09·12·16, OPS-01·02·04~07·09·10·21, CLI-01~03 | CI green(`main`·`developer`), `https://<tailnet-host>`에서 dev 로그인(`POST /dev/token`) → `/me` 200(AC-25), SP-1~4 결론 ADR 기록, `deploy.sh` 배포 + 롤백 확인, 배포 환경 확인 |
+| **S0** | Bootstrap + walking skeleton + 수동 배포 + spike | FND-01~07·22, SEC-03·07·09·12·16, OPS-01·02·04~07·09·10·21, CLI-01~03 | CI green(`main`·`developer`), `https://<tailnet-host>`에서 dev 로그인(`POST /api/v1/dev/token`) → `/me` 200(AC-25), SP-1~4 결론 ADR 기록, `deploy.sh` 배포 + 롤백 확인, 배포 환경 확인 |
 | **S1** | Identity · Onboarding · Goal · Plan · seed v0 | FND-08~14·20·21, SEC-04~06·14, AIP-16, CLI-04~11, CAR-01~06, SKL-01~02, CNT-01~05 | AC-01, AC-11(온보딩 — seed 카드·snapshot 생략), AC-18, AC-25(allowlist 재확인), AC-24, AC-08(S1 endpoint), AC-09(planning level), AC-15(`DELETE /me` 상태 변경), 배포 환경 확인 |
 | **S2** | Today · Session · Review(AI 없음) · Dashboard 최소 · PWA · 백업 자동화 | FND-15, SEC-10·11, OPS-11~13·19, CLI-12·13·15~17·19, CAR-07, SKL-03, TDY-01~11, MEM-01~06·08, CNT-06 | AC-02, AC-05(복습 스케줄), AC-10, AC-11(seed 카드), AC-17, AC-08(S2 endpoint), 배포 환경 확인 → **10-26 실사용 시작** |
 | **S3** | AI Platform(DeepSeek) · Training · Skill updater · 캘린더·수동 카드 | FND-16·23~26, SEC-08, OPS-15, CLI-14·18·20~23, SKL-04~06, TDY-13·14, MEM-07·09, TRN-01~13, AIP-01~03·05~12·15·17, CNT-07~10 | AC-04, AC-05(challenge 실패·수동 카드), AC-09, AC-11(진단), AC-12, AC-13, AC-14(submission), AC-16(challenge), AC-23, 배포 환경 확인 |
@@ -82,11 +82,11 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 | **S5** | Replan 제안 · Budget/Risk · Weekly · Dashboard 완성 | FND-18, CLI-25~26, CAR-08~14, SKL-07, TDY-12, EVD-01~04, AIP-14, CNT-14 | AC-03, AC-12(402·content_filter), AC-19(추세), AC-21(weekly), 배포 환경 확인 |
 | **S6** | Evidence · Export · 복구 리허설 · 하드닝 | SEC-13·15, OPS-16~18, CLI-27~28, EVD-05~08, CNT-12 | AC-15(export), AC-21(evidence), AC-08·AC-18 전체 재검증, 복구 리허설 1회 기록, 배포 환경 확인 |
 | **S7** | Job Radar | FND-19, CLI-29, JOB-01~04, CNT-13 | AC-22, 배포 환경 확인 |
-| **Later** | 2027-02~ | OPS-20·22, SEC-17·18, CLI-30·31, CAR-15·16, MEM-10·11, TDY-15, TRN-14·15, COA-11, JOB-05 | AC-20(Supabase 도입 시), AC-15(삭제 job) |
+| **Later** | 2027-02~ | OPS-20·22, SEC-17, CLI-30·31, CAR-15·16, MEM-10·11, TDY-15, TRN-14·15, COA-11, JOB-05. **`BL-SEC-18`(Supabase Auth)은 Later가 아니라 공개 전환 게이트의 필수 선행(P0)이다 — §3.10** | AC-20(Supabase 도입 시), AC-15(삭제 job) |
 
 "배포 환경 확인" = `main`의 `v0.<sprint>.<patch>` tag를 `release.yml`이 빌드(amd64 이미지 → GHCR, web zip → release)하고, 로컬에서 `ssh <server>` → `sudo -u deploy /opt/devpilot/deploy.sh v0.x.y`로 배포해 `/actuator/health`가 `UP`이며, 해당 Sprint 데모 체크리스트를 **tailnet URL**(`https://<tailnet-host>`)에서 모두 통과한 상태. 배포 자동화(Actions → tailnet)는 Later(`BL-OPS-22`).
 
-범위 축소(2026-09-18): Supabase 전부 Later(`BL-SEC-18`), `POST /plans` Later(`BL-CAR-16`), `REVIEW_VARIANT` Later(`BL-MEM-10`), 계정 삭제 job Later(`BL-SEC-17`, `DELETE /me` 상태 변경은 S1), ICS 캘린더·수동 카드 CRUD는 S3, replan 제안은 S5, Trivy·CodeQL·digest 고정은 S2 P1(`BL-SEC-10`). S1 온보딩은 8·9단계(seed 카드 배정·snapshot)를 생략하고(`assignedSeedCardCount = 0`, `latestRiskLevel = null`), S2에는 `deadline_risk = null`이며 planner는 LOW로 취급한다(risk 계산은 S5).
+범위 축소(2026-09-18): Supabase Auth는 Sprint 범위 밖(`BL-SEC-18` — 공개 전환 게이트의 필수 선행, §3.10), `POST /plans` Later(`BL-CAR-16`), `REVIEW_VARIANT` Later(`BL-MEM-10`), 계정 삭제 job Later(`BL-SEC-17`, `DELETE /me` 상태 변경은 S1), ICS 캘린더·수동 카드 CRUD는 S3, replan 제안은 S5, Trivy·CodeQL·digest 고정은 S2 P1(`BL-SEC-10`). S1 온보딩은 8·9단계(seed 카드 배정·snapshot)를 생략하고(`assignedSeedCardCount = 0`, `latestRiskLevel = null`), S2에는 `deadline_risk = null`이며 planner는 LOW로 취급한다(risk 계산은 S5).
 
 ### 3.2 S0 — Bootstrap (2026-09-17 ~ 09-27)
 
@@ -101,7 +101,7 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 
 데모 체크리스트:
 - [ ] `https://<tailnet-host>` 인증서 유효(Tailscale 발급, 브라우저 경고 없음), `/actuator/health` → `{"status":"UP"}`, `/actuator/env` → 404, `curl http://127.0.0.1:18080/actuator/health`(서버 안)도 UP
-- [ ] SCR-LOGIN(dev 모드)에서 allowlist 이메일 입력 → `POST /dev/token` → 화면에 `/api/v1/me` 응답(sub) 표시. 토큰 없이 `/api/v1/me` → 401 ProblemDetail. allowlist 밖 이메일 → 403 `USER_NOT_ALLOWED` (AC-25)
+- [ ] SCR-LOGIN(dev 모드)에서 allowlist 이메일 입력 → `POST /api/v1/dev/token` → 화면에 `/api/v1/me` 응답(sub) 표시. 토큰 없이 `/api/v1/me` → 401 ProblemDetail. allowlist 밖 이메일 → 403 `USER_NOT_ALLOWED` (AC-25)
 - [ ] `feature/*` → `developer` PR 1개와 `developer` → `main` PR 1개 모두 `ci.yml` 4개 job green, gitleaks·actions SHA 고정 검사 통과
 - [ ] `v0.0.1` tag → `release.yml`이 linux/amd64 이미지를 GHCR에, web zip을 release에 올림 → 로컬에서 `deploy.sh v0.0.1` → health 통과. 기동에 실패하는 `v0.0.2`를 `deploy.sh v0.0.2`로 배포하면 `v0.0.1`로 자동 롤백(2분 이내)
 - [ ] 서버의 `ss -ltnp`에서 DevPilot 관련 listen은 `127.0.0.1:18080`뿐(api 8080 publish 없음), tailnet 밖(휴대폰 LTE)에서 `https://<tailnet-host>` 연결 실패
@@ -111,7 +111,7 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 ### 3.3 S1 — Identity · Plan (09-28 ~ 10-11)
 
 데모 체크리스트:
-- [ ] allowlist 밖 이메일로 `POST /dev/token` → 403, SCR-NOT-ALLOWED, DB `app_user` 0행. allowlist 이메일은 첫 `GET /me`에서 JIT 생성(`AUTH_USER_PROVISIONED` 감사 로그)
+- [ ] allowlist 밖 이메일로 `POST /api/v1/dev/token` → 403, SCR-NOT-ALLOWED, DB `app_user` 0행. allowlist 이메일은 첫 `GET /me`에서 JIT 생성(`AUTH_USER_PROVISIONED` 감사 로그)
 - [ ] 온보딩 4단계 완료 → plan v1(템플릿 milestone) 표시, `GET /skills/me`에 자기평가가 planning level로 반영(최대 3). 응답 `assignedSeedCardCount = 0`, `latestRiskLevel = null`(S1 생략 단계)
 - [ ] `GET /me` `aiStatus = DISABLED`, `aiUsage`는 0·예산값만(AI 호출 없음)
 - [ ] milestone 상태 변경(PATCH) 후 버전 증가 없음, milestone 추가(replan) 후 v2 ACTIVE·v1 SUPERSEDED 이력 표시
@@ -125,7 +125,7 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 - S2부터 `REVIEW_ANSWERED`, `SESSION_*` 이벤트가 쌓인다. skill 레벨 갱신은 S3(`BL-SKL-05`)부터 적용되고, S2 이벤트도 60일 창 안에서 규칙 입력이 된다.
 - S1에 온보딩한 사용자의 seed 카드는 S2 첫 배포 기동 시 배정된다(`BL-MEM-08`).
 - S2에는 `deadline_risk = null`이고 planner는 risk를 LOW로 취급한다(risk 계산·snapshot은 S5). 수동 카드 CRUD·ICS 캘린더는 S3이다.
-- 일일 자동 백업(`BL-OPS-11`: `backup.sh` → `pg_dump -Fc` → `/opt/devpilot/backups`, `devpilot-backup.timer` 18:30 UTC)을 10-25 전에 활성화하고, 로컬 PC에서 `pull-backup.ps1`로 받은 첫 파일로 `db-restore` 절차의 로컬 복구를 1회 확인한다. 휴대폰 PWA는 Tailscale 앱이 켜져 있어야 접속된다.
+- 일일 자동 백업(`BL-OPS-11`: `backup.sh` → `pg_dump -Fc` → `/opt/devpilot/backups`, `devpilot-backup.timer` 19:00 UTC)을 10-25 전에 활성화하고, 로컬 PC에서 `pull-backup.ps1`로 받은 첫 파일로 `db-restore` 절차의 로컬 복구를 1회 확인한다. 휴대폰 PWA는 Tailscale 앱이 켜져 있어야 접속된다.
 
 데모 체크리스트 (휴대폰 PWA + 데스크톱, 둘 다 tailnet 안):
 - [ ] 30분·NORMAL로 Today 생성 → main 1개, reason 1~3개, 합계 시간 ≤ 33분
@@ -180,7 +180,7 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 - [ ] 독립 해결 이벤트로 evidence 초안 → 편집 → accept → skill `evidence_count` 증가
 - [ ] STAR Markdown export 다운로드
 - [ ] `GET /me/export` JSON에 모든 섹션 존재
-- [ ] `account-deletion` runbook 리허설: 테스트 계정 `DELETE /me` → allowlist 제거 → 재기동 → 그 이메일로 `/dev/token` 403(자동 삭제 job은 Later `BL-SEC-17`)
+- [ ] `account-deletion` runbook 리허설: 테스트 계정 `DELETE /me` → allowlist 제거 → 재기동 → 그 이메일로 `/api/v1/dev/token` 403(자동 삭제 job은 Later `BL-SEC-17`)
 - [ ] 백업 보관 개수(서버 7일·로컬 8주)·healthchecks.io 알림 확인, 복구 리허설(`db-restore`) 기록표 1행
 - [ ] CSP 강제 상태에서 전체 화면 콘솔 위반 0건
 
@@ -192,6 +192,18 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 - [ ] 실제 채용 공고 본문 붙여넣기 → requirement별 READY/STRETCH/LATER, 화면·응답에 숫자 점수 없음
 - [ ] `sourceUrl` 입력 후에도 서버 외부 요청 없음(로그·테스트 결과)
 - [ ] 공고 삭제 → requirement 함께 삭제
+
+### 3.10 공개 전환 게이트 (Sprint 밖)
+
+**Tailscale 전용은 목표가 아니라 임시 수단이다. 최종은 공개 배포다.**
+
+- **현재 (S0~S2, ~2026-10-26)**: 자체 서버 + Tailscale HTTPS, 인증은 `devtoken`. 지금 서버 PostgreSQL을 테스트 DB로 써야 해서 이렇게 연결한 것이고, **임시 배포**다.
+- **공개 전환 (S3 이후, 시점 미정)**: 자체 서버를 웹으로 공개하거나 OCI Always Free에 배포한다. 어느 쪽인지는 그때 정한다. 선행 조건 세 가지를 모두 채우기 전에는 공개하지 않는다.
+  1. `BL-SEC-18`(Supabase Auth, P0) 완료 — `devtoken`은 "tailnet 밖에서 `/api/v1/dev/token`에 닿을 수 없다"는 전제 하나로만 안전하다(`03` §4.2).
+  2. TLS를 `tailscale serve`에서 **ACME**로 전환.
+  3. Caddy를 공개 publish(현재는 `127.0.0.1:18080`에만 바인딩).
+  - OCI Always Free는 arm64(Ampere)이므로 이미지를 `linux/amd64,linux/arm64` 멀티아치로 빌드해야 한다(`release.yml`).
+- 이 전환은 **Sprint 범위가 아니라 별도 게이트**다. S3~S7 계획 자체는 바뀌지 않고, 게이트를 통과한 날부터 노출 방식만 바뀐다.
 
 ---
 
@@ -245,6 +257,8 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 
 ### SP-3 amd64 이미지 → GHCR → 서버 `deploy.sh` + Tailscale HTTPS (`BL-OPS-02`, timebox 2일)
 
+> 아키텍처: 현재 서버는 **amd64**다. 공개 전환 후보인 OCI Always Free는 **arm64(Ampere)**이므로, 게이트(§3.10)를 통과할 때 `release.yml`을 `linux/amd64,linux/arm64` 멀티아치 빌드로 바꾼다. 이 spike는 amd64만 확인한다.
+
 **목적**: `release.yml`이 만든 linux/amd64 이미지를 서버가 pull해 Caddy(`127.0.0.1:18080`, TLS 없음) 뒤에서 기동하고, 호스트의 `tailscale serve`가 HTTPS를 붙여 tailnet 안 브라우저에서 유효한 인증서로 접속되는지, 수동 배포·자동 롤백 경로가 동작하는지 확인한다. 서버는 Rocky 9.8 x86_64, 2 vCPU/8GB(가용 4.7GB), Docker 29.6.1, Tailscale 1.98.8, 80/443 비어 있음, 8080~8084·8090·5432 사용 중(공용).
 
 **절차**
@@ -286,35 +300,20 @@ S3 종료(2026-11-15)에 같은 측정을 반복한다. 2026-11-09 stop-loss 판
 
 ### SP-5 ~~취소~~ Supabase Auth 단독 운용 (`BL-SEC-01`, 취소 2026-09-18)
 
-Supabase Auth 도입이 Later(`BL-SEC-18`)로 미뤄지면서 취소됐다(결정 A: 운영 인증도 `devtoken` 모드). 원래 절차(Data API 비활성 상태의 GitHub OAuth 로그인·토큰 갱신, JWKS `alg`·`iss`·`aud` 확정, 가입 비활성, 타 프로젝트 토큰 401)는 `BL-SEC-18` 착수 시 spike로 되살린다. `devtoken` 모드의 확인 항목은 spike가 아니라 AC-25(`12-acceptance-criteria.md`)로 S0에서 자동 테스트한다.
+Supabase Auth 도입이 Sprint 범위 밖(`BL-SEC-18` — 공개 전환 게이트의 필수 선행, §3.10)으로 미뤄지면서 취소됐다(결정 A: 현재 운영 인증도 `devtoken` 모드). 원래 절차(Data API 비활성 상태의 GitHub OAuth 로그인·토큰 갱신, JWKS `alg`·`iss`·`aud` 확정, 가입 비활성, 타 프로젝트 토큰 401)는 `BL-SEC-18` 착수 시 spike로 되살린다. `devtoken` 모드의 확인 항목은 spike가 아니라 AC-25(`12-acceptance-criteria.md`)로 S0에서 자동 테스트한다.
 
-**ADR 기록**: ADR-031(devtoken 운영 인증), ADR-014·ADR-023은 Supabase 도입 시 재적용
+**ADR 기록**: ADR-033(devtoken 운영 인증), ADR-014·ADR-023은 Supabase 도입 시 재적용
 
 ---
 
-## 5. 직접 구현 영역
+## 5. 구현 분담
 
-면접에서 설명해야 하는 핵심 규칙은 사용자가 직접 설계·구현한다(RISK-09). 에이전트는 test vector 테스트 작성과 리뷰만 한다.
+**규칙 클래스를 포함해 DevPilot 구현은 전부 에이전트가 한다.** 사용자 작업은 결정(ADR 승인), PR 리뷰, 계정·서버 설정뿐이다.
 
-| 영역 | `06` 절 | 클래스 | BL | Sprint |
-|---|---|---|---|---|
-| Planner | §5 | `PlannerScoring`, `TaskProposalPolicy`, `TimeAllocator`, `ReasonTemplates`, `ComebackModePolicy` | BL-TDY-02~06 | S2 |
-| Review scheduler | §6 | `FinalRatingPolicy`, `RuleBasedV1Scheduler`, `DueReviewSelector` | BL-MEM-02~04 | S2 |
-| Skill updater | §7 | `PlanningLevelPolicy`, `SkillLevelRules`, `SkillStateUpdater` | BL-SKL-02, BL-SKL-04, BL-SKL-05 | S1, S3 |
-| Budget · risk | §3~4 | `StudyBudgetCalculator`, `DeadlineRiskEvaluator`, `ReplanSuggestionPolicy` | BL-CAR-08~10 | S5 |
+2026-09-18 전제 정정: DevPilot은 이직 포트폴리오가 아니라 **이걸로 공부해서 이직 실력을 만드는 학습 도구**다. 면접에서 설명할 대상이 아니므로 "핵심 규칙은 사용자가 직접 구현한다"는 근거가 사라졌고, 직접 구현은 RISK-01(DevPilot 개발이 학습 시간을 잠식, 확률 H·영향 H)을 키우기만 한다. 사용자 시간은 DevPilot **으로 공부하는 데** 쓴다(`20-decisions-and-risks.md` RISK-01).
 
-작업 흐름:
-
-| 단계 | 담당 | 산출물 |
-|---|---|---|
-| 1 | 에이전트 | 입력·출력 record, 빈 구현 클래스(`UnsupportedOperationException`), `06` vector를 옮긴 `@ParameterizedTest`(전부 실패), 경계 케이스 추가 제안 목록. PR 제목 `test(<module>): vectors for <Class>` |
-| 2 | 사용자 | 1단계 PR 리뷰 → vector가 `06`과 일치하는지 확인 후 merge |
-| 3 | 사용자 | 구현 PR. 설계 메모(왜 이 구조인지 3~5줄)를 PR 본문에 직접 작성 |
-| 4 | 에이전트 | 리뷰 코멘트: N-1~N-7 위반(부동소수점, 나눗셈 함수, `multiplyExact`), Spring/JPA import, 무인자 시간 호출, 설정값 하드코딩, 누락 vector |
-| 5 | 사용자 | 반영 후 merge. S4부터는 같은 코드를 Project Coach에 넣어 self-review 기록 |
-
-- 사용자가 Sprint 중반(Sprint 시작 + 7일)까지 3단계를 시작하지 못하면, 해당 클래스는 에이전트가 구현하고 사용자는 설계 메모만 작성한다. 이 전환은 `20-decisions-and-risks.md`에 기록한다.
-- 직접 구현 영역 밖(트랜잭션 경계, JPA 매핑)은 에이전트가 구현하되 사용자가 리뷰에서 N+1·트랜잭션 범위를 설명할 수 있어야 merge한다.
+- (선택) Planner(`06` §5), Review scheduler(`06` §6), Skill updater(`06` §7), Budget·risk(`06` §3~4) 네 영역은 구현은 에이전트가 하되 `06`의 test vector 테스트가 함께 붙으므로, 나중에 Java·Spring 학습 소재로 읽을 수 있다. **일정 기준이 아니다.**
+- 사용자 리뷰 없이 merge하지 않는다(§2.1). 리뷰에서 볼 것: N-1~N-7(부동소수점·나눗셈 함수·`multiplyExact`), 설정값 하드코딩, 무인자 시간 호출, 누락 vector, 트랜잭션 범위·N+1.
 
 ---
 
@@ -344,7 +343,6 @@ S0는 저장소 루트의 `START_HERE_FOR_AI_AGENT.md`(`repo-seed/`에서 복사
 규칙:
 - 한 지시 = BL 1개, 또는 같은 Sprint·같은 Epic에서 서로 의존하는 BL 최대 3개.
 - DoR(`16-definition-of-ready-done.md` §1)을 통과하지 못한 BL은 지시하지 않는다.
-- 직접 구현 영역(§5)은 1단계(vector 테스트)와 4단계(리뷰)만 지시한다.
 - 브랜치는 `feature/BL-<EPIC>-<nn>-<슬러그>`(수정·잡무·문서는 `fix/`·`chore/`·`docs/`)에서 시작해 `developer`로 PR(squash merge)한다. `main`은 `developer`에서만 PR + merge commit으로 받는다(`16-definition-of-ready-done.md` §3, DEC-21).
 
 ```text

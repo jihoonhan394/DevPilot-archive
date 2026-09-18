@@ -743,7 +743,7 @@ catalog는 삭제하지 않고 비활성화한다(`04` §1, §8).
 
 ---
 
-## 12. 콘텐츠 인벤토리 (catalogVersion 1)
+## 12. 콘텐츠 인벤토리 (catalogVersion 2)
 
 ### 12.1 카테고리별 수량
 
@@ -801,8 +801,8 @@ catalog는 삭제하지 않고 비활성화한다(`04` §1, §8).
 | `CS-SPRING-TX-ROLLBACK-RULES` | Spring Framework 7.0 Rolling Back a Declarative Transaction |
 | `CS-SPRING-TX-REQUIRES-NEW` | Spring Framework 7.0 Transaction Propagation |
 | `CS-SPRING-MVC-PROBLEM-DETAIL` | Spring Framework 7.0 Error Responses |
-| `CS-POSTGRESQL-TRANSACTION-ISOLATION` | PostgreSQL 17 §13.2 |
-| `CS-POSTGRESQL-MULTICOLUMN-INDEX` | PostgreSQL 17 §11.3 |
+| `CS-POSTGRESQL-TRANSACTION-ISOLATION` | PostgreSQL 16 §13.2 |
+| `CS-POSTGRESQL-MULTICOLUMN-INDEX` | PostgreSQL 16 §11.3 |
 | `CS-OWASP-SQL-INJECTION-PREVENTION` | OWASP SQL Injection Prevention Cheat Sheet |
 | `CS-OWASP-LOGGING-SENSITIVE-DATA` | OWASP Logging Cheat Sheet |
 
@@ -824,4 +824,4 @@ catalog는 삭제하지 않고 비활성화한다(`04` §1, §8).
 | O-8 | conceptKey 패턴은 seed·수동 카드에만 적용, 시스템 생성 키는 예외 | `04-domain-model-and-db.md` §7 I-06 |
 | O-9 | challenge 제안은 difficulty d, 없으면 d−1 순서로 탐색. EXPLAIN task 설명에도 `skill.description` 사용 | `06-learning-engine-rules.md` §5.3 |
 | O-10 (2026-09-18) | S2 배포에서 challenge upsert를 건너뛰는 방식 = 설정 플래그 `devpilot.content.seed-challenges`(S2 `false`, S3부터 `true` 기본). 검증은 항상 수행 | `03-system-architecture.md` §9 (`content` 블록에 키 추가 필요), `04-domain-model-and-db.md` §9 — 반영 대기 |
-| O-11 (2026-09-18) | CV-15 non-root 하한을 §7.5 작성 규칙과 같은 60으로 상향. 현재 seed(catalogVersion 1)는 모두 60 이상 | `content/tools/validate_content.py`, Java `ContentValidator` — 반영 대기 |
+| O-11 (2026-09-18) | CV-15 non-root 하한을 §7.5 작성 규칙과 같은 60으로 상향. 현재 seed(catalogVersion 2)는 모두 60 이상 | `content/tools/validate_content.py`, Java `ContentValidator` — 반영 대기 |

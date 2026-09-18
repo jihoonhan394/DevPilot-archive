@@ -1,7 +1,8 @@
-<#
+﻿<#
 .SYNOPSIS
 서버 Docker 를 로컬 Testcontainers 에서 쓰기 위한 SSH 소켓 포워딩 (docs/18 §3.1). 로컬 Docker Desktop 이 필요 없다.
 Windows PowerShell 5.1 호환. 2026-09-18 검증 (서버 tailscale0 이 firewalld trusted zone).
+파일 인코딩은 UTF-8 **BOM 포함**이다 — 5.1 은 BOM 이 없으면 ANSI 코드페이지로 읽어 한글 문자열에서 구문 오류가 난다.
 
 .DESCRIPTION
   ssh -N -L 2375:/var/run/docker.sock <user>@<server>   를 백그라운드로 띄우고
@@ -47,6 +48,13 @@ function Write-Log {
     Write-Output "[dev-docker-tunnel] $Message"
 }
 
+# $ErrorActionPreference='Stop' 에서 Write-Error 는 종료 오류를 던져 뒤따르는 return 이 실행되지 않는다.
+# 오류도 Write-Host 로 출력하고 흐름은 return 이 정한다 (PowerShell 5.1 호환).
+function Write-Err {
+    param([string]$Message)
+    Write-Host "[dev-docker-tunnel] ERROR: $Message" -ForegroundColor Red
+}
+
 function Get-TunnelProcess {
     # 이 스크립트가 띄운 ssh 만 (명령줄에 같은 -L 포워딩이 있는 것)
     try {
@@ -81,11 +89,11 @@ if ($Stop) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Server)) {
-    Write-Error '서버를 모른다: -Server user@host 또는 $env:DEVPILOT_SERVER_SSH 를 준다 (DevPilot-ops/01-servers.md)'
+    Write-Err '서버를 모른다: -Server user@host 또는 $env:DEVPILOT_SERVER_SSH 를 준다 (DevPilot-ops/01-servers.md)'
     return
 }
 if ($null -eq (Get-Command ssh -ErrorAction SilentlyContinue)) {
-    Write-Error 'ssh 를 찾을 수 없다 (Windows OpenSSH Client)'
+    Write-Err 'ssh 를 찾을 수 없다 (Windows OpenSSH Client)'
     return
 }
 
@@ -102,11 +110,11 @@ if (Test-PortListening -LocalPort $Port) {
     $deadline = (Get-Date).AddSeconds(15)
     while (-not (Test-PortListening -LocalPort $Port)) {
         if ($process.HasExited) {
-            Write-Error "ssh 가 종료됐다 (exit $($process.ExitCode)). SSH 키 로그인·서버 docker 그룹을 확인한다"
+            Write-Err "ssh 가 종료됐다 (exit $($process.ExitCode)). SSH 키 로그인·서버 docker 그룹을 확인한다"
             return
         }
         if ((Get-Date) -gt $deadline) {
-            Write-Error "15초 안에 포트 $Port 가 열리지 않았다"
+            Write-Err "15초 안에 포트 $Port 가 열리지 않았다"
             return
         }
         Start-Sleep -Milliseconds 500

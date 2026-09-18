@@ -477,7 +477,7 @@ app/lib/
 ├── l10n/                            # app_ko.arb, 생성된 AppLocalizations (Flutter gen-l10n 기본 위치, 18 §6.5)
 ├── core/
 │   ├── api/                         # Dio 생성, 인터셉터, ApiException, CursorPage
-│   ├── auth/                        # AuthGateway(AUTH_MODE=dev: POST /dev/token / supabase: Later), 세션 provider
+│   ├── auth/                        # AuthGateway(AUTH_MODE=dev: POST /api/v1/dev/token / supabase: Later), 세션 provider
 │   ├── config/                      # AppConfig (--dart-define-from-file 값)
 │   ├── theme/                       # ColorScheme, TextTheme, spacing 상수
 │   └── widgets/                     # 공용 위젯 (AsyncValueView, ErrorBanner, SkeletonBox, MarkdownView)
@@ -802,7 +802,7 @@ test 소스용 설정(`checkstyle-test.xml`)은 `IllegalImport`의 `illegalPkgs`
 
 | ID | 규칙 | 근거 |
 |---|---|---|
-| ARCH-01 | 모듈 의존 matrix: `com.devpilot.<module>..`의 클래스는 `03` §2.2 표에 적힌 모듈 외의 `com.devpilot` 모듈 패키지에 의존하지 않는다. 표를 `Map<String, Set<String>>` 상수로 테스트에 옮긴다. `integration.ai`의 패키지는 `com.devpilot.integration.ai..` | `03` §2.2 |
+| ARCH-01 | 모듈 의존 matrix: `com.devpilot.<module>..`의 클래스는 `03` §2.2 표에 적힌 모듈 외의 `com.devpilot` 모듈 패키지에 의존하지 않는다. 표를 `Map<String, Set<String>>` 상수로 테스트에 옮긴다. `integration.ai`의 패키지는 `com.devpilot.integration.ai..`. `common`의 허용 대상은 **(없음)**이므로 `common.job`의 스케줄 job도 다른 모듈을 직접 참조하지 않는다 — `RetentionCleanupTarget`·`OrphanAsyncTaskSweeper` port로만 호출한다(`03` §2.2 규칙 4) | `03` §2.2 |
 | ARCH-02 | 다른 모듈 접근 범위: 모듈 A가 모듈 B를 쓸 때 대상은 (1) `B.application..`의 public 클래스, (2) `B.domain..`의 `enum`·`record` 중 `@Entity`가 아닌 것(공유 enum, 이벤트 record)만. `B.infrastructure..`, `B.presentation..`, `B.domain`의 entity·규칙 클래스 접근 금지. 예외: **여러 모듈이 공유하는 순수 규칙 클래스** `learning.domain.ComebackModePolicy`(today·review), `learning.domain.RubricScorer`(training·review)는 다른 모듈에서 쓸 수 있다(`03` §2.2 끝). `common..`은 모든 하위 패키지 접근 가능 | `03` §2.2 규칙 1·2 |
 | ARCH-03 | `integration.ai` 공개 범위: 다른 모듈은 `integration.ai.api..`(`AiProvider`, `AiRequest`, `AiResult`, `GuardContext`, `AiOperation`, `AiCallStatus`, `AiStatus`, `AiUsageSnapshot`, `AiBudgetDecision`, `AiConcurrencyReservation`, `AiPendingJobCounter`), `integration.ai.AiGateway`, `integration.ai.masking.SecretMasker`, `integration.ai.masking.MaskingResult`, `integration.ai.budget.AiBudgetGuard`만 사용. 공급자 HTTP 타입(요청·응답 DTO, `RestClient`)은 `integration.ai.deepseek..` 밖으로 나가지 않는다 | `03` §3.3, §5.3 |
 | ARCH-04 | 모듈 내부 계층: `presentation` → `application`, `domain`(enum·record) / `application` → `domain`, `infrastructure` / `infrastructure` → `domain`, `application`(`*Task`·`*Job`, 그리고 repository가 반환하는 `application`의 `*View` projection record만) / `domain` → 같은 모듈 `domain`, ARCH-02가 허용한 다른 모듈 `domain`의 enum·record, `common`만. `presentation`을 의존하는 클래스 없음. `presentation`은 `infrastructure`에 의존하지 않는다(controller → repository 금지) | `03` §2.3, §7 |
@@ -821,7 +821,7 @@ test 소스용 설정(`checkstyle-test.xml`)은 `IllegalImport`의 `illegalPkgs`
 | ARCH-17 | `catch` 대상이 `Exception`, `RuntimeException`, `Throwable`인 try-catch 블록(`JavaCodeUnit.getTryCatchBlocks()`)은 이름이 `Task` 또는 `Job`으로 끝나는 클래스에만 있다 | §3.10 |
 | ARCH-18 | `com.devpilot` 아래 클래스가 있는 모든 패키지는 `package-info`에 `@NullMarked`가 있다 | §3.3 |
 | ARCH-19 | `java.net.http.HttpClient`, `java.net.URL#openConnection`/`openStream`, `java.net.HttpURLConnection`, `org.springframework.web.client.RestTemplate`, `RestClient`, `org.springframework.web.reactive.function.client.WebClient`, `okhttp3..` 사용은 `integration.ai.deepseek..`에서만 | `07-security-and-privacy.md` §1.1 A10 |
-| ARCH-20 | 명명: `@RestController` → `*Controller`, `application`의 `@Service` → `*Service` 또는 `*QueryService` 또는 `03` §3에 적힌 이름(`LearningEventRecorder`, `ThinkingPatternRecorder`, `SkillStateUpdater`, `ContentSeeder`, `ContentValidator`, `IdempotencyService`) 또는 `*Registry`(`PlanTemplateRegistry`, `SeedCardRegistry`), `03` §2.2 port(`UserTimeSettingsProvider`, `AiPendingJobCounter`, `StudyHistoryProvider`, `JobCoverageProvider`)를 구현하는 클래스 → `*Provider`·`*Counter` **또는 `03` §3.2 표에 적힌 서비스 이름**(예: `UserProvisioningService`가 `UserTimeSettingsProvider`를 구현), Spring Data 인터페이스 → `*Repository`, `@Configuration` → `*Config`, `Util`/`Utils`/`Helper`/`Manager`/`Impl`로 끝나는 클래스 없음 | §7 |
+| ARCH-20 | 명명: `@RestController` → `*Controller`, `application`의 `@Service` → `*Service` 또는 `*QueryService` 또는 `03` §3에 적힌 이름(`LearningEventRecorder`, `ThinkingPatternRecorder`, `SkillStateUpdater`, `ContentSeeder`, `ContentValidator`, `IdempotencyService`) 또는 `*Registry`(`PlanTemplateRegistry`, `SeedCardRegistry`), `03` §2.2 port(`UserTimeSettingsProvider`, `AiPendingJobCounter`, `StudyHistoryProvider`, `JobCoverageProvider`, `RetentionCleanupTarget`, `OrphanAsyncTaskSweeper`)를 구현하는 클래스 → `*Provider`·`*Counter`·`*Sweeper` **또는 `03` §3.2·§3.3 표에 적힌 서비스 이름**(예: `UserProvisioningService`가 `UserTimeSettingsProvider`를, `CoachReviewService`가 `OrphanAsyncTaskSweeper`를, `AiCallLogRetentionService`가 `RetentionCleanupTarget`을 구현), Spring Data 인터페이스 → `*Repository`, `@Configuration` → `*Config`, `Util`/`Utils`/`Helper`/`Manager`/`Impl`로 끝나는 클래스 없음 | §7 |
 | ARCH-21 | `@Transactional`은 `..application..` 패키지 클래스(및 `common.idempotency`, `integration.ai.log`)의 public 메서드 또는 클래스에만. 이름이 `QueryService`로 끝나는 클래스는 클래스 레벨 `@Transactional(readOnly = true)` | TX-1, TX-2 |
 
 규칙 정의에서 모듈 목록·예외 클래스 이름은 `03` 문서와 같아야 한다. `03`의 이름이 바뀌면 이 표와 테스트를 같은 PR에서 고친다.

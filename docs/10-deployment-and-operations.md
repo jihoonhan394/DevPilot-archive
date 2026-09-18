@@ -1,10 +1,10 @@
 # 10. Deployment & Operations
 
-> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: DEC-01, DEC-04, DEC-05, DEC-06, DEC-13, DEC-16, `03-system-architecture.md`, `04-domain-model-and-db.md`, `07-security-and-privacy.md`, `18-project-setup-and-local-dev.md`, `_PENDING-CHANGES.md` §2·§3·§7
+> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: DEC-01, DEC-04, DEC-05, DEC-06, DEC-13, DEC-16, `03-system-architecture.md`, `04-domain-model-and-db.md`, `07-security-and-privacy.md`, `18-project-setup-and-local-dev.md`, `14-adrs.md` ADR-030~035, `20-decisions-and-risks.md` DEC-05~23
 >
-> 이 문서는 **운영 환경 구성(자체 서버 + Tailscale HTTPS), 컨테이너, 환경변수, CI/CD, 백업·복구, 릴리스·롤백, Flyway 운영, 모니터링, 비용, runbook**을 정의한다. 로컬 개발환경과 버전 표는 `18-project-setup-and-local-dev.md`가 기준이다. 이 문서의 파일은 `repo-seed/`에 있다(`infra/`, `backend/Dockerfile`, `.github/`).
+> 이 문서는 **운영 환경 구성(자체 서버 + Tailscale HTTPS), 컨테이너, 환경변수, CI/CD, 백업·복구, 릴리스·롤백, Flyway 운영, 모니터링, 비용, runbook**을 정의한다. **지금의 tailnet 전용 구성은 임시 단계이고 최종 목표는 공개 배포다 — 단계 구분과 공개 전환 전 필수 조건은 §1.4·§1.5에 있다.** 로컬 개발환경과 버전 표는 `18-project-setup-and-local-dev.md`가 기준이다. 이 문서의 파일은 `repo-seed/`에 있다(`infra/`, `backend/Dockerfile`, `.github/`).
 >
-> 2026-09-18 결정(`_PENDING-CHANGES.md` §7): 운영은 **사용자 소유 Linux 서버**에서 하고 **Tailscale 안에서만** 접근한다. OCI·구매 도메인·Supabase는 쓰지 않는다(부록 §13.8에 "운영 전환 시" 요약만 남긴다). 서버 접속 정보(주소·계정·DB 접속값)는 공개 저장소에 두지 않고 저장소 밖 `DevPilot-ops/`(`01-servers.md`, `02-database.md`)에 둔다. 이 문서의 `<server>`, `<tailnet-host>`, `<user>`는 그 값을 가리키는 자리표시자다.
+> 2026-09-18 결정(`14-adrs.md` ADR-031·ADR-034, `20-decisions-and-risks.md` DEC-07·DEC-13·DEC-19): 운영은 **사용자 소유 Linux 서버**에서 하고 **Tailscale 안에서만** 접근한다. OCI·구매 도메인·Supabase는 쓰지 않는다(부록 §13.8에 "운영 전환 시" 요약만 남긴다). 서버 접속 정보(주소·계정·DB 접속값)는 공개 저장소에 두지 않고 저장소 밖 `DevPilot-ops/`(`01-servers.md`, `02-database.md`)에 둔다. 이 문서의 `<server>`, `<tailnet-host>`, `<user>`는 그 값을 가리키는 자리표시자다.
 
 ---
 
@@ -14,11 +14,12 @@
 
 | 환경 | 용도 | Web | Backend | DB | Auth | AI |
 |---|---|---|---|---|---|---|
-| local | 개발 | `flutter run` :5173 | `bootRun` :8080 (`local`) | **서버 PostgreSQL 16** (Tailscale 경유, DB `devpilot`) | devtoken (`POST /dev/token`) | `fake` (필요 시 `deepseek`) |
+| local | 개발 | `flutter run` :5173 | `bootRun` :8080 (`local`) | **서버 PostgreSQL 16** (Tailscale 경유, DB `devpilot`) | devtoken (`POST /api/v1/dev/token`) | `fake` (필요 시 `deepseek`) |
 | CI | PR·developer·main·tag 검증 | `flutter build web` | `./gradlew check` (`test`) | Testcontainers `postgres:16` | 테스트 JWT | `fake` |
-| prod | 실사용 (소유자 + 초대 최대 2명, DEC-01) | `caddy` 컨테이너 (`/opt/devpilot/web` 정적 파일) | `api` 컨테이너 (`ghcr.io/<owner>/devpilot-api`, `prod`) | 같은 서버의 PostgreSQL 16 (DB `devpilot`) | devtoken (tailnet 전용이므로 허용, 결정 A) | `deepseek` |
+| prod | 실사용 (소유자 + 초대 최대 2명, DEC-01) | `caddy` 컨테이너 (`/opt/devpilot/web` 정적 파일) | `api` 컨테이너 (`ghcr.io/<owner>/devpilot-api`, `prod`) | 같은 서버의 PostgreSQL 16 (DB `devpilot`) | devtoken (**tailnet 전용이라서** 허용, 결정 A. 공개 전환 시 `supabase`로 바꾼다 — §1.5) | `deepseek` |
 
 - staging 환경은 두지 않는다. 사용자가 3명 이하이고, 배포는 불변 tag + health check + 롤백(§9)으로 보호한다.
+- **prod의 tailnet 전용 노출은 임시다**(§1.4). 공개 전환 전에 §1.5 체크리스트를 끝낸다.
 - local과 prod가 **같은 PostgreSQL 인스턴스의 같은 DB**를 쓴다. 실사용 시작(S2, 2026-10-26) 전까지는 문제가 없고, 시작 후에는 로컬 개발 DB를 `devpilot_dev`로 분리한다(§2.4, BL-OPS 신설 항목). Testcontainers는 서버 Docker에 임시 컨테이너를 띄우므로 운영 DB를 건드리지 않는다.
 - 서버 사실(2026-09-18 확인): Rocky Linux 9.8 (Proxmox VM), **x86_64**, 2 vCPU / 8 GB (가용 약 4.7 GB), 디스크 여유 32 GB, Docker 29.6.1, Tailscale 1.98.8, firewalld active(`tailscale0`은 `trusted` zone), SELinux disabled, 시간대 UTC. **다른 사용자의 컨테이너 6개와 공용 PostgreSQL 컨테이너가 같은 Docker에서 돈다.** 80/443은 비어 있고 8080~8084·8090·5432는 사용 중이다.
 
@@ -35,13 +36,13 @@
 │  │   /api/*, /actuator/health ──▶ api (ghcr.io/<owner>/devpilot-api) :8080 (publish 없음) │ │
 │  └────────────────────────────────────────────────────────────────────────────────────┘ │
 │ api ──JDBC (host.docker.internal:5432)──▶ 공용 PostgreSQL 16 컨테이너 (DB devpilot)     │
-│ systemd devpilot-backup.timer (18:30 UTC) ──▶ backup.sh ──▶ /opt/devpilot/backups/     │
+│ systemd devpilot-backup.timer (19:00 UTC) ──▶ backup.sh ──▶ /opt/devpilot/backups/     │
 │ systemd devpilot-healthping.timer (5분) ──▶ healthping.sh ──▶ healthchecks.io          │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
         ▲ ssh (Tailscale 경유, 배포·백업 pull)                       │ HTTPS
    [소유자 PC]  ◀── pull-backup.ps1 (주 1회 scp) ──                 ▼
-   GitHub Actions: ci.yml(검증) · release.yml(amd64 api 이미지 → GHCR,   DeepSeek API
-                   web + infra 번들 zip → GitHub Release)
+   GitHub Actions: ci.yml(검증) · release.yml(api 이미지 amd64+arm64 → GHCR,   DeepSeek API
+                   web.zip(Flutter web 정적 파일) → GitHub Release)
 ```
 
 ### 1.3 포트
@@ -55,6 +56,36 @@
 | 22/tcp | 호스트 sshd | tailnet·LAN | 기존 설정 그대로. 배포·백업 pull은 Tailscale 경유 |
 
 DevPilot은 서버의 방화벽·sshd·Docker daemon 설정을 **바꾸지 않는다** (§2.1).
+
+### 1.4 호스팅 단계 — 지금 구성은 임시다
+
+**Tailscale 전용은 목표가 아니라 지금 단계의 수단이다.** 개발에 쓸 DB와 서버가 이미 tailnet 안에 있어 거기에 맞춰 묶었을 뿐이고, **최종 목표는 공개 배포다.**
+
+| 단계 | 노출 | 내용 |
+|---|---|---|
+| **현재 (S0~S2, ~2026-10-26)** | tailnet 전용 | 자체 서버 + `tailscale serve`(§2.3). 이 문서의 §2~§13은 이 단계를 기준으로 쓴다. **임시** |
+| **공개 전환 (추후, 시점 미정)** | 공개 인터넷 | (a) 같은 자체 서버를 웹서버로 공개하거나 (b) **OCI Always Free**(Ampere A1 = **arm64**)에 배포한다. 어느 쪽인지는 전환 시점에 정한다. 절차 요지는 §13.8 |
+
+전환 비용을 줄이려고 지금부터 지키는 것:
+
+| 항목 | 지금 하는 것 | 전환 때 덕을 보는 부분 |
+|---|---|---|
+| 이미지 | `linux/amd64` + `linux/arm64` **멀티아치**로 빌드한다 (§5.3, §7.2) | OCI A1(arm64)로 가도 이미지 파이프라인을 고치지 않는다 |
+| 앱 주소 | prod 빌드는 same-origin(`API_BASE_URL` 비움, §4.1) | 호스트명이 산출물·저장소에 없어 주소가 바뀌어도 재빌드가 필요 없다 |
+| 인증 | `DEVPILOT_AUTH_MODE` 설정 하나로 `devtoken` ↔ `supabase`를 바꾼다 (§6) | 코드 변경 없이 전환한다 (§1.5) |
+| 접속값 | 서버 주소·계정·DB 값은 `DevPilot-ops/`에만 둔다 | 서버가 바뀌어도 저장소를 고치지 않는다 |
+
+### 1.5 공개 전환 전 필수 조건
+
+**아래를 전부 끝내기 전에는 공개 인터넷에 노출하지 않는다.** 하나라도 남아 있으면 tailnet 안에 둔다.
+
+- [ ] **인증을 `DEVPILOT_AUTH_MODE=supabase`로 전환한다 (가장 중요).** `devtoken`은 이메일 한 줄을 보내면 토큰을 내준다(`03` §4.2, `05` §1.4.5). **tailnet 전용이라는 전제에서만 안전하고**, 공개되면 allowlist 이메일을 아는 사람 누구나 로그인한다. 필요한 것: Supabase 프로젝트, GitHub OAuth App, `SUPABASE_URL`·`SUPABASE_JWT_ALGORITHM`·`SUPABASE_PUBLISHABLE_KEY`(§6), 앱 `AUTH_MODE=supabase` 빌드. 요지는 §13.8.
+- [ ] TLS를 `tailscale serve`에서 **Caddy 자동 HTTPS(ACME)**로 바꾼다. 도메인(A 레코드) 또는 공개 IP가 필요하다. `infra/Caddyfile`의 `auto_https off`와 사이트 주소 `:80`을 함께 고친다(§4.2, §5.4).
+- [ ] `compose.prod.yml`의 caddy publish를 `127.0.0.1:18080:80`에서 **`80:80`·`443:443`(HTTP/3를 쓰면 `443/udp`도)**로 바꾼다. Docker publish는 firewalld를 우회하므로(§3.2) 이 순간부터 실제로 공개된다. 자체 서버를 쓴다면 호스트 80/443이 비어 있는지, 공용 서버 규칙(§2.1)을 고칠 수 있는지를 먼저 확인한다.
+- [ ] CSP `connect-src`에 Supabase 호스트를 추가하고, rate limit(`03` §9)을 공개 트래픽 기준으로 다시 정한다. 값의 기준은 `07` §9.3·§9.4다.
+- [ ] `07-security-and-privacy.md` §2.4 잔여 위험의 **"tailnet 밖에서 도달할 수 없다"** 전제가 해제됨을 확인하고 위협 모델을 갱신한다(이 항목은 `07`이 기준).
+- [ ] 백업·모니터링을 공개 기준으로 다시 본다(§8, §11). healthchecks.io는 공개 주소에서도 그대로 동작한다.
+- [ ] 전환 자체를 ADR로 남긴다(ADR-031 대체 또는 보완, `14-adrs.md`).
 
 ---
 
@@ -85,13 +116,28 @@ rm -rf /tmp/devpilot
 |---|---|
 | 전제 조건 확인 | `uname -m`=x86_64, `docker info`, `tailscale status`(Running), `ss -ltn`에 `127.0.0.1:18080` 없음, 가용 메모리 ≥ 2 GB. 하나라도 실패하면 아무것도 만들지 않고 종료 |
 | 사용자 | `deploy`(비밀번호 잠금, 로그인 셸 bash, 그룹 `docker`). `--operator <user>`로 지정한 운영자 계정을 `deploy` 그룹에 추가(백업 pull용, `/opt/devpilot/backups` 읽기) |
-| 디렉터리·파일 | `/opt/devpilot/{backups,web,releases,state}` (§5.1). clone의 `infra/compose.prod.yml`·`infra/Caddyfile`·`infra/scripts/{deploy,backup,healthping,host-check}.sh`를 `/opt/devpilot/`에 복사. `api.env`·`ops.env` **템플릿**(0600, 이미 있으면 덮어쓰지 않음) |
-| systemd | `devpilot-backup.service/.timer`, `devpilot-healthping.service/.timer` 설치·`daemon-reload`(활성화는 §8.3·§11.2에서) |
+| 디렉터리·파일 | `/opt/devpilot/{backups,web,state}` (§5.1. `backups`는 setgid 2750). clone의 `infra/compose.prod.yml`·`infra/Caddyfile`(644)과 `infra/scripts/{deploy,backup,healthping,host-check}.sh`(**750**)를 `/opt/devpilot/`에 복사(내용이 다를 때만). 첫 배포 전에도 caddy가 뜨도록 `web/index.html` 자리표시자를 둔다. `api.env`·`ops.env` **템플릿**(0600, 이미 있으면 덮어쓰지 않음) |
+| systemd | `devpilot-backup.service/.timer`, `devpilot-healthping.service/.timer` 설치·`daemon-reload`. `devpilot-healthping.timer`는 바로 켠다(ping URL이 비면 스크립트가 스스로 건너뛴다). `devpilot-backup.timer`는 `api.env`의 `DATABASE_PASSWORD`가 채워져 있을 때만 켠다(§8.3) |
 | 출력 | 다음 할 일(§2.3 `tailscale serve`, §5.5 env 작성, §9 첫 배포) |
 
-스크립트는 OS 설정을 건드리지 않으므로 다른 서비스에 영향이 없다. 멱등이라 다시 실행해도 기존 env 파일을 덮어쓰지 않는다. 이후 릴리스의 compose·Caddyfile·스크립트 갱신은 deploy.sh가 릴리스 번들에서 한다(§9.3).
+스크립트는 OS 설정을 건드리지 않으므로 다른 서비스에 영향이 없다. 멱등이라 다시 실행해도 기존 env 파일을 덮어쓰지 않는다.
 
-### 2.3 Tailscale HTTPS (결정 B)
+**infra 파일(compose.prod.yml·Caddyfile·스크립트)을 갱신하는 방법은 이 스크립트를 다시 실행하는 것 하나뿐이다.** 릴리스 자산 `web.zip`에는 Flutter web 정적 파일만 들어 있고 deploy.sh는 이 파일들을 건드리지 않는다(§5.3, §9.3).
+
+```bash
+# 서버(root): 배포할 tag를 clone해서 다시 실행한다
+git clone --depth 1 --branch <tag> https://github.com/<owner>/DevPilot.git /tmp/devpilot
+bash /tmp/devpilot/infra/scripts/prepare-server.sh --operator <user>
+rm -rf /tmp/devpilot
+# Caddyfile이 바뀌었으면 (파일 마운트는 reload로 반영되지 않는다)
+sudo -u deploy docker compose -f /opt/devpilot/compose.prod.yml restart caddy
+# compose.prod.yml이 바뀌었으면
+sudo -u deploy docker compose -f /opt/devpilot/compose.prod.yml up -d
+```
+
+### 2.3 Tailscale HTTPS (결정 B, **현재 단계**)
+
+> 이 절은 §1.4의 "현재" 단계 절차다. 공개 전환 시에는 Caddy 자동 HTTPS(ACME)로 바뀐다(§1.5, §13.8).
 
 1. [사람] Tailscale admin console → **DNS**: MagicDNS 켜짐 확인 → **HTTPS Certificates → Enable HTTPS**. tailnet 이름(`<tailnet>.ts.net`)이 표시된다.
 2. 서버(root):
@@ -120,7 +166,7 @@ rm -rf /tmp/devpilot
 
 ### 2.5 GHCR
 
-- 이미지는 `ghcr.io/<owner>/devpilot-api` 하나다. 첫 push 후 **Package settings → Change visibility → Public**으로 바꾼다. 서버는 인증 없이 pull한다(저장소가 public이고 이미지에 secret이 없다). Flutter web과 infra 파일은 이미지가 아니라 GitHub Release 자산 `devpilot-<tag>.zip`으로 배포한다(§5.3, §7.2) — public 저장소라 이것도 인증 없이 받는다.
+- 이미지는 `ghcr.io/<owner>/devpilot-api` 하나다. 첫 push 후 **Package settings → Change visibility → Public**으로 바꾼다. 서버는 인증 없이 pull한다(저장소가 public이고 이미지에 secret이 없다). Flutter web 정적 파일은 이미지가 아니라 GitHub Release 자산 `web.zip`으로 배포한다(§5.3, §7.2) — public 저장소라 이것도 인증 없이 받는다. infra 파일은 릴리스 자산에 없다(§2.2).
 - private으로 둬야 할 이유가 생기면 `deploy` 사용자로 `docker login ghcr.io`(read-only PAT)를 하고 §6에 PAT 행을 추가한다.
 
 ---
@@ -178,7 +224,7 @@ v2 초판 §3.4~§3.8(OCI Security List, 부트스트랩, Object Storage)은 폐
 | 항목 | 설정 (`infra/Caddyfile`) |
 |---|---|
 | TLS | **없음.** 사이트 주소 `:80`, `auto_https off`. TLS는 `tailscale serve`가 종료한다(§2.3) |
-| 사이트 전체 헤더 | `Strict-Transport-Security: max-age=31536000`(includeSubDomains 없음 — `*.ts.net`의 다른 호스트에 영향을 주지 않기 위해), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Server` 제거(`header -Server`) |
+| 사이트 전체 헤더 | `Strict-Transport-Security: max-age=31536000; includeSubDomains`(07 §9.3 값 그대로. `infra/Caddyfile`·`infra/scripts/smoke-headers.sh`가 이 문자열을 정확히 비교한다), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Server` 제거(`header -Server`) |
 | `/api/*` | `Cache-Control: no-store` — api가 값을 정하지 않은 응답에만 넣는다(`header ?Cache-Control`). 캘린더 피드의 값은 덮어쓰지 않는다 |
 | 정적 파일 | `Cache-Control: no-cache` (§5.4) |
 | 압축 | `encode zstd gzip` |
@@ -196,28 +242,28 @@ v2 초판 §3.4~§3.8(OCI Security List, 부트스트랩, Object Storage)은 폐
 
 ```text
 /opt/devpilot/                         750 deploy:deploy   (spec 기준 경로. prepare-server.sh가 만든다)
-├── compose.prod.yml                   644 deploy  릴리스 번들의 infra/compose.prod.yml (deploy.sh가 갱신)
-├── Caddyfile                          644 deploy  릴리스 번들의 infra/Caddyfile (deploy.sh가 갱신)
-├── deploy.sh · backup.sh · healthping.sh · host-check.sh   755 deploy  릴리스 번들의 infra/scripts/ (deploy.sh가 갱신)
+├── compose.prod.yml                   644 deploy  저장소 infra/compose.prod.yml (prepare-server.sh가 복사·갱신)
+├── Caddyfile                          644 deploy  저장소 infra/Caddyfile (prepare-server.sh가 복사·갱신)
+├── deploy.sh · backup.sh · healthping.sh · host-check.sh   750 deploy  저장소 infra/scripts/ (prepare-server.sh가 복사·갱신)
 ├── api.env                            600 deploy  애플리케이션 환경변수 (secret 포함, §6)
-├── ops.env                            600 deploy  운영 스크립트 설정: API_IMAGE, RELEASE_REPO, HEALTHCHECKS_PING_URL, HEALTHCHECK_BACKUP_URL (§5.5)
+├── ops.env                            600 deploy  운영 스크립트 설정: GITHUB_OWNER, HEALTHCHECKS_PING_URL, HEALTHCHECK_BACKUP_URL, HEALTHCHECK_HOST_URL (§5.5)
+├── .env                               644 deploy  compose 치환 변수 TAG, API_IMAGE (deploy.sh가 기록. compose가 프로젝트 디렉터리에서 자동으로 읽는다)
 ├── .last_good_tag                          마지막 정상 배포 tag (deploy.sh가 기록)
-├── web/                               755 deploy  Flutter web 정적 파일 (caddy가 /srv/web 으로 읽음)
-├── releases/                          750 deploy  devpilot-<tag>.zip 사본 (최근 3개, 롤백용)
-├── backups/                           750 deploy:deploy  devpilot-<UTC timestamp>.dump (640, 7일)
-└── state/                             750 deploy  deploy.lock, last_backup_ok, host-check 카운터
+├── web/                               755 deploy  Flutter web 정적 파일 (caddy가 /srv/web 으로 읽음. deploy.sh가 web.zip 내용으로 교체)
+├── backups/                          2750 deploy:deploy  devpilot-<UTC timestamp>.dump (640 deploy:deploy, 7일)
+└── state/                             750 deploy  deploy.lock, last_backup_ok, web-<tag>.zip 사본(최근 2개), host-check 카운터
 ```
 
 운영자 편의 함수 (`deploy` 사용자의 `~/.bashrc`):
 
 ```bash
-dc() {
-  API_TAG="$(cat /opt/devpilot/.last_good_tag)" docker compose -p devpilot \
-    --env-file /opt/devpilot/ops.env \
-    -f /opt/devpilot/compose.prod.yml "$@"
-}
-# 예: dc ps · dc logs --since 1h api · dc up -d --force-recreate api
+dc() { docker compose -f /opt/devpilot/compose.prod.yml "$@"; }
+# 예: dc ps · dc logs --since 1h api · dc up -d --force-recreate api · dc restart caddy
 ```
+
+- 변수는 넘기지 않는다. compose가 프로젝트 디렉터리(`/opt/devpilot`)의 `.env`에서 `TAG`·`API_IMAGE`를 읽고, project 이름은 `compose.prod.yml`의 `name: devpilot`이 정한다.
+- **`--env-file`을 주면 안 된다.** `--env-file`은 기본 `.env`를 대체하므로 `ops.env`를 지정하면 `TAG`가 비어 `${TAG:?}` 때문에 `dc ps`부터 실패한다.
+- 서비스는 `api`와 `caddy` 둘뿐이다(`web` 서비스는 없다 — 정적 파일은 caddy가 bind mount로 제공한다).
 
 서버 접속: `ssh <user>@<server>` → `sudo -iu deploy`(sudo가 없으면 `su -` → `su - deploy`).
 
@@ -226,7 +272,7 @@ dc() {
 | 서비스·키 | 값 | 이유 |
 |---|---|---|
 | project | `devpilot`, network `devpilot` | 다른 사용자의 compose project와 이름이 겹치지 않게 |
-| api `image` | `${API_IMAGE:?}:${API_TAG:?}` | 불변 tag. `API_IMAGE`는 `ops.env`(`--env-file`), `API_TAG`는 deploy.sh가 셸 환경으로 넘긴다 |
+| api `image` | `${API_IMAGE:?}:${TAG:?}` | 불변 tag. 두 값 모두 deploy.sh가 `/opt/devpilot/.env`에 기록하고 compose가 프로젝트 디렉터리에서 자동으로 읽는다. 기본값을 두지 않는다(값이 없으면 compose가 바로 멈춘다) |
 | api `env_file` | `/opt/devpilot/api.env` | secret은 이미지·저장소에 없다 |
 | api `SPRING_PROFILES_ACTIVE` | `prod` | |
 | api `JAVA_TOOL_OPTIONS` | `-Xmx1g -XX:+ExitOnOutOfMemoryError` | §3.3 |
@@ -239,23 +285,23 @@ dc() {
 | api `logging` | json-file, `max-size: 10m`, `max-file: "5"` | 컨테이너당 최대 50 MB (§3.1) |
 | caddy `image` | `caddy:2.11.4-alpine` | 공식 이미지 그대로(자체 web 이미지를 만들지 않는다). digest 고정은 S2 P1(§7.4) |
 | caddy `ports` | **`127.0.0.1:18080:80`** | 호스트 loopback에만. `tailscale serve`가 여기로 프록시한다 |
-| caddy `volumes` | `/opt/devpilot/Caddyfile:/etc/caddy/Caddyfile:ro`, `/opt/devpilot/web:/srv/web:ro` | 정적 파일·Caddyfile은 호스트 bind mount(읽기 전용). Caddyfile이 바뀐 배포는 deploy.sh가 caddy를 재생성한다(§9.3) |
+| caddy `volumes` | `/opt/devpilot/Caddyfile:/etc/caddy/Caddyfile:ro`, `/opt/devpilot/web:/srv/web:ro` | 정적 파일·Caddyfile은 호스트 bind mount(읽기 전용). `web/`은 deploy.sh가 디렉터리 안의 내용만 교체하므로(디렉터리 inode 유지) 컨테이너에 바로 보인다. Caddyfile 갱신은 `prepare-server.sh` 재실행 + `dc restart caddy`다(§2.2) |
 | caddy `cap_drop`/`cap_add` | `ALL` / `NET_BIND_SERVICE` | 컨테이너 안 80 바인딩 |
 | caddy `mem_limit`, `logging` | `128m`, api와 같음 | |
 | `restart` | `unless-stopped` (둘 다) | 서버 재부팅·프로세스 종료 시 자동 기동 |
 
 - named volume이 없다(인증서 저장소 없음 — TLS는 tailscaled). bind mount는 caddy의 두 개뿐이고 SELinux가 disabled라 `:z` 라벨을 쓰지 않는다(§3.1).
-- 컨테이너 health check는 compose에 두지 않는다. 배포 판단은 deploy.sh가 호스트에서 `http://127.0.0.1:18080/actuator/health`를 확인한다(§9.3).
+- api 컨테이너에는 compose `healthcheck`(이미지에 curl이 없어 `bash /dev/tcp`로 `/actuator/health`를 읽는다, interval 30s·start_period 60s)가 있다. 이것은 `docker ps` 상태 표시용이고, **배포 성공 판단은 deploy.sh가 호스트에서 `http://127.0.0.1:18080/actuator/health`로 따로 한다**(§9.3).
 
-### 5.3 이미지 · 릴리스 번들
+### 5.3 이미지 · 릴리스 자산
 
 | 산출물 | 출처 | 내용 |
 |---|---|---|
-| 이미지 `ghcr.io/<owner>/devpilot-api:<tag>` | `backend/Dockerfile` | base `eclipse-temurin:25-jre`(**linux/amd64**). 이미지 안에서 Gradle을 돌리지 않는다. CI가 `./gradlew bootJar`로 만든 `build/libs/devpilot-api.jar`를 복사한다(빌드 컨텍스트 `backend/`). jar 이름은 `build.gradle.kts`의 `tasks.bootJar { archiveFileName = "devpilot-api.jar" }`, `tasks.jar { enabled = false }`와 짝이다(`18` §4.3). 실행 사용자 `app`(uid/gid 10001, 로그인 셸 없음), jar `root:root 0444`. JVM 옵션은 이미지에 넣지 않는다 |
-| 번들 `devpilot-<tag>.zip` (GitHub Release 자산) | release.yml `build-bundle` job | `web/` = `flutter build web` 결과(`app/build/web`), `infra/compose.prod.yml`, `infra/Caddyfile`, `infra/scripts/*.sh`. deploy.sh가 `web/`을 `/opt/devpilot/web`에, infra 파일을 `/opt/devpilot/`에 반영한다(§9.3). 이미지가 아니므로 web 쪽 Dockerfile은 없다 |
+| 이미지 `ghcr.io/<owner>/devpilot-api:<tag>` | `backend/Dockerfile` | base `eclipse-temurin:25-jre`. **`linux/amd64` + `linux/arm64` 멀티아치**(amd64 = 현재 서버, arm64 = 공개 전환 후보인 OCI Ampere A1, §1.4). Dockerfile 자체에는 아키텍처 의존이 없다. 이미지 안에서 Gradle을 돌리지 않는다. CI가 `./gradlew bootJar`로 만든 `build/libs/devpilot-api.jar`를 복사한다(빌드 컨텍스트 `backend/`). jar 이름은 `build.gradle.kts`의 `tasks.bootJar { archiveFileName = "devpilot-api.jar" }`, `tasks.jar { enabled = false }`와 짝이다(`18` §4.3). 실행 사용자 `app`(uid/gid 10001, 로그인 셸 없음), jar `root:root 0444`. JVM 옵션은 이미지에 넣지 않는다 |
+| 자산 `web.zip` (GitHub Release) | release.yml `build-web` job | **Flutter web 정적 파일만** 담는다: `flutter build web` 결과(`app/build/web`)의 내용을 zip 루트에 넣는다(`index.html`이 zip 루트에 있어야 한다). deploy.sh가 `/opt/devpilot/web` 안의 내용을 이것으로 교체한다(§9.3). 이미지가 아니므로 web 쪽 Dockerfile은 없다. **compose.prod.yml·Caddyfile·스크립트는 들어 있지 않다**(§2.2) |
 
-- 이미지와 번들은 같은 tag로 만들어지고 같이 배포된다. 헤더·라우팅 변경(Caddyfile)과 compose·스크립트 변경도 번들로만 반영된다.
-- base image(`eclipse-temurin`, `caddy`) 갱신은 Dependabot `docker` ecosystem(S2 P1 활성화, §7.4) 전까지 수동으로 한다.
+- 이미지와 `web.zip`은 같은 tag로 만들어지고 같이 배포된다. 헤더·라우팅 변경(Caddyfile)과 compose·스크립트 변경은 릴리스 자산에 들어가지 않으므로 `prepare-server.sh` 재실행으로 따로 반영한다(§2.2). CHANGELOG의 `Ops` 절에 그 사실을 적는다(§9.1).
+- base image(`eclipse-temurin`, `caddy`) 갱신은 Dependabot `docker` ecosystem(S2 P1 활성화, §7.4) 전까지 수동으로 한다. digest 고정(S2 P1)은 멀티아치 이미지의 **manifest list digest**로 한다.
 
 ### 5.4 `infra/Caddyfile` 라우팅
 
@@ -267,10 +313,14 @@ dc() {
   handle /api/* {
     request_body { max_size 1MB }
     header ?Cache-Control no-store
-    reverse_proxy api:8080
+    reverse_proxy api:8080 { trusted_proxies private_ranges }
   }
-  handle /actuator/health { reverse_proxy api:8080 }
-  handle /actuator* { respond 404 }
+  # 중첩 handle: matcher 없는 블록이 마지막에 평가되므로 /actuator/health 만 통과하고 나머지는 404
+  handle /actuator* {
+    @health path /actuator/health
+    handle @health { reverse_proxy api:8080 { trusted_proxies private_ranges } }
+    handle { respond 404 }
+  }
   handle {
     root * /srv/web
     header Cache-Control no-cache
@@ -279,6 +329,8 @@ dc() {
   }
 }
 ```
+
+`trusted_proxies private_ranges`는 `tailscale serve`(127.0.0.1) → docker bridge를 거쳐 오는 요청의 `X-Forwarded-Proto=https`를 backend까지 전달하기 위한 것이다(`server.forward-headers-strategy=framework`, `18` §4.4).
 
 | 요청 경로 | 처리 |
 |---|---|
@@ -294,7 +346,7 @@ Flutter web 산출물(`main.dart.js`, `flutter_bootstrap.js` 등)은 파일명�
 | 파일 | 권한 | 내용 | 백업 위치 |
 |---|---|---|---|
 | `api.env` | `600 deploy:deploy` | §6의 prod backend 변수 | password manager 보안 노트 "DevPilot prod api.env" (파일 전체) |
-| `ops.env` | `600 deploy:deploy` | 운영 스크립트 설정 4개: `API_IMAGE=ghcr.io/<owner>/devpilot-api`(compose·deploy.sh), `RELEASE_REPO=<owner>/DevPilot`(deploy.sh 번들 다운로드), `HEALTHCHECKS_PING_URL`(healthping.sh, §11.2), `HEALTHCHECK_BACKUP_URL`(backup.sh, §8.3, 비우면 ping 생략) | 같은 노트 |
+| `ops.env` | `600 deploy:deploy` | 운영 스크립트 설정 4개: `GITHUB_OWNER=<owner>`(deploy.sh가 여기서 `web.zip` 다운로드 URL과 이미지 이름 `ghcr.io/<owner 소문자>/devpilot-api`를 **파생한다** — 이미지 이름·저장소 이름을 따로 두지 않는다), `HEALTHCHECKS_PING_URL`(healthping.sh, §11.2), `HEALTHCHECK_BACKUP_URL`(backup.sh, §8.3, 비우면 ping 생략), `HEALTHCHECK_HOST_URL`(host-check.sh, §11.3, 비우면 ping 생략) | 같은 노트 |
 
 - 형식: `KEY=VALUE` 한 줄씩, 따옴표·공백 없이 쓴다. PEM처럼 여러 줄인 값(`DEVPILOT_DEV_JWT_KEY`)은 `\n`으로 이어 한 줄로 쓴다(앱이 되돌린다). 스크립트는 env 파일을 `source`하지 않고 필요한 키만 `grep`으로 읽는다.
 - 값을 바꾼 뒤: `dc up -d --force-recreate api` → `curl -s http://127.0.0.1:18080/actuator/health`
@@ -324,19 +376,20 @@ Secret 열: **Yes** = 노출 시 즉시 교체(§13.3), 개인정보 = secret처
 | `CORS_ALLOWED_ORIGINS` | backend `devpilot.web.cors-allowed-origins` | `http://localhost:5173` | 비움 (test profile CORS 없음, `07` §9.1) | 비움 (same-origin) | 아니오 | `api.env` |
 | `APP_BASE_URL` | backend `devpilot.web.app-base-url` (캘린더 피드 URL, devtoken issuer) | `http://localhost:5173` (local 기본값) | test profile 고정값 | **필수** `https://<tailnet-host>` (없으면 기동 실패) | 아니오 (tailnet 호스트명은 저장소에 두지 않는다) | `api.env` |
 | `DOCKER_HOST` / `TESTCONTAINERS_HOST_OVERRIDE` | Testcontainers·docker CLI (로컬 PC만, 선택) | `tcp://localhost:2375` / `<server tailnet IP>` (`dev-docker-tunnel.ps1`이 안내, `18` §3.1) | — (runner의 Docker) | — | 아니오 (tailnet IP는 저장소에 두지 않는다) | OS 사용자 환경변수 |
-| `API_TAG` | `compose.prod.yml` 이미지 tag | — | — | 배포할 tag (deploy.sh 인자) | 아니오 | deploy.sh가 설정 |
-| `API_IMAGE` | `compose.prod.yml`, deploy.sh | — | release.yml이 push | `ghcr.io/<owner>/devpilot-api` (owner 소문자) | 아니오 | `ops.env` |
-| `RELEASE_REPO` | deploy.sh (번들 `devpilot-<tag>.zip` 다운로드 URL) | — | — | `<owner>/DevPilot` | 아니오 | `ops.env` |
+| `GITHUB_OWNER` | `deploy.sh` (`web.zip` 다운로드 URL과 `API_IMAGE`를 파생한다) | — | — | GitHub 소유자 이름 (`<owner>`, `[A-Za-z0-9-]+`) | 아니오 | `ops.env` |
+| `TAG` | `compose.prod.yml` 이미지 tag | — | — | 배포할 tag (deploy.sh 인자) | 아니오 | deploy.sh가 `/opt/devpilot/.env`에 기록 |
+| `API_IMAGE` | `compose.prod.yml` | — | release.yml이 push | `ghcr.io/<owner 소문자>/devpilot-api` | 아니오 | deploy.sh가 `GITHUB_OWNER`로 만들어 `/opt/devpilot/.env`에 기록 |
 | `HEALTHCHECK_BACKUP_URL` | `backup.sh` ping (§8.3) | — | — | healthchecks.io ping URL (비우면 ping 생략) | **Yes** (알림을 무력화할 수 있음) | `ops.env` |
-| `HEALTHCHECKS_PING_URL` | `healthping.sh` ping (§11.2) | — | — | healthchecks.io ping URL | **Yes** | `ops.env` |
-| `AUTH_MODE` (app) | Flutter `--dart-define` | `dev` (`config/local.json`) | `dev` | `dev` (`config/prod.json`, 커밋) | 공개 | 저장소 |
-| `API_BASE_URL` (app) | Flutter | `http://localhost:8080` | 예시값 | **비움** = same-origin | 공개 | 저장소 |
+| `HEALTHCHECKS_PING_URL` | `healthping.sh` ping (§11.2) | — | — | healthchecks.io ping URL (비우면 ping 생략) | **Yes** | `ops.env` |
+| `HEALTHCHECK_HOST_URL` | `host-check.sh` ping (§11.3) | — | — | healthchecks.io ping URL (비우면 출력만) | **Yes** | `ops.env` |
+| `AUTH_MODE` (app) | Flutter `--dart-define` | `dev` (`config/local.json`, 커밋 안 함) | `dev` (`config/local.example.json`) | `dev` | 공개 | release.yml의 inline `--dart-define` |
+| `API_BASE_URL` (app) | Flutter `--dart-define` | `http://localhost:8080` | 예시값 | **비움** = same-origin | 공개 | release.yml의 inline `--dart-define` |
 | `GITHUB_TOKEN` | CI (GHCR push, Release 생성, gitleaks) | — | Actions 자동 발급 | — | Yes (자동 만료) | — |
 
 규칙:
 - Secret은 저장소, 이미지, CI 로그에 두지 않는다. GitHub에는 **environment secret**으로만 둔다(`ai-eval` environment의 `DEEPSEEK_API_KEY` 하나). `production` environment는 만들지 않는다(배포가 Actions 밖에서 일어난다, 결정 D).
 - 서버 주소·tailnet 호스트명·이메일은 `api.env`와 `DevPilot-ops/`에만 있다.
-- 새 변수를 추가하면 이 표, `.env.example`(`18` §5.2), `prepare-server.sh`의 `api.env` 템플릿을 같이 바꾸고, 서버 `api.env`에 **배포 전에** 추가한다.
+- 새 변수를 추가하면 이 표, `.env.example`(`18` §5.2), `prepare-server.sh`의 `api.env`·`ops.env` 템플릿을 같이 바꾸고, 서버 `api.env`에 **배포 전에** 추가한다. `ops.env` 템플릿이 바뀌면 `prepare-server.sh`는 기존 파일을 덮어쓰지 않으므로 서버 파일에 직접 줄을 추가한다.
 - Supabase 도입 시 추가되는 변수(`SUPABASE_URL`, `SUPABASE_JWT_ALGORITHM`, `SUPABASE_PUBLISHABLE_KEY`)는 §13.8 부록에 있다.
 
 ---
@@ -349,15 +402,16 @@ Secret 열: **Yes** = 노출 시 즉시 교체(§13.3), 개인정보 = secret처
 
 | Job | Runner | 단계 (순서 = gate 순서) |
 |---|---|---|
-| `security` | `ubuntu-24.04` | checkout(전체 이력) → **actions-pin-check**(`uses:`가 40자 SHA가 아니면 실패, 07 §11.4) → gitleaks. (Trivy fs 스캔은 S2 P1에 추가, §7.4) |
-| `backend` | `ubuntu-24.04` | checkout → setup-java(Temurin 25) → gradle wrapper-validation → setup-gradle → `spotlessCheck` → `compileJava compileTestJava`(main `-Werror`, lockfile) → `checkstyleMain checkstyleTest` → `pmdMain spotbugsMain` → `test`(tag `unit`: 규칙, ArchUnit, web slice) → `integrationTest`(tag `integration`: Testcontainers `postgres:16`, E2E, content 검증, OpenAPI 스냅샷 생성) → `jacocoTestCoverageVerification` → `openApiCheck` → 실패 시 리포트 업로드. 순서·실패 기준은 `09-test-and-quality.md` §14.1 |
-| `app` | `ubuntu-24.04` | checkout → `.fvmrc`에서 Flutter 버전 읽기 → flutter-action → `flutter pub get --enforce-lockfile` → `dart format --set-exit-if-changed lib test` → `bash tool/check_identifiers.sh` → `flutter gen-l10n` + `build_runner build` → `flutter analyze --fatal-infos --fatal-warnings` → `flutter test` → `flutter build web --release --no-web-resources-cdn --csp` |
+| `security` | `ubuntu-24.04` | checkout(전체 이력) → **actions-pin-check**(`uses:`가 40자 SHA가 아니면 실패, 07 §11.4. S0 고정 전까지 `continue-on-error: true`) → gitleaks. (Trivy fs 스캔은 S2 P1에 추가, §7.4) |
+| `backend` | `ubuntu-24.04` | checkout(전체 이력) → setup-java(Temurin 25) → gradle wrapper-validation → setup-gradle → **migration immutability**(PR에서만: base 대비 `db/migration/V*` 수정이 있으면 실패, `04` §10) → `spotlessCheck` → `compileJava compileTestJava`(main `-Werror`, lockfile) → `checkstyleMain checkstyleTest` → `pmdMain spotbugsMain` → `test`(tag `unit`: 규칙, ArchUnit, web slice) → `integrationTest`(tag `integration`: Testcontainers `postgres:16`, E2E, content 검증, OpenAPI 스냅샷 생성) → `jacocoTestCoverageVerification` → `openApiCheck` → 실패 시 리포트 업로드. 순서·실패 기준은 `09-test-and-quality.md` §14.1 |
+| `app` | `ubuntu-24.04` | checkout → `.fvmrc`에서 Flutter 버전 읽기 → flutter-action → `flutter pub get --enforce-lockfile` → `dart format --output=none --set-exit-if-changed lib test` → `bash tool/check_identifiers.sh` → `flutter gen-l10n` + `build_runner build` → `flutter analyze --fatal-infos --fatal-warnings` → `flutter test` → `flutter build web --release --no-web-resources-cdn --csp --dart-define-from-file=config/local.example.json`(빌드 확인용 예시 설정. `config/local.json`·`prod.json`은 `.gitignore` 대상이라 CI에 없다) |
 | `content` | `ubuntu-24.04` | PR이면 base 대비 `content/**` 변경 여부 판정(변경 없으면 검증 단계만 생략, job은 성공) → venv + `pyyaml` → `python3 content/tools/validate_content.py` (ERROR 1건이면 실패, `19-content-spec.md`) |
 
-- job은 병렬로 실행한다. **`main`과 `developer` 둘 다** branch protection(ruleset)에 필수 check `security`, `backend`, `app`, `content`를 건다(`09-test-and-quality.md` §14.1). `feature/*` → `developer`는 squash merge, `developer` → `main`은 merge commit(`08` §10.1, `_PENDING-CHANGES.md` §5).
+- job은 병렬로 실행한다. **`main`과 `developer` 둘 다** branch protection(ruleset)에 필수 check `security`, `backend`, `app`, `content`를 건다(`09-test-and-quality.md` §14.1). `feature/*` → `developer`는 squash merge, `developer` → `main`은 merge commit(`08` §10.1, `20` DEC-22).
 - `app` job은 format check 뒤에 `bash tool/check_identifiers.sh`(08 §2.2 로마자 식별자 정규식, 생성 파일 제외)를 실행한다.
 - `backend` job의 `integrationTest`가 `OpenApiSnapshotTest`로 `build/openapi/openapi.yaml`을 만들고, 마지막 `openApiCheck` step이 `docs/api/openapi.yaml`과 비교한다(BL-FND-22, S0).
-- `security` job의 actions-pin-check는 S0 SHA 고정(§7.5) 전까지 실패한다. S0 첫 PR에서 고정을 끝낸다.
+- `backend`·`app` job은 **S0에서 `backend/gradlew`(+`gradle/wrapper/`)와 `app/.fvmrc`·`app/pubspec.yaml`을 만들기 전에는 통과하지 못한다**(파일이 없어 첫 step에서 멈춘다). S0의 첫 작업이 이 파일 생성이다(`18` §4.1·§6.1, §7.1 체크리스트).
+- `security` job의 actions-pin-check는 S0 SHA 고정(§7.5) 전까지 저장소의 `uses:` 23개를 모두 잡아내 실패한다. 필수 check가 첫 push부터 막히지 않도록 이 step에는 **`continue-on-error: true`**를 붙여 두었다(검사 결과는 로그에 남고 job은 통과한다). **S0에서 SHA 고정을 끝낸 뒤 `ci.yml`의 `continue-on-error` 줄과 그 위 `TODO(S0)` 주석을 지운다**(§7.5-3).
 - seed YAML 검증은 두 곳에서 같은 규칙 ID로 한다: `content` job의 참조 검증기(`content/tools/validate_content.py`)와 backend 기동·`integrationTest`의 Java `ContentValidator` (`04` §9, `19-content-spec.md`).
 - PR에서는 같은 ref의 이전 실행을 취소한다(`concurrency`).
 
@@ -368,22 +422,25 @@ Secret 열: **Yes** = 노출 시 즉시 교체(§13.3), 개인정보 = secret처
 | Job | Runner | 단계 |
 |---|---|---|
 | `ci` | (reusable `ci.yml`) | §7.1 전체 |
-| `build-api` | `ubuntu-24.04` | tag 형식·`main` 조상 여부 검증 → setup-java → setup-gradle → `./gradlew bootJar` → docker/login-action(GHCR, `GITHUB_TOKEN`) → docker/build-push-action(`linux/amd64`, `push: true`, tags `<tag>`) |
-| `build-bundle` | `ubuntu-24.04` | flutter-action → `flutter build web --release --no-web-resources-cdn --csp --dart-define-from-file=config/prod.json` → `devpilot-<tag>.zip` 생성(`web/` = `app/build/web`, `infra/compose.prod.yml`, `infra/Caddyfile`, `infra/scripts/*.sh`) → upload-artifact |
-| `release` | `ubuntu-24.04` | needs `build-api`·`build-bundle` → download-artifact → `gh release create <tag> devpilot-<tag>.zip --notes-file <CHANGELOG.md의 해당 tag 절>`. Release가 만들어져야 deploy.sh가 번들을 받을 수 있다 |
+| `build-api` | `ubuntu-24.04` | tag 형식·`main` 조상 여부 검증 → setup-java → setup-gradle → `./gradlew bootJar` → 이미지 이름 계산(owner 소문자) → **setup-qemu + setup-buildx**(멀티아치 빌드에 필요) → docker/login-action(GHCR, `GITHUB_TOKEN`) → docker/build-push-action(**`linux/amd64,linux/arm64`**, `push: true`, tags `<tag>`, OCI 라벨 source·revision·version) |
+| `build-web` | `ubuntu-24.04` | tag 형식 검증 → `app/.fvmrc`에서 Flutter 버전 읽기 → flutter-action → `flutter pub get --enforce-lockfile` → `gen-l10n` + `build_runner build` → `flutter build web --release --no-web-resources-cdn --csp --dart-define=AUTH_MODE=dev --dart-define=API_BASE_URL=`(**inline dart-define**. `app/config/prod.json`은 `.gitignore`(`app/config/*.json`)에 걸려 커밋되지 않으므로 파일을 쓰지 않는다) → `app/build/web` 내용을 `web.zip`으로 압축(zip 루트에 `index.html`) → `gh release create <tag> --generate-notes`(Release가 없을 때만) → `gh release upload <tag> web.zip --clobber` |
+| `summary` | `ubuntu-24.04` | needs `build-api`·`build-web`(`if: always()`) → tag, 두 job의 결과, 배포 명령을 Job summary 표로 출력하고 **둘 중 하나라도 실패하면 job을 실패시킨다** |
 
-- environment·secret·variable이 필요 없다(`GITHUB_TOKEN`만, `packages: write` + `contents: write`).
+- environment·secret·variable이 필요 없다(`GITHUB_TOKEN`만: `build-api`에 `packages: write`, `build-web`에 `contents: write`).
+- Release notes는 `--generate-notes`(GitHub 자동 생성)다. `CHANGELOG.md`는 저장소에서 사람이 관리하며(§9.1) 워크플로가 읽지 않는다.
+- `web.zip`에 infra 파일이 들어가지 않으므로, compose·Caddyfile·스크립트가 바뀐 릴리스는 배포 전에 서버에서 `prepare-server.sh`를 다시 실행한다(§2.2).
 - 이미지 스캔(Trivy)은 S2 P1에서 `build-api` 뒤에 추가한다(§7.4).
-- Job summary 항목: tag, api 이미지 digest, Release URL. 운영자는 이 digest를 §9.2 배포 로그와 대조한다.
+- **arm64는 QEMU 에뮬레이션으로 빌드하므로 `build-api`가 amd64 단독일 때보다 몇 분 더 걸린다.** 그 대가로 공개 전환 시 OCI Ampere A1(arm64)에서 같은 tag를 그대로 pull할 수 있다(§1.4). arm64가 필요 없어지면 `platforms`에서 빼고 두 setup step을 지우면 된다.
+- Job summary 항목: tag, `api image (linux/amd64 + linux/arm64 → GHCR)` 결과, `web.zip (GitHub Release 자산)` 결과, 배포 명령. 운영자는 둘 다 `success`인 것을 확인하고 배포한다(§9.2).
 
 ### 7.3 `ai-eval.yml`
 
 | 항목 | 값 |
 |---|---|
-| 트리거 | `workflow_dispatch`만 (input `suite`, `repeat` 1~3, `max_cost_usd` 기본 0.5, 상한 1). PR label 트리거는 두지 않는다(결정 E: prod와 같은 잔액을 쓰므로 수동으로만) |
+| 트리거 | `workflow_dispatch`만 (input `suite` = `[a-z0-9-]+`, `repeat` **1~5**(기본 3), `max_cost_usd` **0.1~0.5**(기본 0.5)). 범위를 벗어나면 첫 step `Validate inputs`가 실패한다. PR label 트리거는 두지 않는다(결정 E: prod와 같은 잔액을 쓰므로 수동으로만) |
 | environment | `ai-eval` — Required reviewers = 저장소 소유자 (실행마다 승인), secret `DEEPSEEK_API_KEY` |
 | 단계 | 입력 검증 → setup-java → setup-gradle → `./gradlew aiEval -PevalSuite=<suite> -PevalRepeat=<n> -PevalMaxCostUsd=<usd>` (그 밖의 옵션 `evalCase`, `evalModel`, `evalUpdateBaseline`은 `evals/README.md`) → `backend/build/reports/ai-eval/` 업로드 → `summary.md`를 Job summary로 게시 |
-| 비용 통제 | `-PevalMaxCostUsd`(기본 0.5)로 실행 전 상한 + DeepSeek 선불 잔액(§11.6). 실행 전 예상 비용 출력은 `17-ai-integration.md`의 eval 규칙을 따른다 |
+| 비용 통제 | `-PevalMaxCostUsd`(0.1~0.5, 기본 0.5)로 실행 전 상한 + DeepSeek 선불 잔액(§11.6). 실행 전 예상 비용 출력은 `17-ai-integration.md`의 eval 규칙을 따른다 |
 | 금지 | fork PR에서 실행하지 않는다 (`workflow_dispatch`만이므로 해당 없음) |
 
 ### 7.4 `dependabot.yml` · 보류한 도구
@@ -411,7 +468,7 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
    ```
    `gradle/actions/setup-gradle`은 `gradle/actions` 저장소의 SHA를 쓴다.
 2. 릴리스 노트와 보안 공지를 확인한다.
-3. `uses: actions/checkout@<40자리 SHA> # v7.0.1` 형식으로 바꾸고 TODO 주석을 지운다.
+3. `uses: actions/checkout@<40자리 SHA> # v7.0.1` 형식으로 바꾸고 TODO 주석을 지운다. 대상은 로컬 reusable workflow(`uses: ./.github/workflows/ci.yml`)를 뺀 **23개**다(`docker/setup-qemu-action`·`docker/setup-buildx-action` 포함). 같은 커밋에서 `ci.yml`의 `actions-pin-check` step에 붙은 **`continue-on-error: true`와 그 위 `TODO(S0)` 주석도 지운다** — 이 줄이 남아 있으면 고정이 안 된 action이 있어도 `security` job이 통과한다.
 4. 검사 (결과 0줄이어야 한다):
    ```bash
    # ci.yml actions-pin-check와 같은 패턴 (주석·step 이름의 "uses" 문자열은 대상이 아니다)
@@ -434,10 +491,10 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
 | 대상 | DB `devpilot` 전체 (`devpilot` 스키마 + `flyway_schema_history`) |
 | 도구 | `pg_dump` 16 (`postgres:16` 컨테이너, `--network host`), `--format=custom` |
 | 암호화 | 없음. 파일은 tailnet 안의 서버와 로컬 PC에만 존재한다. 오브젝트 스토리지·`age`·`rclone`은 쓰지 않는다 |
-| 1차 저장소 | 서버 `/opt/devpilot/backups/devpilot-<UTC timestamp>.dump` (640 deploy:devpilot), **7일** 보관 |
+| 1차 저장소 | 서버 `/opt/devpilot/backups/devpilot-<UTC timestamp>.dump` (**640 deploy:deploy**. `backups/`가 setgid 2750이라 `deploy` 그룹에 든 운영자 계정이 scp로 읽는다), **7일** 보관 |
 | 2차 사본 | 로컬 PC `%USERPROFILE%\DevPilot-backups\` — `infra/scripts/pull-backup.ps1`로 **주 1회** 최신 파일 pull, **8주** 보관. 같은 호스트의 디스크는 백업이 아니므로 이 사본이 실제 재해 대비다 |
-| 주기 | 매일 **18:30 UTC** (KST 03:30, `CoachContentPurgeJob` 18:20 이후·`RetentionCleanupJob` 18:30과 같은 시각이지만 서로 독립), systemd timer, 무작위 지연 5분, `Persistent=true` |
-| 배포 전 백업 | deploy.sh가 **모든 배포 전에** 같은 backup.sh를 실행한다(DB가 작아 수 초, §9.3). 실패하면 아무것도 바꾸지 않고 중단. 롤백·재활성화는 `--skip-backup` |
+| 주기 | 매일 **19:00 UTC** (KST 04:00). 앱 스케줄 job이 끝난 뒤다 — `CoachContentPurgeJob` 18:20 UTC, `RetentionCleanupJob` 18:30 UTC(`03` §6). systemd timer, 무작위 지연 5분(`RandomizedDelaySec=300`), `Persistent=true` |
+| 배포 전 백업 | **opt-in이다.** `deploy.sh <tag> --backup-first`를 줄 때만 같은 backup.sh를 먼저 실행하고, 실패하면 아무것도 바꾸지 않고 중단한다(DB가 작아 수 초, §9.3). 플래그가 없으면 백업하지 않는다. **migration이 포함된 릴리스에는 반드시 붙인다**(§9.2) — 서버에 git 저장소가 없어 자동 감지를 할 수 없다 |
 | 감시 | healthchecks.io check `devpilot-backup` (§11.2) |
 | 적용 시점 | 스크립트는 S0 seed에 있다. **timer 활성화와 첫 pull은 실사용 시작(2026-10-26) 전 S2에 한다.** 복구 리허설 기록은 S6에 완성한다 |
 
@@ -445,7 +502,7 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
 
 `backup.sh`(서버, `deploy`, 입력 `/opt/devpilot/api.env`의 `DATABASE_*`와 `ops.env`의 `HEALTHCHECK_BACKUP_URL`(선택)): 입력 파일 검증 → healthchecks `/start` → `DATABASE_URL`(JDBC) 파싱 → `docker run --rm --network host -e PGPASSWORD postgres:16 pg_dump -h 127.0.0.1 -p 5432 -U devpilot -Fc devpilot > backups/devpilot-<ts>.dump.part` → 크기 ≥ 1 KB 확인 → `.part` 제거(원자적 rename) → 7일 지난 파일 삭제(**이번 백업이 성공했을 때만**, 보관 일수는 스크립트 상수 7) → `state/last_backup_ok` 기록 → healthchecks 성공 ping. 어느 단계든 실패하면 healthchecks `/fail`을 보내고 non-zero로 끝난다. ping URL이 비어 있으면 ping만 생략한다(S0~S1, timer 활성화 전에도 deploy.sh가 호출한다).
 
-`pull-backup.ps1`(로컬 PC, PowerShell): `ssh <user>@<server> ls -t /opt/devpilot/backups/*.dump | head -1` → `scp`로 `%USERPROFILE%\DevPilot-backups\`에 복사(같은 이름이 있으면 건너뜀) → 8주 지난 로컬 파일 삭제 → 결과 1줄 출력. 서버 주소·계정은 인자 또는 `$env:DEVPILOT_SERVER`로 받고 스크립트에 하드코딩하지 않는다. Windows 작업 스케줄러에 주 1회(일요일 21:00) 등록한다.
+`pull-backup.ps1`(로컬 PC, PowerShell): `ssh <user>@<server> ls -t /opt/devpilot/backups/*.dump | head -1` → `scp`로 `%USERPROFILE%\DevPilot-backups\`에 복사(같은 이름이 있으면 건너뜀) → 8주 지난 로컬 파일 삭제 → 결과 1줄 출력. 서버 주소·계정은 `-Server` 인자 또는 `$env:DEVPILOT_SERVER_SSH`(`user@host`)로 받고 스크립트에 하드코딩하지 않는다. 종료 코드 0 성공 / 1 ssh·scp 실패 또는 백업 파일 없음 / 2 사용법·도구 없음. Windows 작업 스케줄러에 주 1회(일요일 21:00) 등록한다.
 
 ### 8.3 설치 · 활성화 (S2)
 
@@ -454,7 +511,7 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
    ```dotenv
    HEALTHCHECK_BACKUP_URL=https://hc-ping.com/<uuid>
    ```
-3. 활성화와 첫 실행:
+3. 활성화와 첫 실행 (`prepare-server.sh`는 `api.env`의 `DATABASE_PASSWORD`가 채워져 있으면 이미 켜 둔다 — 그때는 확인만 한다):
    ```bash
    sudo systemctl enable --now devpilot-backup.timer
    sudo systemctl start devpilot-backup.service
@@ -521,7 +578,7 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
 | tag 생성 | `git tag -a v0.2.0 -m "S2: Today, Session, Review, PWA"` → `git push origin v0.2.0` |
 | 불변 | tag를 지우거나 다른 커밋으로 옮기지 않는다. 잘못 배포했으면 patch를 올린다 |
 | CHANGELOG | 저장소 루트 `CHANGELOG.md`, tag마다 섹션 1개. tag push 전에 main에 커밋한다 |
-| migration 포함 릴리스 | 별도 플래그가 없다. deploy.sh가 **모든 배포 전에** backup.sh를 실행하고(§9.3), 백업이 실패하면 아무것도 바꾸지 않고 배포를 중단한다. CHANGELOG `Migrations` 절은 사람이 호환성을 확인한 기록이다 |
+| migration 포함 릴리스 | **`deploy.sh <tag> --backup-first`로 배포한다.** 백업은 opt-in이라 플래그가 없으면 실행되지 않는다(§8.1, §9.3). 백업이 실패하면 아무것도 바꾸지 않고 중단한다. CHANGELOG `Migrations` 절은 사람이 호환성을 확인한 기록이고, 배포자가 이 절을 보고 플래그를 붙인다 |
 
 `CHANGELOG.md` 섹션 형식:
 
@@ -535,7 +592,8 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
 - V4__learning_today_review.sql — 직전 릴리스와 호환: 예
 ### Ops
 - api.env 추가 변수: 없음
-- 수동 작업: 없음
+- infra 파일 변경(compose.prod.yml / Caddyfile / scripts): 없음   ← 있으면 배포 전 prepare-server.sh 재실행 (§2.2)
+- 배포 명령: deploy.sh v0.2.0 --backup-first   ← Migrations 절이 비어 있으면 플래그 없이
 ```
 
 릴리스 전 확인:
@@ -551,53 +609,77 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
 git push origin vX.Y.Z
   └─ release.yml
        ├─ ci (security, backend, app, content)             ~10분
-       ├─ build-api (amd64) ─ bootJar → image → GHCR push
-       ├─ build-bundle ─ flutter build web → devpilot-vX.Y.Z.zip (web/ + infra/)
-       └─ release ─ GitHub Release vX.Y.Z + 번들 자산 + CHANGELOG 절
+       ├─ build-api (amd64+arm64) ─ bootJar → image → GHCR push
+       ├─ build-web ─ flutter build web → web.zip → GitHub Release vX.Y.Z (--generate-notes)
+       └─ summary ─ Job summary (두 job 결과)
 
 운영자 (로컬 PC, tailnet):
-  ssh <user>@<server> sudo -u deploy /opt/devpilot/deploy.sh vX.Y.Z   # 서버에서 실행 (결정 D)
-  bash infra/scripts/smoke-headers.sh https://<tailnet-host>           # 로컬 PC에서 (Git Bash)
+  # infra 파일(compose.prod.yml·Caddyfile·scripts)이 바뀐 릴리스면 먼저: prepare-server.sh 재실행 (§2.2)
+  ssh <user>@<server> sudo -u deploy /opt/devpilot/deploy.sh vX.Y.Z                  # 서버에서 실행 (결정 D)
+  ssh <user>@<server> sudo -u deploy /opt/devpilot/deploy.sh vX.Y.Z --backup-first   # migration이 있으면 (§9.1)
+  bash infra/scripts/smoke-headers.sh https://<tailnet-host>                          # 로컬 PC에서 (Git Bash)
 ```
 
 release.yml의 Job summary가 녹색인 것을 확인한 뒤 배포한다. Actions는 서버에 접근하지 않는다(Tailscale OAuth·ACL 태그 불필요). Actions→tailnet 자동 배포는 Later(BL 신설 항목).
 
+배포 전 판단 두 가지:
+
+| 릴리스에 있는 것 | 추가로 할 일 |
+|---|---|
+| DB migration (`CHANGELOG`의 `Migrations` 절) | `deploy.sh <tag> **--backup-first**` — 백업은 opt-in이다 (§8.1) |
+| `infra/` 파일 변경 (compose.prod.yml·Caddyfile·scripts) | 배포 **전에** 서버에서 `prepare-server.sh` 재실행. Caddyfile이 바뀌었으면 배포 후 `dc restart caddy` (§2.2) |
+
 ### 9.3 `deploy.sh` 동작
 
 ```text
-deploy.sh <tag> [--no-pull] [--skip-backup]
- 1. tag 형식 검증(v0.<sprint>.<patch>), ops.env·api.env 존재·권한(600 deploy) 확인, flock(state/deploy.lock, 동시 배포 차단), deploy 사용자인지 확인
+deploy.sh <tag> [--backup-first] [--no-pull]
+ 0. 플래그는 이 둘뿐이다. 그 밖의 `-`로 시작하는 인자나 두 번째 tag는 usage를 출력하고 exit 2
+ 1. tag 형식 검증(v0.<sprint>.<patch>), deploy 사용자인지 확인,
+    compose.prod.yml·Caddyfile·ops.env·api.env 존재 확인, api.env 권한이 정확히 '600 deploy'인지 확인,
+    ops.env의 GITHUB_OWNER 읽기 → API_IMAGE = ghcr.io/<owner 소문자>/devpilot-api,
+    flock(state/deploy.lock, 동시 배포 차단)
  2. previous = .last_good_tag
- 3. 번들 확보: releases/devpilot-<tag>.zip 이 없으면 GitHub Release 에서 다운로드
-    (curl -fL https://github.com/${RELEASE_REPO}/releases/download/<tag>/devpilot-<tag>.zip, --no-pull이면 사본이 있어야 한다)
-    → 임시 디렉터리에 풀기 → web/index.html, infra/compose.prod.yml 존재 확인
- 4. 백업: backup.sh 실행 (--skip-backup 이 아니면 항상), 실패 시 exit 1 (변경 없음)
- 5. activate(<tag>)
-    a. infra 파일 반영: compose.prod.yml, Caddyfile, backup.sh, healthping.sh, host-check.sh → /opt/devpilot/
-       (deploy.sh 자신은 deploy.sh.new 로 두고 성공 후 마지막에 mv 로 교체 — 실행 중 스크립트를 덮어쓰지 않는다)
-    b. docker compose pull api                (--no-pull이면 생략: 이미 받은 이미지 재활성화)
-    c. docker compose up -d --remove-orphans   (Caddyfile이 바뀌었으면 --force-recreate caddy 추가)
-    d. health poll: http://127.0.0.1:18080/actuator/health, 3초 간격 최대 60초, "status":"UP"
-    e. web/ 내용 교체 (API가 UP일 때만: 기존 내용 삭제 → 번들 web/ 복사, 1초 미만 정적 파일 404 가능)
- 6. 성공 → .last_good_tag = <tag> → deploy.sh 교체 → 이미지·번들 정리(최근 3개 tag 유지)
+ 3. --backup-first 일 때만: backup.sh 실행, 실패 시 exit 1 (변경 없음). 플래그가 없으면 백업하지 않는다
+ 4. activate(<tag>)
+    a. docker pull <API_IMAGE>:<tag>          (--no-pull이면 생략. 단, 이미지가 없으면 무시하고 pull한다)
+    b. web.zip 확보: state/web-<tag>.zip 사본이 있으면 그것을, 없으면
+       curl https://github.com/<owner>/DevPilot/releases/download/<tag>/web.zip
+       → 임시 디렉터리에 풀고 index.html 이 있는지 확인(없으면 사본을 지우고 실패)
+       → /opt/devpilot/web 안의 내용만 교체(디렉터리 inode는 유지 — caddy의 bind mount가 보고 있다)
+    c. /opt/devpilot/.env 에 TAG=<tag>, API_IMAGE=... 기록
+    d. docker compose -f compose.prod.yml up -d --remove-orphans
+    e. health poll: http://127.0.0.1:18080/actuator/health, 3초 간격 최대 60초, "status":"UP"
+ 5. 성공 → .last_good_tag = <tag> → 이 저장소의 이미지·web.zip 사본 정리(<tag>와 previous 2개만 남긴다)
     → DEPLOY_RESULT=success, exit 0
- 7. 실패 → api 로그 200줄 출력 → activate(previous, --no-pull) → 성공 DEPLOY_RESULT=rolled_back exit 10
+ 6. 실패 → api 로그 200줄 출력 → activate(previous, --no-pull) → 성공 DEPLOY_RESULT=rolled_back exit 10
                                                              → 실패 DEPLOY_RESULT=rollback_failed exit 11
-    previous가 없으면 DEPLOY_RESULT=failed_no_previous exit 11
+    previous가 없거나 <tag>와 같으면 롤백을 시도하지 않는다 → DEPLOY_RESULT=failed_no_previous exit 12
 ```
 
+| exit | `DEPLOY_RESULT` | 서버 상태 |
+|---|---|---|
+| 0 | `success` | 새 tag로 동작 중 |
+| 1 | (없음) | 사전 단계 실패 — 아무것도 바꾸지 않았다 |
+| 2 | (없음) | 사용법 오류 — 아무것도 바꾸지 않았다 |
+| 10 | `rolled_back` | 이전 tag로 동작 중. 원인 조사 후 patch 릴리스 (§13.1) |
+| 11 | `rollback_failed` | **중간 상태. 수동 복구가 필요하다** (§13.1) |
+| 12 | `failed_no_previous` | 되돌릴 tag가 없어 롤백을 시도하지 않았다. 첫 배포가 실패한 경우다 (§13.1) |
+
+- **deploy.sh는 `compose.prod.yml`·`Caddyfile`·운영 스크립트를 갱신하지 않는다.** 자기 자신도 교체하지 않는다. 이 파일들은 `prepare-server.sh` 재실행으로만 바뀐다(§2.2).
 - 외부 HTTPS 확인은 배포 스크립트가 하지 않는다(서버에서 tailnet 주소로 요청하면 `tailscale serve`를 거치지 않는다). 운영자가 로컬 PC에서 `smoke-headers.sh`로 확인한다(§4.2).
-- 배포 중 API 재시작 동안(약 20~40초) 요청은 실패할 수 있다. 사용자 3명 이하이므로 무중단 배포를 하지 않는다.
-- 롤백(`activate(previous)`)은 `releases/`에 남은 이전 번들과 서버에 남은 이전 이미지를 쓰므로 GitHub에 접근하지 않는다.
-- 서버에 git clone을 두지 않는다. 배포에 필요한 파일은 전부 이미지와 번들에 있다.
+- 배포 중 API 재시작 동안(약 20~40초) 요청은 실패할 수 있다. web 정적 파일도 교체하는 1초 미만 동안 404가 날 수 있다. 사용자 3명 이하이므로 무중단 배포를 하지 않는다.
+- 롤백(`activate(previous)`)은 `state/web-<tag>.zip` 사본과 서버에 남은 이전 이미지를 쓰므로 GitHub에 접근하지 않는다. 사본은 최근 2개 tag만 남는다.
+- 서버에 git clone을 상시로 두지 않는다. 배포에 필요한 것은 이미지와 `web.zip`뿐이고, infra 파일 갱신 때만 임시로 clone한다(§2.2).
 
 ### 9.4 롤백
 
 | 종류 | 트리거 | 방법 |
 |---|---|---|
 | 자동 | health 60초 실패 | deploy.sh가 `.last_good_tag`로 재활성화 (§9.3-7) |
-| 수동 (배포는 성공했으나 기능 문제) | 운영자 판단 | 서버에서 `deploy.sh <이전 tag> --no-pull --skip-backup`. 이미지·번들이 정리됐으면 `--no-pull` 없이(GHCR·Release에서 다시 받는다) |
+| 수동 (배포는 성공했으나 기능 문제) | 운영자 판단 | 서버에서 `deploy.sh <이전 tag> --no-pull`. 이미지·`web.zip` 사본이 정리됐으면 `--no-pull` 없이(GHCR·Release에서 다시 받는다) |
 | 오래된 tag | — | GHCR 이미지와 Release 자산이 남아 있는 한 언제든 `deploy.sh <tag>`. GHCR 이미지·Release 자산은 지우지 않는다 |
+
+`--skip-backup` 같은 플래그는 없다. 백업은 `--backup-first`를 줄 때만 실행되므로 롤백·재활성화에는 아무것도 붙이지 않는다.
 
 **롤백은 애플리케이션만 되돌린다. DB migration은 되돌리지 않는다.** 그래서 모든 migration은 직전 릴리스 앱과 호환되어야 한다(§10). 데이터 자체가 손상됐으면 §13.2로 복구한다.
 
@@ -613,7 +695,7 @@ deploy.sh <tag> [--no-pull] [--skip-backup]
    - 직전 앱은 자신이 모르는 이후 버전 migration 기록을 무시하고 기동한다(Flyway 기본 `ignoreMigrationPatterns=*:future`). **SP-2에서 migration 추가 후 이전 이미지 기동을 1회 확인한다.**
 4. **트랜잭션**: PostgreSQL DDL은 트랜잭션 안에서 실행되므로, 실패한 migration은 통째로 롤백되고 기록되지 않는다. 이 경우 앱 기동이 실패하고 deploy.sh가 자동 롤백한다. 트랜잭션 밖에서만 되는 문장(`create index concurrently` 등)은 쓰지 않는다 — 테이블이 작아서 필요 없다.
 5. **lock**: 큰 테이블 rewrite(타입 변경 등)를 피한다. 필요한 migration은 첫 줄에 `set lock_timeout = '5s';`를 둔다.
-6. **배포 전 백업**: deploy.sh가 모든 배포 전에 backup.sh를 실행한다 (§9.1, §9.3). migration 포함 여부를 따로 판단하지 않는다.
+6. **배포 전 백업**: 백업은 opt-in이다. migration이 포함된 릴리스는 `deploy.sh <tag> --backup-first`로 배포한다 (§8.1, §9.1, §9.2). 서버에 git 저장소가 없어 스크립트가 migration 포함 여부를 스스로 판단하지 못하므로, CHANGELOG의 `Migrations` 절을 보고 사람이 플래그를 붙인다.
 7. **스키마 생성**: `spring.flyway.create-schemas=true`가 `devpilot` 스키마를 만들고 그 안에 `flyway_schema_history`를 둔다. `V1__baseline.sql`은 `create schema if not exists devpilot;`를 쓴다 (`18` §4.4).
 8. **안전 설정** (`application.yml`): `clean-disabled: true`, `baseline-on-migrate: false`, `out-of-order: false`, `validate-migration-naming: true`, `ddl-auto: validate`.
 9. **검증 순서**: PR CI의 Testcontainers(`postgres:16`) 테스트(빈 DB → 전체 migration → `validate` 기동) → 배포 → `flyway_schema_history` 확인(`docker exec` psql 또는 로컬 DB 클라이언트).
@@ -629,7 +711,7 @@ deploy.sh <tag> [--no-pull] [--skip-backup]
 |---|---|---|---|
 | API 가용성 | 서버 `healthping.sh`(systemd timer) → healthchecks.io `devpilot-health` | 5분 (grace 10분) | 이메일 |
 | 백업 | healthchecks.io `devpilot-backup` | 1일 (grace 2시간) | 이메일 |
-| 호스트 (디스크, 컨테이너 상태·재시작, 인증서, 백업 최신성) | `host-check.sh` → healthchecks.io `devpilot-host` (S6) | 1시간 (grace 30분) | 이메일 |
+| 호스트 (디스크, 컨테이너 상태·재시작, health, tailscale serve·인증서, 백업 최신성) | `host-check.sh` → healthchecks.io `devpilot-host`. **systemd 유닛은 아직 없다 — S6에 추가한다**(§11.3). 그 전에는 월간 점검에서 수동 실행 | (S6 이후) 1시간 (grace 30분) | 이메일 |
 | 애플리케이션 일일 요약 | `RetentionCleanupJob` 끝의 INFO 1줄 (`03` §8) | 매일 | 없음 (주간 점검) |
 | DeepSeek 잔액·비용 | 앱 `AiBalanceCheckJob`(매시 `GET /user/balance`) → `min-balance-usd` 이하이면 WARN 로그 + `aiStatus=BALANCE_EXHAUSTED`; 앱 예산 가드; `ai_call_log` 주간 합계 | 매시 / 주 1회 | 앱 `aiStatus`, 로그 |
 | Tailscale | 노드 상태(`tailscale status`), 인증서 만료(`host-check.sh`) | 매시 | 이메일(host-check) |
@@ -640,30 +722,37 @@ deploy.sh <tag> [--no-pull] [--skip-backup]
 
 ### 11.1 `healthping.sh` (S0, `infra/scripts/healthping.sh`)
 
+요지(전체는 `infra/scripts/healthping.sh`가 기준):
+
 ```bash
 #!/usr/bin/env bash
 # DevPilot health ping: local health -> healthchecks.io (dead-man switch)
 set -euo pipefail
-url="$(grep -E '^HEALTHCHECKS_PING_URL=' /opt/devpilot/ops.env | cut -d '=' -f 2-)"
+url="$(grep -E '^HEALTHCHECKS_PING_URL=' /opt/devpilot/ops.env | tail -n 1 | cut -d '=' -f 2-)"
+[[ -n "${url}" ]] || exit 0          # URL이 비면 ping 없이 0으로 끝난다 (첫 배포 전 timer가 실패 로그를 남기지 않게)
 if curl -fsS -m 10 http://127.0.0.1:18080/actuator/health | grep -q '"status":"UP"'; then
-  curl -fsS -m 10 --retry 3 -o /dev/null "${url}"
+  curl -fsS -m 10 --retry 3 -o /dev/null "${url}"; exit 0
 else
-  curl -fsS -m 10 --retry 3 -o /dev/null --data-binary "health not UP $(date -u +%FT%TZ)" "${url}/fail"
+  curl -fsS -m 10 --retry 3 -o /dev/null --data-binary "health not UP $(date -u +%FT%TZ)" "${url}/fail"; exit 1
 fi
 ```
 
-systemd `devpilot-healthping.timer`: `OnCalendar=*:0/5`, `Persistent=false`, service `User=deploy`, `Type=oneshot`. `prepare-server.sh`가 설치하고 §11.2에서 활성화한다.
+systemd `devpilot-healthping.timer`: `OnCalendar=*:0/5`, `AccuracySec=30s`, `Persistent=false`, service `User=deploy`, `Type=oneshot`. **`prepare-server.sh`가 설치하면서 바로 `enable --now` 한다**(URL이 비면 스크립트가 스스로 건너뛰므로 안전하다). §11.2에서는 ping URL만 채우면 된다.
 
 ### 11.2 healthchecks.io
 
 - 서비스: **healthchecks.io Hobbyist(무료)** — check 20개 (2026-09-17 확인)
-- `devpilot-health`: Period 5 minutes, Grace 10 minutes — `healthping.sh`. 활성화: `/opt/devpilot/ops.env`에 `HEALTHCHECKS_PING_URL=…` → `sudo systemctl enable --now devpilot-healthping.timer` (S0 첫 배포 직후)
+- `devpilot-health`: Period 5 minutes, Grace 10 minutes — `healthping.sh`. 활성화: `/opt/devpilot/ops.env`에 `HEALTHCHECKS_PING_URL=…`을 채우면 끝이다(timer는 `prepare-server.sh`가 이미 켜 두었다, §11.1). 확인: `systemctl list-timers devpilot-healthping.timer`, `journalctl -u devpilot-healthping.service -n 10` (S0 첫 배포 직후)
 - `devpilot-backup`: Period 1 day, Grace 2 hours — `backup.sh`가 `/start`, 성공, `/fail`을 보낸다 (S2)
-- `devpilot-host`: Period 1 hour, Grace 30 minutes — `host-check.sh` (S6)
+- `devpilot-host`: Period 1 hour, Grace 30 minutes — `host-check.sh` (**S6**: timer 유닛을 만든 뒤에 check를 만든다. §11.3)
 
 ### 11.3 `host-check.sh` (S6, `infra/scripts/host-check.sh`)
 
-매시 systemd timer(`devpilot-host-check.timer`, `OnCalendar=hourly`, service `User=deploy`)로 실행한다. 설정은 `/opt/devpilot/ops.env`(`HEALTHCHECK_HOST_URL`).
+현재는 **수동 실행**이다: `sudo -u deploy /opt/devpilot/host-check.sh`. 설정은 `/opt/devpilot/ops.env`의 `HEALTHCHECK_HOST_URL`(§5.5·§6. 비어 있으면 결과를 출력만 한다).
+
+**S6에 `devpilot-host-check.service`/`.timer`(`OnCalendar=hourly`, `User=deploy`)를 `infra/systemd/`에 추가하고 `prepare-server.sh`의 유닛 목록에 넣는다.** 2026-09-18 기준 두 유닛 파일은 저장소에 없다(있는 것은 `devpilot-backup.*`, `devpilot-healthping.*` 4개뿐이다).
+
+아래는 `infra/scripts/host-check.sh`의 검사 항목 요약이다(전체는 파일이 기준. 디스크 80%, 인증서 14일, 백업 26시간, 그리고 `/actuator/health`와 `tailscale serve status` 확인).
 
 ```bash
 #!/usr/bin/env bash
@@ -734,6 +823,7 @@ dc logs --since 26h api | grep 'AiBalanceCheckJob'            # 잔액 (§11.6)
 
 - prod 로그는 ECS JSON이다(`logging.structured.format.console=ecs`). 로그에는 이메일·토큰·본문이 없다(`03` §8).
 - Docker 로그 로테이션(컨테이너당 50 MB) 범위 안에서만 조회된다. 장기 로그 보관은 하지 않는다.
+- compose 서비스는 `api`와 `caddy` 둘뿐이다. caddy 접근 로그는 `dc logs --since 1h caddy`로 본다.
 
 ### 11.5 DB 크기 (공용 PostgreSQL)
 
@@ -757,13 +847,13 @@ order by pg_total_relation_size(c.oid) desc limit 10;
 | 선불 잔액 (백스톱) | DeepSeek는 콘솔 지출 한도가 없다. **선불 잔액을 소액(USD 10 안팎)으로 유지**하는 것이 유일한 하드 캡이다. 잔액 소진 시 API가 402를 반환하고 앱은 `aiStatus=BALANCE_EXHAUSTED`로 AI 기능을 끈다(비-AI 기능 유지, NFR-03) |
 | 잔액 확인 | `AiBalanceCheckJob`(매시 15분): `GET /user/balance` → `min-balance-usd`(1.00) 이하이면 WARN + `BALANCE_EXHAUSTED`, 회복하면 해제. 402 수신 시 즉시 같은 상태 |
 | 주간 확인 | `select date_trunc('day', created_at) as day, count(*) as calls, round(sum(cost_micro_usd) / 1e6, 3) as usd from devpilot.ai_call_log where created_at > now() - interval '7 days' group by 1 order by 1;` |
-| 경보 기준 | 주간 합계가 USD 1(월 예산의 30%)을 넘으면 원인(operation별 호출 수)을 확인한다 |
+| 경보 기준 | 주간 합계가 **USD 0.9**(월 예산 USD 3의 30%)를 넘으면 원인(operation별 호출 수)을 확인한다 |
 | 충전 | 잔액 알림(로그) 또는 platform.deepseek.com에서 확인 후 소액 충전. eval도 같은 잔액을 쓴다(결정 E) |
 
 ### 11.7 호스트 자원 (공용 서버)
 
 - 월 1회 `docker stats --no-stream`으로 DevPilot 컨테이너의 메모리(api ≤ 1.2 GB)와 `free -m`의 가용 메모리(≥ 1 GB)를 확인한다. 부족하면 §3.3 한도를 낮추거나 서버 소유자와 조정한다.
-- `df -h /`, `docker system df`로 디스크를 확인한다. DevPilot 이미지는 deploy.sh가 최근 3개 tag만 남긴다.
+- `df -h /`, `docker system df`로 디스크를 확인한다. DevPilot 이미지와 `state/web-<tag>.zip` 사본은 배포가 성공할 때마다 deploy.sh가 **방금 배포한 tag와 그 직전 tag 2개만** 남기고 지운다(공용 Docker이므로 `docker image prune`은 쓰지 않는다, §9.3).
 
 ### 11.8 정기 점검표
 
@@ -797,7 +887,7 @@ order by pg_total_relation_size(c.oid) desc limit 10;
 | GitHub (public repo: Actions, GHCR, secret scanning, Dependabot) | 0 | DEC-04 |
 | Tailscale | 0 | Personal plan (HTTPS 인증서 포함) |
 | healthchecks.io | 0 | Hobbyist |
-| 도메인 · OCI · Supabase | 0 | 사용하지 않음 (§13.8) |
+| 도메인 · OCI · Supabase | 0 | 현재 단계에서는 쓰지 않는다. 공개 전환 시 도메인 비용이 생긴다(OCI Always Free·Supabase 무료 플랜은 0, §1.4·§13.8) |
 | **합계** | **약 3~4** | |
 
 NFR-01 기준: prod 앱 AI 예산 USD 3/월(DEC-06, 앱 가드). eval 실행은 `-PevalMaxCostUsd`(기본 0.5)로 실행 전 상한을 건다. 선불 잔액은 USD 10 안팎으로 유지한다.
@@ -816,32 +906,39 @@ NFR-01 기준: prod 앱 AI 예산 USD 3/월(DEC-06, 앱 가드). eval 실행은 
 **정상 배포**
 1. §9.1 릴리스 전 확인을 끝낸다.
 2. `git checkout main && git pull` → `git tag -a vX.Y.Z -m "<요약>"` → `git push origin vX.Y.Z`
-3. GitHub → Actions → release 실행이 녹색인지 확인한다(api 이미지 digest, Release에 `devpilot-vX.Y.Z.zip` 자산).
-4. 서버: `ssh <user>@<server> sudo -u deploy /opt/devpilot/deploy.sh vX.Y.Z` → `DEPLOY_RESULT=success`
-5. 로컬 PC: `smoke-headers.sh https://<tailnet-host>` → 불일치 0건. 브라우저에서 로그인 → 변경 기능 1개 확인. 새 버전이 안 보이면 새로고침(정적 파일은 `no-cache`).
+3. GitHub → Actions → release 실행이 녹색인지 확인한다(Job summary의 `api image`·`web.zip` 둘 다 success, Release에 `web.zip` 자산).
+4. `infra/` 파일이 바뀐 릴리스면 먼저 서버에서 `prepare-server.sh`를 다시 실행한다(§2.2).
+5. 서버: `ssh <user>@<server> sudo -u deploy /opt/devpilot/deploy.sh vX.Y.Z`(migration이 있으면 `--backup-first`) → `DEPLOY_RESULT=success`
+6. Caddyfile이 바뀌었으면 `dc restart caddy`.
+7. 로컬 PC: `smoke-headers.sh https://<tailnet-host>` → 불일치 0건. 브라우저에서 로그인 → 변경 기능 1개 확인. 새 버전이 안 보이면 새로고침(정적 파일은 `no-cache`).
 
 **smoke-headers 실패**
 1. 불일치 목록을 본다. 대부분 Caddyfile 헤더 변경이 07 §9.3과 어긋난 경우다.
-2. 서버에서 `deploy.sh <previous> --no-pull --skip-backup`로 되돌린다.
+2. 서버에서 `deploy.sh <previous> --no-pull`로 되돌린다. Caddyfile은 배포로 돌아가지 않으므로, 직전에 `prepare-server.sh`를 재실행해 Caddyfile을 바꿨다면 이전 tag로 다시 clone해 재실행하고 `dc restart caddy`를 한다(§2.2).
 3. Caddyfile 또는 07 §9.3 중 틀린 쪽을 고치고 patch tag로 다시 배포한다. 헤더 기준을 바꾸는 경우 07을 먼저 고친다.
 
 **자동 롤백이 발생한 경우** (`DEPLOY_RESULT=rolled_back`)
 1. 서비스는 이전 tag로 동작 중이다. health로 확인한다.
 2. 출력된 `api 로그 마지막 200줄`에서 기동 실패 원인(설정 누락, Flyway 오류, DB 연결 실패)을 찾는다.
 3. 원인별 조치:
-   - 환경변수 누락 → `api.env`에 추가 (§5.5) → 같은 tag를 `deploy.sh <tag> --no-pull --skip-backup`로 재활성화
+   - 환경변수 누락 → `api.env`에 추가 (§5.5) → 같은 tag를 `deploy.sh <tag> --no-pull`로 재활성화
    - Flyway 오류 → §10-10 규칙으로 수정 → patch tag 릴리스
    - 코드 오류 → 수정 → patch tag 릴리스
 4. migration이 이미 적용됐는지 확인한다: `select version, success from devpilot.flyway_schema_history order by installed_rank desc limit 3;`
 
-**롤백도 실패한 경우** (`DEPLOY_RESULT=rollback_failed`)
-1. `dc ps`, `dc logs --tail 200 api`, `dc logs --tail 100 web`
+**롤백도 실패한 경우** (`DEPLOY_RESULT=rollback_failed`, exit 11)
+1. `dc ps`, `dc logs --tail 200 api`, `dc logs --tail 100 caddy` (서비스는 `api`·`caddy` 둘뿐이다)
 2. DB 상태 확인(§13.5)
 3. 마지막 정상 tag를 명시해 수동 재활성화: `deploy.sh <last-good>`
 4. 그래도 실패하고 원인이 서버면 §13.6.
 
+**첫 배포가 실패한 경우** (`DEPLOY_RESULT=failed_no_previous`, exit 12)
+1. 되돌릴 tag가 없어 롤백을 시도하지 않았다. 새 tag의 이미지가 떠 있고 `/opt/devpilot/web`은 새 내용이다.
+2. 출력된 api 로그 200줄에서 원인을 찾는다. 대부분 `api.env` 누락(`DEVPILOT_DEV_JWT_KEY`, `APP_BASE_URL`, `DATABASE_*`)이나 DB 연결 실패다(§5.5, §2.4).
+3. 고친 뒤 같은 tag로 다시 실행한다: `deploy.sh <tag> --no-pull`
+
 **수동 롤백** (배포는 성공, 기능 문제)
-1. 서버에서 `deploy.sh <이전 tag> --no-pull --skip-backup`
+1. 서버에서 `deploy.sh <이전 tag> --no-pull`
 2. 문제 릴리스에 migration이 있었다면 이전 앱이 새 스키마에서 정상인지 주요 화면으로 확인한다 (§10-3)
 3. 수정은 새 patch tag로 배포한다. 문제 tag를 재사용하지 않는다.
 
@@ -985,7 +1082,7 @@ NFR-01 기준: prod 앱 AI 예산 USD 3/월(DEC-06, 앱 가드). eval 실행은 
 | 2 | 5분 | PostgreSQL에 role `devpilot`·DB `devpilot` 생성 (`DevPilot-ops/02-database.md`) |
 | 3 | 10분 | §2.2 `prepare-server.sh` → §2.3 `tailscale serve` |
 | 4 | 5분 | password manager 내용으로 `/opt/devpilot/api.env`, `ops.env` 작성(권한 §5.5). 호스트명이 바뀌었으면 `APP_BASE_URL` 갱신 |
-| 5 | 10분 | `deploy.sh <last-good tag> --skip-backup`(빈 DB라 백업 대상이 없다) → health `UP`(빈 DB에 migration 적용됨) → `dc stop api` |
+| 5 | 10분 | `deploy.sh <last-good tag>`(백업은 opt-in이므로 플래그를 붙이지 않는다 — 빈 DB라 백업할 것이 없다) → health `UP`(빈 DB에 migration 적용됨) → `dc stop api` |
 | 6 | 15분 | 로컬 사본을 `scp`로 올려 §13.2.3 `db-restore` 3~5단계 |
 | 7 | 5분 | `sudo systemctl enable --now devpilot-backup.timer devpilot-healthping.timer`, 수동 백업 1회, healthchecks 정상 |
 | 8 | 5분 | 로컬 PC: `smoke-headers.sh`, 로그인 → 기존 데이터 표시 확인. 침해가 원인이면 §13.3의 DB 비밀번호·DeepSeek 키·devtoken 키·로그 해시 키를 교체한다(서버에 있던 값) |
@@ -1002,21 +1099,28 @@ NFR-01 기준: prod 앱 AI 예산 USD 3/월(DEC-06, 앱 가드). eval 실행은 
    ```
    `userRef`와 시각을 기록한다.
 2. 앱 데이터 삭제 완료 확인 (DB 클라이언트): `select count(*) from devpilot.app_user where external_auth_id = '<sub>';` → 0. (`sub`는 devtoken 모드에서 이메일 기반 UUID v5 — `03` §4.2.) 1 이상이면 삭제 job이 끝나지 않은 것이다 → api 로그의 `JOB_FAILED` 확인 후 5분 뒤 다시 확인.
-3. allowlist 제거: `api.env`의 `DEVPILOT_ALLOWED_EMAILS`에서 제거 → `dc up -d --force-recreate api`. 이후 그 이메일로는 `/dev/token`이 403이다.
+3. allowlist 제거: `api.env`의 `DEVPILOT_ALLOWED_EMAILS`에서 제거 → `dc up -d --force-recreate api`. 이후 그 이메일로는 `POST /api/v1/dev/token`이 403이다.
 4. 백업 안내: 삭제 전 데이터는 서버 백업에 **최대 7일**, 로컬 사본에 **최대 8주** 남고 보관 기간이 지나면 삭제된다. 복구 리허설·복구 작업 외에는 열지 않는다. 사용자에게 이 사실을 알린다.
 5. 기록: `docs/ops/ops-log.md`에 요청 일시, 앱 데이터 삭제 확인 일시, allowlist 제거 일시, `userRef`를 남긴다. **이메일 원문은 기록하지 않는다.**
 6. 기한: 요청 후 **7일 이내**에 3단계를 끝낸다 (기한 정책의 기준은 `07-security-and-privacy.md`).
 
-### 13.8 부록 — 운영 전환 시 (OCI · 도메인 · Supabase)
+### 13.8 부록 — 공개 전환 후보 (OCI · 도메인 · Supabase)
 
-v2 초판(2026-09-17)은 OCI Always Free VM + 구매 도메인 + Supabase(Auth·DB)를 전제했다. 다시 필요해지면 git 이력의 2026-09-17 판 §2~§4·§8·§13.2.3·§13.5·§13.6을 참고한다. 요지:
+**이 절은 폐기한 대안이 아니라 §1.4의 "공개 전환" 단계에서 실제로 쓸 후보다.** v2 초판(2026-09-17)이 OCI Always Free VM + 구매 도메인 + Supabase(Auth·DB)를 전제했고, 그 내용을 여기에 보존한다. 전환을 결정하면 아래 요지에서 시작해 git 이력의 2026-09-17 판 §2~§4·§8·§13.2.3·§13.5·§13.6을 꺼내 쓴다. 전환 전 필수 조건은 **§1.5**다.
+
+| 후보 | 언제 고르나 |
+|---|---|
+| (a) 지금 자체 서버를 공개 | 서버·회선을 그대로 쓰고 도메인만 붙일 때. 호스트 80/443과 공용 서버 규칙(§2.1)을 먼저 정리한다 |
+| (b) OCI Always Free (Ampere A1, **arm64**) | 자체 서버를 공개하고 싶지 않을 때. 이미지가 이미 멀티아치라(§5.3) 이미지 파이프라인은 그대로다 |
+
+요지:
 
 | 항목 | 요지 |
 |---|---|
-| Supabase Auth | GitHub OAuth App(dev/prod 각 1개, callback `https://<ref>.supabase.co/auth/v1/callback`), Site/Redirect URL, "Allow new users to sign up" 끄기 + backend allowlist 병행, JWT signing key는 비대칭(ES256/RS256), JWKS 캐시 20분, publishable key만 앱에, Data API 비활성화(SP-5), 변수 `SUPABASE_URL`·`SUPABASE_JWT_ALGORITHM`·`SUPABASE_PUBLISHABLE_KEY`·CSP `connect-src`에 호스트 추가, 계정 삭제 시 Auth 사용자 수동 삭제, 키 회전은 standby → 20분 → rotate → 2시간 후 revoke |
+| Supabase Auth (**§1.5 필수 조건**) | GitHub OAuth App(dev/prod 각 1개, callback `https://<ref>.supabase.co/auth/v1/callback`), Site/Redirect URL, "Allow new users to sign up" 끄기 + backend allowlist 병행, JWT signing key는 비대칭(ES256/RS256), JWKS 캐시 20분, publishable key만 앱에, Data API 비활성화(SP-5), 변수 `SUPABASE_URL`·`SUPABASE_JWT_ALGORITHM`·`SUPABASE_PUBLISHABLE_KEY`·CSP `connect-src`에 호스트 추가, 계정 삭제 시 Auth 사용자 수동 삭제, 키 회전은 standby → 20분 → rotate → 2시간 후 revoke |
 | Supabase DB | session pooler 5432(`postgres.<ref>`, transaction mode 6543 금지), `sslmode=verify-full` + CA 마운트, 무료 플랜 일시정지(1주 비활동)·500 MB read-only·백업 없음 → 매일 job으로 활동 유지 |
-| OCI | home region 고정, A1 2 OCPU/12 GB, Security List 80/443/443udp, `bootstrap-vm.sh`(Docker CE·SELinux·firewalld·dnf-automatic·Tailscale `--advertise-tags`), idle reclamation 대응(`-Xms3g -XX:+AlwaysPreTouch`), Object Storage + instance principal + rclone + age 암호화 백업, Actions→tailnet 배포(OAuth client, ACL `tag:ci`) |
-| 도메인 | A 레코드 → VM IP, Caddy ACME(80/443), HSTS includeSubDomains, UptimeRobot keyword monitor |
+| OCI (후보 b) | home region 고정, **A1 = Ampere arm64** 2 OCPU/12 GB(이미지가 `linux/arm64`를 포함하므로 같은 tag를 그대로 pull한다, §5.3), Security List 80/443/443udp, `bootstrap-vm.sh`(Docker CE·SELinux·firewalld·dnf-automatic·Tailscale `--advertise-tags`), idle reclamation 대응(`-Xms3g -XX:+AlwaysPreTouch`), Object Storage + instance principal + rclone + age 암호화 백업, Actions→tailnet 배포(OAuth client, ACL `tag:ci`) |
+| 도메인 | A 레코드 → 공개 IP, Caddy ACME(80/443), HSTS `includeSubDomains`(현재 값과 같다, §4.2), UptimeRobot keyword monitor(tailnet에서는 쓸 수 없었던 것) |
 
 ---
 

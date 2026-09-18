@@ -281,20 +281,22 @@ V10,10,GOOD,CORRECT,SELF_EXPLAIN,GOOD,,5,4
 
 | # | 요청 | 기대 |
 |---|---|---|
-| D-01 | `POST /dev/token` `{email: allowlist에 있는 값}` | 200, `tokenType = "Bearer"`, `expiresAt = now + 720h`, 감사 `AUTH_DEVTOKEN_ISSUED`. 이 시점에 `app_user` 행은 없다 |
+| D-01 | `POST /api/v1/dev/token` `{email: allowlist에 있는 값}` | 200, `tokenType = "Bearer"`, `expiresAt = now + 720h`, 감사 `AUTH_DEVTOKEN_ISSUED`. 이 시점에 `app_user` 행은 없다 |
 | D-02 | D-01의 `accessToken`으로 `GET /me` | 200, `app_user` 1행 생성(JIT, `03` §4.3), `AUTH_USER_PROVISIONED` |
-| D-03 | `POST /dev/token` `{email: allowlist 밖}` | 403 `USER_NOT_ALLOWED`, 토큰 없음, `app_user` 행 없음, 감사 `AUTH_DEVTOKEN_REJECTED` |
-| D-04 | `POST /dev/token` `{email: "not-an-email"}` / body 없음 | 400 `VALIDATION_FAILED` |
-| D-05 | `POST /dev/token`에 `Idempotency-Key` 없이 호출 | 200 (IK 대상이 아니다, `05` §1.7) |
-| D-06 | `GET /dev/jwks.json` | 200, `keys[0].kty = "EC"`, `crv = "P-256"`, `alg = "ES256"`, `kid` 존재, private key 필드(`d`) 없음, `Cache-Control: no-store` |
-| D-07 | 발급 토큰의 claim | `iss = ${APP_BASE_URL}/dev`, `aud = authenticated`, `sub`이 UUID, `email` 일치, `amr[0].method = "devtoken"` |
+| D-03 | `POST /api/v1/dev/token` `{email: allowlist 밖}` | 403 `USER_NOT_ALLOWED`, 토큰 없음, `app_user` 행 없음, 감사 `AUTH_DEVTOKEN_REJECTED` |
+| D-04 | `POST /api/v1/dev/token` `{email: "not-an-email"}` / body 없음 | 400 `VALIDATION_FAILED` |
+| D-05 | `POST /api/v1/dev/token`에 `Idempotency-Key` 없이 호출 | 200 (IK 대상이 아니다, `05` §1.7) |
+| D-06 | `GET /api/v1/dev/jwks.json` | 200, `keys[0].kty = "EC"`, `crv = "P-256"`, `alg = "ES256"`, `kid` 존재, private key 필드(`d`) 없음, `Cache-Control: no-store` |
+| D-07 | 발급 토큰의 claim | `iss` = `devpilot.security.devtoken.issuer` 설정값(test profile 고정값 `http://localhost/dev`, 운영은 `${APP_BASE_URL}/dev`), `aud = authenticated`, `sub`이 UUID, `email` 일치, `amr[0].method = "devtoken"` |
 | D-08 | 다른 키로 서명한 같은 형식의 토큰 | 401 |
 | D-09 | `exp`가 지난 토큰(`MutableClock` 전진) | 401 |
 | D-10 | 같은 email로 두 번 발급 | `sub`이 같다(UUID v5(email)) → `app_user` 행은 여전히 1개 |
-| D-11 | `auth-mode = supabase` context에서 `POST /dev/token`, `GET /dev/jwks.json` | 404 (bean 미등록) |
+| D-11 | `auth-mode = supabase` context에서 `POST /api/v1/dev/token`, `GET /api/v1/dev/jwks.json` | 404 (bean 미등록) |
 | D-12 | IP당 30회/시간 초과 | 429 `RATE_LIMITED` |
 
 - prod profile + `auth-mode = devtoken` + `DEVPILOT_DEV_JWT_KEY` 없음 → **기동 실패**를 `ApplicationContextRunner`로 확인한다(`03` §9).
+- prod profile + `auth-mode = devtoken` + 키 있음 → 기동은 **성공**하고 "비공개 네트워크 전용" WARN 1줄이 남는지 `ApplicationContextRunner` + `OutputCaptureExtension`으로 확인한다(`03` §4.2). `auth-mode = supabase`면 이 WARN이 없다.
+- test profile은 `devpilot.security.devtoken.issuer`를 `http://localhost/dev`로 고정한다(`application-test.yml`). 공통 기본값은 `${APP_BASE_URL}/dev`인데 CI에 `APP_BASE_URL`이 없어 placeholder가 해석되지 않으므로, D-07의 `iss` 기대값은 이 설정값이다.
 - `RecentLoginRequiredTest`(§6.2 끝)는 devtoken 발급 시각(`amr[].timestamp`)으로도 같은 규칙이 성립하는지 1케이스 확인한다.
 
 ---
@@ -655,7 +657,7 @@ NFR-02: non-AI API p95 < 1000ms.
 |---|---|
 | 실행 시점 | S2 종료 전(실사용 시작 전), S5 종료 전. 수동 |
 | 환경 | 로컬 `infra/compose.perf.yml`: api 컨테이너 `cpus: 2`, `mem_limit: 1.5g`(운영 서버 조건, `10` §3.3), PostgreSQL 16 컨테이너, `SPRING_PROFILES_ACTIVE=perf`(= `prod` 설정 + fake AI + 테스트 JWKS + rate limit 완화 `requests-per-minute: 100000`) |
-| 네트워크 가정 | 운영 DB는 같은 호스트라 왕복 지연이 작다. 대신 tailnet 구간(클라이언트 ↔ 서버) 지연이 더해진다. 결과 p95가 700ms를 넘으면 원인을 조사한다 |
+| 네트워크 가정 | 운영 DB는 같은 호스트라 왕복 지연이 작다. 대신 **현재 배포 기준(임시)** tailnet 구간(클라이언트 ↔ 서버) 지연이 더해진다(공개 전환 후에는 공개망 지연으로 바뀐다, `11` §3.10). 결과 p95가 700ms를 넘으면 원인을 조사한다 |
 | 토큰 | `./gradlew perfToken`(test source의 `TestJwtFactory` 사용)으로 2시간짜리 토큰 3개 생성 → `K6_TOKENS` 환경변수 |
 | 데이터 | `perf/seed.sql` (사용자당) — skill 80, `user_skill_state` 80, `review_item` 400(오늘 due 40), `review_answer` 3,000, `learning_event` 6,000(180일), `learning_session` 300, `daily_plan` 180 + `learning_task` 540, plan version 3 + milestone 30, `challenge_attempt` 200 + submission 300, `coach_review` 50 + finding 250, `evidence_candidate` 40, `weekly_review` 26. 사용자 3명 |
 
@@ -746,6 +748,7 @@ export const options = {
 - 도구: JaCoCo. `test`와 `integrationTest`의 exec 데이터를 합쳐 계산한다.
 - **전체 프로젝트 커버리지 게이트는 두지 않는다.**
 - 게이트: 아래 패키지 각각 **line coverage ≥ 80%** (`jacocoTestCoverageVerification`, `element = PACKAGE`, `LINE COVEREDRATIO 0.80`).
+- `includes`에는 **아래 14개 패키지 이름을 그대로 나열한다.** 와일드카드 `com.devpilot.*.domain`은 `*`가 `.`도 매칭해서 표에 없는 `user.domain`·`career.domain`·`onboarding.domain`(JPA entity 위주)까지 게이트에 넣고 `./gradlew check`를 막는다.
 
 | 패키지 | 주요 대상 |
 |---|---|
@@ -776,7 +779,7 @@ export const options = {
 | 재시도 | 자동 재시도 plugin·애노테이션 금지(TEST-05). CI "Re-run failed jobs"로 통과시킨 경우에도 flaky로 기록한다 |
 | 발견 시 | GitHub issue(label `flaky`, 실패 로그·커밋 SHA) 생성 → **2 작업일 안에** 원인 수정 |
 | 격리 | 2 작업일 안에 못 고치면 `@Disabled("flaky: #<issue>")`. 동시에 격리된 테스트는 최대 1개(TEST-03). 2개째가 필요하면 새 기능 작업을 멈추고 먼저 고친다 |
-| 격리 금지 | `07-security-and-privacy.md` §16의 보안 테스트, §9 권한 격리, §6 JWT, §10.3 예산, ArchUnit. 이 테스트가 flaky면 수정 전까지 머지를 막는다 |
+| 격리 금지 | `07-security-and-privacy.md` §16의 보안 테스트, **이 문서** §9 권한 격리, §6 JWT, §10.3 예산 경계(한도 정의는 `07` §12.1), ArchUnit. 이 테스트가 flaky면 수정 전까지 머지를 막는다 |
 | 기록 | 수정 PR에 원인 분류(시간, 동시성, 순서, 환경, 데이터)를 적는다 |
 
 ---

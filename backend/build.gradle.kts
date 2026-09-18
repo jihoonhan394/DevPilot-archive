@@ -291,11 +291,21 @@ tasks.jacocoTestCoverageVerification {
     violationRules {
         rule {
             // 패키지별 LINE 0.80. 대상 패키지 목록은 docs/09 §15 표 (해당 패키지가 생기는 Sprint에 추가)
-            // 아직 없는 패키지는 JaCoCo가 무시하므로 목록을 미리 적어 둔다
+            // 아직 없는 패키지는 JaCoCo가 무시하므로 목록을 미리 적어 둔다.
+            // 와일드카드(`com.devpilot.*.domain`)는 '.'도 매칭해 user/career/onboarding 등 JPA entity 위주
+            // 패키지까지 게이트에 넣으므로 쓰지 않는다 — docs/09 §15가 열거한 패키지만 명시한다.
             element = "PACKAGE"
             includes =
                 listOf(
-                    "com.devpilot.*.domain",
+                    "com.devpilot.plan.domain",
+                    "com.devpilot.skill.domain",
+                    "com.devpilot.review.domain",
+                    "com.devpilot.today.domain",
+                    "com.devpilot.training.domain",
+                    "com.devpilot.learning.domain",
+                    "com.devpilot.coach.domain",
+                    "com.devpilot.evidence.domain",
+                    "com.devpilot.job.domain",
                     "com.devpilot.common.time",
                     "com.devpilot.common.math",
                     "com.devpilot.integration.ai.guard",

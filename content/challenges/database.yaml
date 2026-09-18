@@ -1,6 +1,6 @@
 # Seed challenges — DATABASE (PRACTICE)
 # Spec: docs/19-content-spec.md §3.6 (schema), §6 (난이도), §7 (rubric·hint 작성 가이드)
-# 기준: PostgreSQL 17 / Hibernate 7 / Spring Data JPA
+# 기준: PostgreSQL 16 / Hibernate 7 / Spring Data JPA
 challenges:
   - seedKey: PRACTICE.DATABASE.INDEX.L2.001
     purpose: PRACTICE
@@ -25,7 +25,7 @@ challenges:
       2. status 단일 인덱스를 추가하는 방안의 효과가 작은 이유와, 새 인덱스가 쓰기에 주는 비용을 설명하세요.
       3. 인덱스가 실제로 쓰이는지 확인하는 방법을 적으세요.
     constraints:
-      - PostgreSQL 17 기준으로 답한다
+      - PostgreSQL 16 기준으로 답한다
       - 인덱스는 최대 1개만 추가한다
     expectedConcepts:
       - 복합 인덱스 컬럼 순서
@@ -214,7 +214,7 @@ challenges:
     title: 한정 수량 이벤트의 초과 판매 막기
     scenario: |-
       재고 100개인 상품 이벤트에서 주문 103건이 성공했는데 stock은 0으로 남아 실제 판매 수량과 맞지
-      않습니다. PostgreSQL 17 기본 격리 수준이고, 애플리케이션 인스턴스는 2대입니다.
+      않습니다. PostgreSQL 16 기본 격리 수준이고, 애플리케이션 인스턴스는 2대입니다.
       ```java
       @Transactional
       public void order(UUID productId, int quantity) {

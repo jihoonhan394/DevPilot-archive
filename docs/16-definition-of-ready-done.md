@@ -24,7 +24,7 @@
 | R-10 | AI 기능이면 결정적 부분과 AI 부분이 나뉘어 있고, operation·입력·출력 스키마·가드·실패 동작이 `17-ai-integration.md`에 있다 | 해당 절 |
 | R-11 | 외부 서비스·새 라이브러리가 필요하면 결정(ADR 또는 DEC)이 있고, 실패 시 동작이 정의되어 있다 | ADR |
 | R-12 | 화면 작업이면 SCR ID, 상태(loading/empty/error/AI unavailable), 문구가 `02-user-scenarios-and-ux.md`에 있다 | 해당 화면 |
-| R-13 | 직접 구현 영역(`11-development-roadmap.md` §5)이면 담당이 사용자로 표시되고 vector 테스트 PR이 먼저 merge되었다 | PR |
+| R-13 | 규칙 클래스(`06`의 test vector가 있는 것)를 만드는 작업이면, vector를 옮긴 `@ParameterizedTest`가 같은 PR에 있거나 먼저 merge되었다 | PR |
 | R-14 | 작업 크기: 에이전트 지시 1회에 BL 최대 3개, 변경 파일 예상 30개 이하. 넘으면 BL을 나눈다 | 계획 |
 
 ---
@@ -112,7 +112,6 @@ PR 템플릿(`.github/pull_request_template.md`)에 그대로 넣는다.
 - [ ] migration 추가 시 schema.sql 갱신 / 해당 없음
 - [ ] OpenAPI 스냅샷·Dart 모델 동기화 / 해당 없음
 - [ ] prompt·모델·가드 변경 시 eval 결과 첨부 / 해당 없음
-- [ ] 직접 구현 영역이면 PR 본문에 사용자 설계 메모 3~5줄
 
 ## 완료 보고
 Changed:

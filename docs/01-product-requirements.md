@@ -53,7 +53,7 @@ DevPilot은 **정해진 이직 시점까지 필요한 개발 역량을 확보하
 | G-4 | 도움(hint) 사용량이 줄고 스스로 발견한 위험이 늘어나는 추세를 사용자가 확인한다 | §6 지표 |
 | G-5 | 이직 기한 대비 위험을 숫자 근거와 함께 보고, 무엇을 미룰지 결정한다 | AC-03 |
 | G-6 | 지원 시작(2027-01) 전에 이력서·면접용 증거를 Markdown으로 내보낸다 | AC-21 |
-| G-7 | AI 비용을 월 USD 25 이하로 통제하고, AI가 없어도 핵심 학습은 계속된다 | AC-12, AC-13 |
+| G-7 | AI 비용을 월 USD 3 이하로 통제하고, AI가 없어도 핵심 학습은 계속된다 | AC-12, AC-13 |
 
 ### 2.2 비목표
 
@@ -200,7 +200,7 @@ DevPilot은 **정해진 이직 시점까지 필요한 개발 역량을 확보하
 
 제품 건강 확인(지표 외):
 - Today를 생성한 plan-day 수 ≥ 주 5일 (`daily_plan` 수)
-- AI 월 비용 ≤ USD 25 (NFR-01)
+- AI 월 비용 ≤ USD 3 (NFR-01)
 
 ---
 
@@ -253,7 +253,7 @@ Sprint 기간은 `11-development-roadmap.md`와 같다. S2 종료 다음 날(202
 - 로그아웃은 클라이언트가 저장한 토큰을 버리는 것이다. backend에 로그아웃 API는 없다.
 - 사용자는 최대 3명(DEC-01)이다. allowlist 변경은 환경변수 수정과 재기동으로 한다.
 
-**관련 API** — `GET /me`, `POST /dev/token`(devtoken 모드). Supabase 모드의 OAuth redirect·token refresh는 backend API가 아니다
+**관련 API** — `GET /me`, `POST /api/v1/dev/token`(devtoken 모드). Supabase 모드의 OAuth redirect·token refresh는 backend API가 아니다
 **관련 화면** — SCR-LOGIN, SCR-AUTH-CALLBACK, SCR-NOT-ALLOWED
 **AC** — AC-08, AC-18 · **Sprint** — S0(로그인 왕복), S1(allowlist, JIT) · **우선순위** — MUST
 
@@ -697,13 +697,13 @@ Sprint 기간은 `11-development-roadmap.md`와 같다. S2 종료 다음 날(202
 **사용자 스토리** — As a 비용을 직접 내는 소유자, I want AI 비용이 예산을 넘지 않게 자동으로 막히길 원한다, so that 예상하지 못한 청구가 생기지 않는다.
 
 **규칙**
-- 한도(DEC-06, `03` §9): 서비스 전체 월 예산 USD 25, 사용자당 일일 호출 60회, 사용자당 동시 실행 2개.
+- 한도(DEC-06, `03` §9): 서비스 전체 월 예산 USD 3, 사용자당 일일 호출 60회, 사용자당 동시 실행 2개.
 - `AiBudgetGuard`는 AI 호출 전에 확인한다. 초과 시 공급자를 호출하지 않고 `ai_call_log.status=BUDGET_BLOCKED`를 남긴다.
   - 월 예산 초과 → `429 AI_MONTHLY_BUDGET_EXCEEDED`
   - 일일 호출 초과 → `429 AI_DAILY_LIMIT_EXCEEDED`
   - 동시 실행 초과 → `429 AI_CONCURRENCY_LIMIT`
 - 비동기 작업의 예산 확인은 요청 시점(저장 전)에 한다(`03` §5.3). 확인 후 실행 시점에 초과되면 작업은 `FAILED(AI_BUDGET_EXCEEDED)`다.
-- `GET /me`의 `aiStatus`: provider가 `disabled`이거나 월 비용 ≥ 예산이면 `DISABLED`, 월 비용 ≥ 80%(`budget-warning-ratio`)면 `BUDGET_WARNING`, 그 외 `ENABLED`. 일일 호출 한도 도달은 `aiStatus`에 반영하지 않는다. `aiUsage` = `todayCalls`, `dailyCallLimit`, `monthCostUsd`(서비스 전체, 문자열 소수 2자리), `monthlyBudgetUsd`(`05-api-spec.md` §1.9.1).
+- `GET /me`의 `aiStatus`: provider가 `disabled`이거나 월 비용 ≥ 예산이면 `DISABLED`, 공급자 선불 잔액이 소진되면 `BALANCE_EXHAUSTED`(ADR-035), 월 비용 ≥ 80%(`budget-warning-ratio`)면 `BUDGET_WARNING`, 그 외 `ENABLED`. 클라이언트는 `BALANCE_EXHAUSTED`를 `DISABLED`와 같게 다루고 이유 문구만 다르게 보여 준다. 일일 호출 한도 도달은 `aiStatus`에 반영하지 않는다. `aiUsage` = `todayCalls`, `dailyCallLimit`, `monthCostUsd`(서비스 전체, 문자열 소수 2자리), `monthlyBudgetUsd`(`05-api-spec.md` §1.9.1).
 - 월 경계는 Asia/Seoul 기준 달력 월(NFR-01), 일일 경계는 사용자 plan-day다. 429 응답에는 `Retry-After`가 있다. 비용 계산은 `17-ai-integration.md`, 단가는 설정값(`03` §9)을 따른다.
 - **AI 차단은 비-AI 기능에 영향을 주지 않는다**(NFR-03, AC-12): Today, 복습(자기평가), 계획, skill 조회, 이력, 수동 카드, 수동 evidence.
 - 클라이언트는 `DISABLED`일 때 AI 진입 버튼을 비활성화하고 이유를 보여준다. `BUDGET_WARNING`은 AI 진입점과 설정에 경고를 표시한다(`02` §6.5).
