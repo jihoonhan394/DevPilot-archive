@@ -505,7 +505,7 @@ PowerShell에서는 `./gradlew`가 `gradlew.bat`을 실행한다.
 | `application-prod.yml` | 서버 `api` 컨테이너 | datasource·`DEVPILOT_DEV_JWT_KEY`·`DEVPILOT_ALLOWED_EMAILS`·`DEVPILOT_LOG_HASH_KEY`·`APP_BASE_URL` 기본값 없음(없으면 기동 실패), `logging.structured.format.console=ecs`(JSON), springdoc 비활성, CORS 없음, AI 기본 `deepseek`(S3 전에는 `api.env`에서 `disabled`) |
 
 규칙:
-- **local·prod가 실사용 시작(S2) 전까지 같은 DB `devpilot`을 쓴다** (`10` §1.1). 로컬에서 스키마를 초기화하거나 데이터를 지울 때는 그 사실을 기억한다. S2 전에 로컬용 `devpilot_dev`로 분리한다(`10` §2.4).
+- **local·prod가 실사용 시작(M1 완료 = S3 완료) 전까지 같은 DB `devpilot`을 쓴다** (`10` §1.1). 로컬에서 스키마를 초기화하거나 데이터를 지울 때는 그 사실을 기억한다. 실사용 시작 전(늦어도 S3 안)에 로컬용 `devpilot_dev`로 분리한다(`10` §2.4).
 - **Flyway 스키마 생성**: `spring.flyway.create-schemas=true`이므로 Flyway가 `devpilot` 스키마를 먼저 만들고 그 안에 `flyway_schema_history`를 둔다. 따라서 `V1__baseline.sql`의 스키마 생성문은 `create schema if not exists devpilot;`로 쓴다 (`database/schema.sql` 첫 줄과 동일).
 - **테스트 스케줄러**: property로 끌 수 없다. `@EnableScheduling`을 붙인 설정 클래스에 `@Profile("!test")`를 붙인다 (`03` §10 test profile "스케줄러 비활성").
 - **`.env`는 `local` profile에서만 읽는다.** 그래서 `SPRING_PROFILES_ACTIVE`는 `.env`에 두지 않고 `bootRun` 인자(§4.3)나 IDE Run Configuration으로 준다. `DEEPSEEK_API_KEY`는 Spring property(`devpilot.ai.deepseek.api-key`)로 읽으므로 `.env`에 둬도 된다(OS 환경변수가 있으면 그것이 우선).

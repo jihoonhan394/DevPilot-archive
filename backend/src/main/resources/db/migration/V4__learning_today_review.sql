@@ -31,12 +31,13 @@ create table learning_event (
                        'SELF_EXPLANATION_SUBMITTED','SELF_EXPLANATION_SKIPPED','HINT_DISCLOSED',
                        'CHALLENGE_STARTED','CHALLENGE_SUBMITTED','CHALLENGE_EVALUATED',
                        'REVIEW_ANSWERED','LEECH_DETECTED',
+                       'RUBBER_DUCK_COMPLETED',
                        'COACH_REVIEW_COMPLETED','COACH_FINDING_CLOSED',
                        'DIAGNOSTIC_PASSED','DIAGNOSTIC_FAILED',
                        'EVIDENCE_ACCEPTED','PLAN_REPLANNED')),
     source_type        varchar(30) check (source_type in (
                        'LEARNING_SESSION','CHALLENGE_ATTEMPT','CHALLENGE_SUBMISSION','REVIEW_ITEM',
-                       'COACH_REVIEW','COACH_FINDING','EVIDENCE','LEARNING_PLAN')),
+                       'COACH_REVIEW','COACH_FINDING','EVIDENCE','LEARNING_PLAN','RUBBER_DUCK_SESSION')),
     source_id          uuid,
     plan_date          date not null,
     payload            jsonb not null default '{}'::jsonb,     -- docs/04 §6 event별 payload 스키마
@@ -58,7 +59,8 @@ create table ai_call_log (
     user_id             uuid references app_user(id) on delete set null,
     operation           varchar(40) not null check (operation in (
                         'COACH_REVIEW','COACH_RESPONSE_FEEDBACK','CHALLENGE_GENERATE','CHALLENGE_EVALUATE',
-                        'HINT_GENERATE','REVIEW_VARIANT','REVIEW_EVALUATE','EVIDENCE_DRAFT','JOB_EXTRACT')),
+                        'HINT_GENERATE','REVIEW_VARIANT','REVIEW_EVALUATE','EVIDENCE_DRAFT','JOB_EXTRACT',
+                        'RUBBER_DUCK','RUBBER_DUCK_SUMMARY')),
     provider            varchar(20) not null check (provider in ('deepseek','anthropic','fake','disabled')),
     model               varchar(80) not null,
     prompt_id           varchar(60) not null,
@@ -142,7 +144,8 @@ create table learning_task (
     milestone_id      uuid references plan_milestone(id) on delete set null,
     challenge_id      uuid references challenge(id) on delete set null,
     task_type         varchar(20) not null check (task_type in
-                      ('RECALL','REVIEW','CHALLENGE','PROJECT_TASK','COACH_REVIEW','READING','EXPLAIN')),
+                      ('RECALL','REVIEW','CHALLENGE','PROJECT_TASK','COACH_REVIEW',
+                       'READING','READ_CODE','EXPLAIN')),
     title             varchar(200) not null,
     description       varchar(2000),
     estimated_minutes integer not null check (estimated_minutes between 1 and 720),
@@ -172,7 +175,7 @@ create table review_item (
     skill_id                 uuid not null references skill(id),
     origin                   varchar(20) not null check (origin in ('SEED','MANUAL','AI_GENERATED')),
     source_type              varchar(30) not null check (source_type in
-                             ('SEED_CARD','MANUAL','CHALLENGE_ATTEMPT','COACH_FINDING','EVIDENCE')),
+                             ('SEED_CARD','MANUAL','CHALLENGE_ATTEMPT','COACH_FINDING','EVIDENCE','RUBBER_DUCK')),
     source_id                uuid,
     concept_key              varchar(150) not null,
     review_type              varchar(20) not null check (review_type in ('RECALL','BUG_SPOT','EXPLAIN','CHOICE')),

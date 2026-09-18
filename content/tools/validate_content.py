@@ -70,6 +70,9 @@ SEED_KEY_RE = re.compile(
 TEMPLATE_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,59}$")
 MILESTONE_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,59}$")
 CURATED_ID_RE = re.compile(r"^CS-[A-Z0-9]+(-[A-Z0-9]+)*$")
+CURATED_REPO_KEY_RE = re.compile(r"^[a-z][a-z0-9-]{1,29}$")
+READING_KEY_RE = re.compile(r"^READ\.[A-Z][A-Z0-9_]*\.[A-Z][A-Z0-9_]*\.[0-9]{3}$")
+COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 CHOICE_OPTION_RE = re.compile(r"^\s*([A-E])\)\s+\S", re.MULTILINE)
 # review_item concept keys generated at runtime (06 §8.3, coach findings)
 RESERVED_CONCEPT_PREFIXES = ("CHALLENGE:", "COACH:")
@@ -225,7 +228,7 @@ def place_template(template: dict, today: dt.date, app_start, target: dt.date):
 def validate(content_dir: str):
     res = Result()
     data = {"skills": [], "targets": [], "templates": [], "cards": [], "challenges": [],
-            "sources": [], "catalog": None}
+            "sources": [], "repos": [], "readings": [], "catalog": None}
 
     # ---- CV-01 catalog -----------------------------------------------------
     catalog = load_yaml(os.path.join(content_dir, "catalog.yaml"), res, "catalog.yaml")
@@ -239,17 +242,19 @@ def validate(content_dir: str):
         res.error("CV-01", "catalog.yaml", "catalogVersion must be an integer >= 1")
     files = catalog.get("files") or {}
     check_keys(files, {"skillTrees", "roleTargets", "planTemplates", "reviewCards", "challenges",
-                       "curatedSources"},
+                       "curatedSources", "curatedRepos"},
                {"skillTrees", "roleTargets", "planTemplates", "reviewCards", "challenges",
-                "curatedSources"}, res, "catalog.yaml#files")
+                "curatedSources", "curatedRepos"}, res, "catalog.yaml#files")
     retired = catalog.get("retired") or {}
-    check_keys(retired, {"skillCodes", "challengeSeedKeys", "conceptKeys", "curatedSourceIds"},
-               {"skillCodes", "challengeSeedKeys", "conceptKeys", "curatedSourceIds"}, res,
-               "catalog.yaml#retired")
+    check_keys(retired, {"skillCodes", "challengeSeedKeys", "conceptKeys", "curatedSourceIds",
+                         "readingKeys"},
+               {"skillCodes", "challengeSeedKeys", "conceptKeys", "curatedSourceIds",
+                "readingKeys"}, res, "catalog.yaml#retired")
     retired_skills = set(retired.get("skillCodes") or [])
     retired_seed = set(retired.get("challengeSeedKeys") or [])
     retired_concepts = set(retired.get("conceptKeys") or [])
     retired_sources = set(retired.get("curatedSourceIds") or [])
+    retired_readings = set(retired.get("readingKeys") or [])
     diag_categories = catalog.get("diagnosticCategories") or []
     for c in diag_categories:
         if c not in SKILL_CATEGORIES:
@@ -262,8 +267,9 @@ def validate(content_dir: str):
             res.error("CV-02", f"catalog.yaml#files.{key}", "must be a non-empty list")
             continue
         listed.extend(v)
-    if isinstance(files.get("curatedSources"), str):
-        listed.append(files["curatedSources"])
+    for single in ("curatedSources", "curatedRepos"):
+        if isinstance(files.get(single), str):
+            listed.append(files[single])
     if len(set(listed)) != len(listed):
         res.error("CV-02", "catalog.yaml#files", "duplicate file entry")
 
@@ -767,6 +773,124 @@ def validate(content_dir: str):
                         res.error("CV-72", where, "verifiedAt must be YYYY-MM-DD")
                 data["sources"].append(src)
 
+    # ---- curated repos / readings (CV-80..CV-86) --------------------------
+    rel = files.get("curatedRepos")
+    if isinstance(rel, str):
+        doc = load_yaml(os.path.join(content_dir, rel), res, rel)
+        if doc is not None and check_keys(doc, {"repos", "readings"}, {"repos", "readings"}, res, rel):
+            repos = doc.get("repos") or []
+            readings = doc.get("readings") or []
+            if not isinstance(repos, list) or not repos:
+                res.error("CV-80", rel, "repos must be a non-empty list")
+                repos = []
+            if not isinstance(readings, list) or not readings:
+                res.error("CV-80", rel, "readings must be a non-empty list")
+                readings = []
+
+            repo_keys: set[str] = set()
+            for idx, repo in enumerate(repos):
+                where = f"{rel}#repos[{idx}]"
+                allowed = {"key", "name", "url", "subPath", "pinnedCommit", "license", "stack",
+                           "why", "cloneHint", "licenseNote"}
+                # pinnedCommit may be absent or null when the SHA lookup failed (19 §8.4)
+                required = {"key", "name", "url", "subPath", "license", "stack",
+                            "why", "cloneHint"}
+                if not check_keys(repo, allowed, required, res, where):
+                    continue
+                key = repo["key"]
+                where = f"{rel}#{key}"
+                if not (isinstance(key, str) and CURATED_REPO_KEY_RE.match(key)):
+                    res.error("CV-81", where, "repo key pattern invalid (^[a-z][a-z0-9-]{1,29}$)")
+                if key in repo_keys:
+                    res.error("CV-81", where, "duplicate repo key")
+                repo_keys.add(key)
+                u = urlparse(str(repo["url"]))
+                if u.scheme != "https" or not u.netloc:
+                    res.error("CV-81", where, f"url must be https ({repo['url']})")
+                sub = repo["subPath"]
+                if not isinstance(sub, str) or sub.startswith("/") or ".." in sub.split("/"):
+                    res.error("CV-81", where, "subPath must be a relative path without '..'")
+                for fld, lo, hi in (("name", 1, 200), ("license", 1, 50), ("stack", 1, 200),
+                                    ("why", 10, 500), ("cloneHint", 10, 500)):
+                    if not str_len_ok(repo[fld], lo, hi):
+                        res.error("CV-81", where, f"{fld} length {lo}..{hi}")
+                pinned = repo.get("pinnedCommit")
+                if pinned is not None and not (isinstance(pinned, str) and COMMIT_SHA_RE.match(pinned)):
+                    res.error("CV-82", where, "pinnedCommit must be a 40-char lowercase hex SHA or null")
+                if pinned is None:
+                    res.warn("CV-82", where, "pinnedCommit is null: reading line numbers are unpinned")
+                repo["_readings"] = 0
+                data["repos"].append(repo)
+
+            repos_by_key = {r["key"]: r for r in data["repos"]}
+            reading_keys: set[str] = set()
+            for idx, rd in enumerate(readings):
+                where = f"{rel}#readings[{idx}]"
+                allowed = {"key", "repo", "path", "lines", "skillCodes", "estimatedMinutes",
+                           "question", "lookFor"}
+                if not check_keys(rd, allowed, allowed, res, where):
+                    continue
+                key = rd["key"]
+                where = f"{rel}#{key}"
+                if not (isinstance(key, str) and READING_KEY_RE.match(key) and len(key) <= 100):
+                    res.error("CV-83", where, "reading key pattern invalid "
+                                              r"(^READ\.<REPO>\.<TOPIC>\.NNN$)")
+                if key in reading_keys:
+                    res.error("CV-83", where, "duplicate reading key")
+                if key in retired_readings:
+                    res.error("CV-83", where, "key is in retired.readingKeys")
+                reading_keys.add(key)
+
+                if rd["repo"] not in repos_by_key:
+                    res.error("CV-84", where, f"unknown repo reference {rd['repo']}")
+                else:
+                    repos_by_key[rd["repo"]]["_readings"] += 1
+
+                path = rd["path"]
+                if not (isinstance(path, str) and str_len_ok(path, 1, 300)):
+                    res.error("CV-85", where, "path must be a string of length 1..300")
+                elif path.startswith("/") or "\\" in path or ".." in path.split("/"):
+                    res.error("CV-85", where,
+                              "path must be a relative POSIX path without '..' segments")
+
+                lines = rd["lines"]
+                if not (isinstance(lines, list) and len(lines) == 2 and all(is_int(v) for v in lines)):
+                    res.error("CV-85", where, "lines must be [start, end] integers")
+                elif not (lines[0] >= 1 and lines[1] >= 1):
+                    res.error("CV-85", where, "lines must be positive")
+                elif lines[0] > lines[1]:
+                    res.error("CV-85", where, f"lines must be ascending ({lines[0]} > {lines[1]})")
+
+                codes = rd["skillCodes"]
+                if not (isinstance(codes, list) and 1 <= len(codes) <= 4):
+                    res.error("CV-86", where, "skillCodes must be a list of 1..4 codes")
+                else:
+                    if len(set(codes)) != len(codes):
+                        res.error("CV-86", where, "duplicate skillCode")
+                    for c in codes:
+                        if c not in tgt:
+                            res.error("CV-86", where, f"skillCode {c} has no role target")
+                em = rd["estimatedMinutes"]
+                if not (is_int(em) and 5 <= em <= 60):
+                    res.error("CV-86", where, "estimatedMinutes must be an integer 5..60")
+                q = rd["question"]
+                if not str_len_ok(q, 40, 300):
+                    res.error("CV-86", where,
+                              f"question must be 40..300 chars (got {len(q) if isinstance(q, str) else 'n/a'})")
+                lf = rd["lookFor"]
+                if not (isinstance(lf, list) and 1 <= len(lf) <= 5):
+                    res.error("CV-86", where, "lookFor must be a list of 1..5 items")
+                else:
+                    for item in lf:
+                        if not str_len_ok(item, 5, 200):
+                            res.error("CV-86", where, "lookFor item length 5..200")
+                data["readings"].append(rd)
+
+            for repo in data["repos"]:
+                if not 3 <= repo["_readings"] <= 5:
+                    res.warn("CV-87", f"{rel}#{repo['key']}",
+                             f"repo has {repo['_readings']} readings (expected 3..5)")
+
     # ---- WARN: MUST skills without seed card ------------------------------
     carded = {c["skill"] for c in data["cards"]}
     for sk, t in sorted(tgt.items()):
@@ -911,6 +1035,7 @@ def main(argv: list[str]) -> int:
     print(f"\nskills={len(data['skills'])} roleTargets={len(data['targets'])} "
           f"templates={len(data['templates'])} cards={len(data['cards'])} "
           f"challenges={len(data['challenges'])} curatedSources={len(data['sources'])} "
+          f"curatedRepos={len(data['repos'])} readings={len(data['readings'])} "
           f"catalogVersion={(data['catalog'] or {}).get('catalogVersion')}")
     print(f"result: {'FAIL' if res.errors else 'PASS'} (errors={len(res.errors)}, warnings={len(res.warns)})")
     if "--report" in flags and "skills_by_code" in data:

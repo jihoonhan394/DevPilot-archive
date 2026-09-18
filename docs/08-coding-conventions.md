@@ -487,7 +487,7 @@ app/lib/
     └── presentation/                # <Name>Screen, 위젯, <Name>Controller(Notifier)
 ```
 
-- feature 이름: `onboarding`, `today`, `review`, `training`, `coach`, `plan`, `skill`, `dashboard`, `evidence`, `weekly`, `job`, `settings`. backend 모듈 이름과 맞춘다.
+- feature 이름: `onboarding`, `today`, `review`, `training`, `coach`, `plan`, `skill`, `dashboard`, `evidence`, `weekly`, `job`, `settings`, `project`, `rubber_duck`, `reading`. backend 모듈 이름과 맞춘다(Dart 파일·디렉터리 이름은 snake_case라 `rubberduck` 모듈은 `rubber_duck`로 쓴다).
 - feature 간 import는 다른 feature의 `data` 모델과 repository provider만 허용한다. 다른 feature의 `presentation`을 import하지 않는다(라우팅은 `app/router.dart`에서만).
 - 빈 폴더(`domain/` 등)는 만들지 않는다.
 - 파일 이름 snake_case, 한 파일에 public 위젯 1개.

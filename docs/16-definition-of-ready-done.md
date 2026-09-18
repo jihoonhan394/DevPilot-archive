@@ -1,6 +1,6 @@
 # 16. Definition of Ready / Done
 
-> Status: Accepted (v2) · Last updated: 2026-09-17 · Related: `11-development-roadmap.md` §7, `12-acceptance-criteria.md`, `13-product-backlog.md`, `08-coding-conventions.md`, `09-test-and-quality.md`
+> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: `11-development-roadmap.md` §7, `12-acceptance-criteria.md`, `13-product-backlog.md`, `08-coding-conventions.md`, `09-test-and-quality.md`
 >
 > BL 작업을 시작해도 되는 조건(DoR)과 끝났다고 말할 수 있는 조건(DoD)의 **유일한 기준**이다. 다른 문서의 체크리스트는 이 문서를 참조한다. 사람과 에이전트에 똑같이 적용한다.
 
@@ -132,7 +132,7 @@ Known limitations:
 
 ## 4. Sprint Definition of Done
 
-Sprint 마지막 날(`11-development-roadmap.md` §3 기간의 종료일) 기준이다.
+단계(Sprint 열의 `S0`~`S7`)를 끝낼 때 확인한다. 단계에는 기간·날짜가 없고 exit criteria(`11-development-roadmap.md` §3)를 통과하면 끝난다(`13-product-backlog.md` §2). M1(S0~S3)의 마지막 단계인 S3 완료가 실사용 시작이다.
 
 | # | 항목 | 증거 |
 |---|---|---|
@@ -141,8 +141,8 @@ Sprint 마지막 날(`11-development-roadmap.md` §3 기간의 종료일) 기준
 | S-3 | `v*` tag를 prod에 배포했고 health `UP`, 자동 롤백 경로가 동작한다 | 배포 job 요약 |
 | S-4 | Sprint 데모 체크리스트(`11-development-roadmap.md` §3)를 **prod URL**에서 모두 통과했다. 실패 항목은 원인과 후속 BL을 기록했다 | 데모 기록(날짜, 기기, 결과) |
 | S-5 | 새로 생긴 운영 작업·장애 대응이 runbook에 있다. 기존 runbook은 이번 변경으로 틀린 곳이 없다 | runbook diff |
-| S-6 | Spike·결정 결과가 ADR에 반영되었다. `Proposed` ADR이 남아 있으면 다음 Sprint 첫날 결정한다 | ADR 목록 |
+| S-6 | Spike·결정 결과가 ADR에 반영되었다. `Proposed` ADR이 남아 있으면 다음 단계에 착수하기 전에 결정한다 | ADR 목록 |
 | S-7 | 리스크 레지스터(`20-decisions-and-risks.md` §4)의 조기 신호를 점검하고 상태를 갱신했다 | 갱신 커밋 |
 | S-8 | 회고 3줄(잘된 점, 문제, 다음 Sprint 바꿀 것)과 사용자 실제 투입 시간을 기록했다. S1·S3 종료 시 재추정(`11-development-roadmap.md` §2.2)을 했다 | 회고 기록 |
-| S-9 | 백업: S2 이후 일일 자동 백업이 Sprint 기간 동안 실패 없이 실행되었고(실패 시 조치 기록), S6 이후에는 월 1회 복구 리허설 기록이 있다 | 백업 로그, 리허설 기록표 |
+| S-9 | 백업: S2 이후 일일 자동 백업이 그 단계를 진행하는 동안 실패 없이 실행되었고(실패 시 조치 기록), S6 이후에는 월 1회 복구 리허설 기록이 있다 | 백업 로그, 리허설 기록표 |
 | S-10 | AI 비용(S3 이후): 이번 Sprint 비용 합계와 월 예산 대비 비율을 기록했다 | `GET /me` aiUsage 또는 `ai_call_log` 집계 |

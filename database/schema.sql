@@ -1,6 +1,6 @@
 -- =====================================================================
 -- DevPilot database schema (PostgreSQL 16 — 자체 서버 공용 인스턴스. PG 17 전용 문법 사용 금지)
--- Status: Accepted (v2) · Last updated: 2026-09-18 (ai_call_log: provider 'deepseek', reasoning_tokens)
+-- Status: Accepted (v2) · Last updated: 2026-09-18 (v3: side_project, rubber_duck_session/turn, READ_CODE, RUBBER_DUCK*)
 -- Related: docs/04-domain-model-and-db.md (enum registry, state machines, JSON schemas)
 --
 -- 이 파일은 설계 기준(최종 형태)이다. 실제 적용은 Flyway migration으로 나눠서 한다
@@ -165,12 +165,13 @@ create table learning_event (
                        'SELF_EXPLANATION_SUBMITTED','SELF_EXPLANATION_SKIPPED','HINT_DISCLOSED',
                        'CHALLENGE_STARTED','CHALLENGE_SUBMITTED','CHALLENGE_EVALUATED',
                        'REVIEW_ANSWERED','LEECH_DETECTED',
+                       'RUBBER_DUCK_COMPLETED',
                        'COACH_REVIEW_COMPLETED','COACH_FINDING_CLOSED',
                        'DIAGNOSTIC_PASSED','DIAGNOSTIC_FAILED',
                        'EVIDENCE_ACCEPTED','PLAN_REPLANNED')),
     source_type        varchar(30) check (source_type in (
                        'LEARNING_SESSION','CHALLENGE_ATTEMPT','CHALLENGE_SUBMISSION','REVIEW_ITEM',
-                       'COACH_REVIEW','COACH_FINDING','EVIDENCE','LEARNING_PLAN')),
+                       'COACH_REVIEW','COACH_FINDING','EVIDENCE','LEARNING_PLAN','RUBBER_DUCK_SESSION')),
     source_id          uuid,
     plan_date          date not null,
     payload            jsonb not null default '{}'::jsonb,     -- docs/04 §6 event별 payload 스키마
@@ -192,7 +193,8 @@ create table ai_call_log (
     user_id             uuid references app_user(id) on delete set null,
     operation           varchar(40) not null check (operation in (
                         'COACH_REVIEW','COACH_RESPONSE_FEEDBACK','CHALLENGE_GENERATE','CHALLENGE_EVALUATE',
-                        'HINT_GENERATE','REVIEW_VARIANT','REVIEW_EVALUATE','EVIDENCE_DRAFT','JOB_EXTRACT')),
+                        'HINT_GENERATE','REVIEW_VARIANT','REVIEW_EVALUATE','EVIDENCE_DRAFT','JOB_EXTRACT',
+                        'RUBBER_DUCK','RUBBER_DUCK_SUMMARY')),
     provider            varchar(20) not null check (provider in ('deepseek','anthropic','fake','disabled')),
     model               varchar(80) not null,
     prompt_id           varchar(60) not null,
@@ -311,7 +313,63 @@ create table plan_progress_snapshot (
 create index idx_snapshot_user_date on plan_progress_snapshot(user_id, snapshot_date desc);
 
 -- ---------------------------------------------------------------------
--- 6. Today
+-- 6. Side project · Rubber duck
+-- ---------------------------------------------------------------------
+create table side_project (
+    id          uuid primary key default gen_random_uuid(),
+    user_id     uuid not null references app_user(id) on delete cascade,
+    name        varchar(100) not null,
+    description varchar(1000),
+    repo_url    varchar(500),                                -- 저장만 한다. 서버는 fetch하지 않는다 (docs/07 §5.5)
+    stack       varchar(300),
+    status      varchar(20) not null default 'ACTIVE' check (status in ('ACTIVE','PAUSED','DONE')),
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now(),
+    version     bigint not null default 0
+);
+-- planner는 가장 최근 updated_at인 ACTIVE 프로젝트 하나만 쓴다 (docs/06 SP-3)
+create index idx_side_project_user_status on side_project(user_id, status, updated_at desc);
+
+create table rubber_duck_session (
+    id                  uuid primary key default gen_random_uuid(),
+    user_id             uuid not null references app_user(id) on delete cascade,
+    target_type         varchar(20) not null check (target_type in
+                        ('CODE_READING','CHALLENGE','REVIEW_ITEM','CONCEPT','PROJECT_WORK')),
+    target_id           uuid,                                -- CONCEPT면 null. PROJECT_WORK면 side_project.id (FK 없음)
+    concept_key         varchar(120),                        -- CONCEPT 대상일 때
+    skill_id            uuid references skill(id),           -- null이면 학습 이벤트를 남기지 않는다 (docs/06 RD-7)
+    status              varchar(20) not null default 'IN_PROGRESS'
+                        check (status in ('IN_PROGRESS','COMPLETED','ABANDONED')),
+    turn_count          smallint not null default 0 check (turn_count >= 0),
+    summary_json        jsonb,                               -- docs/04 §5.9 { gaps[], confirmed[] }
+    learning_session_id uuid references learning_session(id) on delete set null,
+    started_at          timestamptz not null default now(),
+    completed_at        timestamptz,
+    version             bigint not null default 0
+);
+create index idx_rubber_duck_session_user_time on rubber_duck_session(user_id, started_at desc);
+-- 고아 세션 정리 job (IN_PROGRESS로 남은 세션을 ABANDONED로)
+create index idx_rubber_duck_session_in_progress on rubber_duck_session(started_at)
+    where status = 'IN_PROGRESS';
+
+-- 사용자당 진행 중 세션 1개 (docs/04 I-18). 새 세션 시작 시 이전 세션을 ABANDONED로 바꾼 뒤 INSERT한다
+create unique index uq_rubber_duck_session_one_in_progress on rubber_duck_session(user_id)
+    where status = 'IN_PROGRESS';
+
+create table rubber_duck_turn (
+    id          uuid primary key default gen_random_uuid(),
+    session_id  uuid not null references rubber_duck_session(id) on delete cascade,
+    turn_no     smallint not null check (turn_no >= 1),
+    user_text   text not null,                               -- SecretMasker 통과본 (docs/06 RD-6)
+    ai_question text,                                        -- 마지막 턴은 null 가능
+    learner_stuck boolean not null default false,            -- RD-3 "모르겠다" 판정 (서버 결정적 규칙, docs/06 §9.5)
+    ai_call_id  uuid references ai_call_log(id) on delete set null,
+    created_at  timestamptz not null default now(),
+    unique (session_id, turn_no)                             -- 턴 순서 조회 인덱스를 겸한다
+);
+
+-- ---------------------------------------------------------------------
+-- 7. Today
 -- ---------------------------------------------------------------------
 create table daily_plan (
     id                uuid primary key default gen_random_uuid(),
@@ -369,7 +427,8 @@ create table learning_task (
     milestone_id      uuid references plan_milestone(id) on delete set null,
     challenge_id      uuid references challenge(id) on delete set null,
     task_type         varchar(20) not null check (task_type in
-                      ('RECALL','REVIEW','CHALLENGE','PROJECT_TASK','COACH_REVIEW','READING','EXPLAIN')),
+                      ('RECALL','REVIEW','CHALLENGE','PROJECT_TASK','COACH_REVIEW',
+                       'READING','READ_CODE','EXPLAIN')),
     title             varchar(200) not null,
     description       varchar(2000),
     estimated_minutes integer not null check (estimated_minutes between 1 and 720),
@@ -380,7 +439,10 @@ create table learning_task (
     score_breakdown   jsonb,
     sort_order        integer not null default 0,
     completed_at      timestamptz,
-    version           bigint not null default 0
+    version           bigint not null default 0,
+    side_project_id   uuid references side_project(id) on delete set null,   -- PROJECT_TASK 대상 프로젝트 (V9에서 추가)
+    reading_key       varchar(150),                                          -- READ_CODE 대상 reading key, FK 없음 (V9에서 추가)
+    constraint learning_task_reading_key_type check ((reading_key is not null) = (task_type = 'READ_CODE'))
 );
 create index idx_learning_task_daily_plan on learning_task(daily_plan_id);
 create index idx_learning_task_user on learning_task(user_id);
@@ -392,7 +454,7 @@ alter table learning_session
     add constraint fk_learning_session_task foreign key (learning_task_id) references learning_task(id) on delete set null;
 
 -- ---------------------------------------------------------------------
--- 7. Training
+-- 8. Training
 -- ---------------------------------------------------------------------
 create table challenge_skill (
     challenge_id uuid not null references challenge(id) on delete cascade,
@@ -451,7 +513,7 @@ create index idx_challenge_submission_status on challenge_submission(evaluation_
     where evaluation_status in ('PENDING','RUNNING');
 
 -- ---------------------------------------------------------------------
--- 8. Review (Memory)
+-- 9. Review (Memory)
 -- ---------------------------------------------------------------------
 create table review_item (
     id                       uuid primary key default gen_random_uuid(),
@@ -459,7 +521,7 @@ create table review_item (
     skill_id                 uuid not null references skill(id),
     origin                   varchar(20) not null check (origin in ('SEED','MANUAL','AI_GENERATED')),
     source_type              varchar(30) not null check (source_type in
-                             ('SEED_CARD','MANUAL','CHALLENGE_ATTEMPT','COACH_FINDING','EVIDENCE')),
+                             ('SEED_CARD','MANUAL','CHALLENGE_ATTEMPT','COACH_FINDING','EVIDENCE','RUBBER_DUCK')),
     source_id                uuid,
     concept_key              varchar(150) not null,
     review_type              varchar(20) not null check (review_type in ('RECALL','BUG_SPOT','EXPLAIN','CHOICE')),
@@ -513,7 +575,7 @@ create index idx_review_answer_item_time on review_answer(review_item_id, answer
 create index idx_review_answer_user_time on review_answer(user_id, answered_at desc);
 
 -- ---------------------------------------------------------------------
--- 9. Project Coach
+-- 10. Project Coach
 -- ---------------------------------------------------------------------
 create table coach_review (
     id                      uuid primary key default gen_random_uuid(),
@@ -540,7 +602,8 @@ create table coach_review (
     content_purged_at       timestamptz,
     created_at              timestamptz not null default now(),
     completed_at            timestamptz,
-    version                 bigint not null default 0
+    version                 bigint not null default 0,
+    side_project_id         uuid references side_project(id) on delete set null   -- 리뷰 대상 프로젝트 (V9에서 추가)
 );
 create index idx_coach_review_user_time on coach_review(user_id, created_at desc);
 create index idx_coach_review_retention on coach_review(content_retention_until) where content_purged_at is null;
@@ -598,7 +661,7 @@ create table thinking_pattern_observation (
 create index idx_thinking_obs_user_axis_time on thinking_pattern_observation(user_id, axis, observed_at desc);
 
 -- ---------------------------------------------------------------------
--- 10. Evidence / Weekly / Job Radar
+-- 11. Evidence / Weekly / Job Radar
 -- ---------------------------------------------------------------------
 create table evidence_candidate (
     id                       uuid primary key default gen_random_uuid(),
@@ -670,7 +733,7 @@ create table job_requirement (
 create index idx_job_requirement_posting on job_requirement(job_posting_id);
 
 -- ---------------------------------------------------------------------
--- 11. Idempotency
+-- 12. Idempotency
 -- ---------------------------------------------------------------------
 create table idempotency_record (
     user_id         uuid not null references app_user(id) on delete cascade,
@@ -687,7 +750,7 @@ create table idempotency_record (
 create index idx_idempotency_expires on idempotency_record(expires_at);
 
 -- ---------------------------------------------------------------------
--- 12. Supabase hardening (순수 PostgreSQL에서는 no-op)
+-- 13. Supabase hardening (순수 PostgreSQL에서는 no-op)
 -- ---------------------------------------------------------------------
 do $$
 begin

@@ -124,6 +124,7 @@ Bean Validation code: `NotNull`, `NotBlank`, `NotEmpty`, `Size`, `Min`, `Max`, `
 | `MILESTONE_NOT_IN_PLAN` | milestone `id`가 대상 plan 소속이 아님 | replan |
 | `SKILL_NOT_IN_PLAN` | plan_skill_target에 없는 skill | replan |
 | `TARGET_NOT_REDUCED` | `newTarget`이 현재 target 이상 | replan |
+| `TARGET_NOT_RAISED` | `newTarget`이 현재 target 이하이거나 5 초과 | replan (`acceptedTargetRaises`) |
 | `REFERENCE_NOT_FOUND` | body가 참조한 리소스가 없음 (사용자 소유 리소스는 타 사용자 소유 포함, catalog skill은 비활성 포함) | session(learningTaskId), evidence draft(sourceLearningEventId), challenge generate(skillId) |
 | `NOT_BLANK_IF_PRESENT` | 값이 있으면 공백만으로 이루어질 수 없음 | PATCH 문자열 필드 |
 
@@ -162,7 +163,7 @@ Bean Validation code: `NotNull`, `NotBlank`, `NotEmpty`, `Size`, `Min`, `Max`, `
 | 409 | `INVALID_STATE_TRANSITION` | Invalid state transition | 현재 상태에서는 이 작업을 할 수 없습니다. | 상태를 바꾸는 모든 endpoint (`04-domain-model-and-db.md` §4) |
 | 409 | `CONCURRENT_MODIFICATION` | Concurrent modification | 다른 곳에서 먼저 변경되었습니다. 최신 내용을 불러온 뒤 다시 시도해 주세요. | `version`을 받는 요청, 동기 AI tx2 충돌, 동시 replan (AC-24) |
 | 409 | `IDEMPOTENCY_IN_PROGRESS` | Idempotency in progress | 같은 요청을 처리하고 있습니다. 잠시 후 다시 시도해 주세요. | IK를 받는 모든 `POST` |
-| 413 | `CONTENT_TOO_LARGE` | Content too large | 입력 내용이 너무 깁니다. 허용 크기 안으로 줄여 주세요. | coach content, submission code, job description (§17) |
+| 413 | `CONTENT_TOO_LARGE` | Content too large | 입력 내용이 너무 깁니다. 허용 크기 안으로 줄여 주세요. | coach content, submission code, job description, 러버덕 설명 (§17) |
 | 413 | `REQUEST_TOO_LARGE` | Request too large | 요청 크기가 허용 범위를 넘었습니다. | 모든 요청 (body > 64KB) |
 | 422 | `IDEMPOTENCY_KEY_REUSED` | Idempotency key reused | 같은 요청 키가 다른 요청에 사용되었습니다. 새로 시도해 주세요. | IK를 받는 모든 `POST` |
 | 422 | `SECRET_DETECTED_BLOCKED` | Secret detected | 개인 키(private key)가 포함되어 있어 저장하지 않았습니다. 키를 지운 뒤 다시 시도해 주세요. | 자유 텍스트를 저장하는 endpoint 전체 (§1.11) |
@@ -315,7 +316,7 @@ backend 자신은 이 endpoint를 호출하지 않는다(메모리의 공개키�
 
 | 항목 | 규칙 |
 |---|---|
-| 대상 | 인증이 필요한 `POST` 중 **리소스를 만들거나 AI를 호출하는 것**(각 endpoint 표의 "인증 / IK" 열이 `IK`인 것). 예외(IK 열이 `—`): `POST /plans/{planId}/replan/preview`(계산만), `POST /learning-sessions/{id}/abandon`, `POST /challenge-attempts/{id}/abandon`(상태 전이가 자연히 멱등 — 두 번째 호출은 409 또는 같은 결과), `POST /api/v1/dev/token`(인증 없음). 예외 endpoint는 헤더를 받아도 무시하고 record를 만들지 않는다 |
+| 대상 | 인증이 필요한 `POST` 중 **리소스를 만들거나 AI를 호출하는 것**(각 endpoint 표의 "인증 / IK" 열이 `IK`인 것). 예외(IK 열이 `—`): `POST /plans/{planId}/replan/preview`(계산만), `POST /learning-sessions/{id}/abandon`, `POST /challenge-attempts/{id}/abandon`, `POST /rubber-duck/{id}/abandon`(상태 전이가 자연히 멱등 — 두 번째 호출은 409 또는 같은 결과), `POST /api/v1/dev/token`(인증 없음). 예외 endpoint는 헤더를 받아도 무시하고 record를 만들지 않는다 |
 | 헤더 | `Idempotency-Key: <key>`. 형식 `^[A-Za-z0-9_-]{8,100}$`. 없으면 400 `IDEMPOTENCY_KEY_REQUIRED`, 형식 오류면 400 `VALIDATION_FAILED`(field `Idempotency-Key`, code `Pattern`) |
 | 클라이언트 | 사용자 행동 1회마다 UUID v4를 새로 만든다. 네트워크 재시도에는 같은 키를 쓴다 |
 | 범위 | `(user_id, key)` 단위(`idempotency_record` PK). 다른 사용자의 같은 키는 무관 |
@@ -390,13 +391,15 @@ backend 자신은 이 endpoint를 호출하지 않는다(메모리의 공개키�
 
 | 유형 | endpoint | 차단(§1.9.3) | 호출 실패 |
 |---|---|---|---|
-| 동기, 대체 없음 | `POST /challenge-attempts/{id}/hints` (AI 생성 단계, §10.8), `POST /coach/reviews/{id}/findings/{fid}/hints` | HTTP 오류 | 502 `AI_OUTPUT_INVALID` / 502 `AI_REFUSED` / 503 `AI_UNAVAILABLE`(공급자 오류·rate limit 포함) / 504 `AI_TIMEOUT`. 아무것도 저장하지 않음 |
-| 동기, 대체 있음 | `POST /reviews/{id}/answer` (`evaluate=true`), `POST /coach/reviews/{id}/findings/{fid}/responses` | **오류 없음** — skip reason으로 표시 | **오류 없음** — 답변/응답은 저장하고 skip reason 반환 |
+| 동기, 대체 없음 | `POST /challenge-attempts/{id}/hints` (AI 생성 단계, §10.8), `POST /coach/reviews/{id}/findings/{fid}/hints`, `POST /rubber-duck/{id}/turns` (§9.7) | HTTP 오류 | 502 `AI_OUTPUT_INVALID` / 502 `AI_REFUSED` / 503 `AI_UNAVAILABLE`(공급자 오류·rate limit 포함) / 504 `AI_TIMEOUT`. 아무것도 저장하지 않음 |
+| 동기, 대체 있음 | `POST /reviews/{id}/answer` (`evaluate=true`), `POST /coach/reviews/{id}/findings/{fid}/responses`, `POST /rubber-duck/{id}/complete` (§9.8) | **오류 없음** — skip reason으로 표시 | **오류 없음** — 답변/응답은 저장하고 skip reason 반환 |
 | 비동기 시작 | challenge generate, submissions, submission retry, coach create/retry, evidence drafts, jobs | HTTP 오류, 저장 안 함 | 리소스 `FAILED` + `failureCode` |
 
-skip reason(`evaluationSkippedReason`, `feedbackSkippedReason`)의 타입은 `AsyncFailureCode`다.
+skip reason(`evaluationSkippedReason`, `feedbackSkippedReason`, `summarySkippedReason`)의 타입은 `AsyncFailureCode`다.
 
-가드 위반 재시도(`attempt_no = 2`)는 **비동기 operation에만** 한다. 동기 operation(`HINT_GENERATE`, `REVIEW_EVALUATE`, `COACH_RESPONSE_FEEDBACK`)은 가드 위반 시 재시도 없이 hint는 502 `AI_OUTPUT_INVALID`, 나머지 둘은 skip reason `AI_OUTPUT_INVALID`로 처리한다(`03-system-architecture.md` §5.3). 원인별 표면 매핑의 기준표는 `17-ai-integration.md` §5.4다.
+러버덕의 두 동기 operation은 실패 처리가 서로 다르다(`17-ai-integration.md` §3.10). 턴(`RUBBER_DUCK`)은 **대체가 없다** — 턴을 저장하지 않고 `turn_count`도 늘지 않으며 클라이언트가 설명 원문을 유지한다. 종료 정리(`RUBBER_DUCK_SUMMARY`)는 **대체가 있다** — 세션은 `COMPLETED`가 되고 `summary`는 `null`, `summarySkippedReason`에 사유를 담으며 복습 카드와 학습 이벤트를 만들지 않는다. 대화 기록 자체가 학습이므로 세션을 실패로 만들지 않는다.
+
+가드 위반 재시도(`attempt_no = 2`)는 **비동기 operation에만** 한다. 동기 operation(`HINT_GENERATE`, `REVIEW_EVALUATE`, `COACH_RESPONSE_FEEDBACK`, `RUBBER_DUCK`, `RUBBER_DUCK_SUMMARY`)은 가드 위반 시 재시도 없이 hint와 러버덕 턴은 502 `AI_OUTPUT_INVALID`, 나머지 셋은 skip reason `AI_OUTPUT_INVALID`로 처리한다(`03-system-architecture.md` §5.3). 원인별 표면 매핑의 기준표는 `17-ai-integration.md` §5.4다.
 
 | 원인 | skip reason / `failureCode` |
 |---|---|
@@ -452,6 +455,7 @@ AI 결과를 보여주는 응답에는 `aiMeta`(§2.4)를 넣는다. AI 결과�
 | `POST /challenge-attempts/{attemptId}/submissions` | `answerText`, `code` |
 | `POST /reviews/{reviewItemId}/answer` | `answerText` |
 | `POST /learning-sessions/{sessionId}/complete` | `selfReflection` |
+| `POST /rubber-duck/{sessionId}/turns` | `explanation` (RD-6, 원문은 남기지 않는다) |
 | `POST /jobs` | `jobDescription` |
 | `POST /review-items` | `prompt`, `expectedAnswer`, `rubric[]` 항목 |
 | `PATCH /review-items/{reviewItemId}` | `prompt`, `expectedAnswer` |
@@ -459,6 +463,8 @@ AI 결과를 보여주는 응답에는 `aiMeta`(§2.4)를 넣는다. AI 결과�
 | `PUT /weekly-reviews/{weekStartDate}/reflection` | `reflection` |
 | `POST /plans/{planId}/replan`, `POST /plans/{planId}/replan/preview` | `reason`, `milestones[].title`, `milestones[].description` |
 | `PATCH /plans/{planId}/milestones/{milestoneId}` | `description` |
+| `POST /side-projects`, `PATCH /side-projects/{sideProjectId}` | `name`, `description`, `stack` (`repoUrl`은 URL 검증만, §19.2) |
+| `POST /onboarding` | `sideProject.name`, `sideProject.description`, `sideProject.stack` |
 
 - 이 표가 "자유 텍스트를 저장하는 endpoint 전체"(§1.3 `SECRET_DETECTED_BLOCKED`)다. `displayName`, code·enum·URL·날짜 필드는 대상이 아니다. preview는 저장하지 않지만 commit과 같은 입력이므로 같은 결과(422)를 미리 돌려준다.
 - 순서: Bean Validation(400) → 크기 검사(413, 원문 기준) → `IdempotencyService`(IK endpoint만) → **마스킹** → 리소스 조회·상태 검사(404/409) → (AI 차단 검사) → 저장 → (AI). 마스킹은 application service의 첫 단계다.
@@ -722,6 +728,8 @@ public record UpdateMeRequest(
 | `evidence[]` | array | `evidence_candidate` (`createdAt` ASC) |
 | `weeklyReviews[]` | array | `weekly_review` (`weekStartDate` ASC) |
 | `jobPostings[]` | array | `job_posting` + `requirements[]`(`sortOrder` ASC) (`createdAt` ASC). purge된 JD는 `jobDescription: null` |
+| `sideProjects[]` | array | `side_project` (`createdAt` ASC) |
+| `rubberDuckSessions[]` | array | `rubber_duck_session` + `turns[]`(`rubber_duck_turn`, `turnNo` ASC — `userText`는 마스킹본) (`startedAt` ASC) |
 
 행 변환 규칙:
 - 컬럼 이름 snake_case → lowerCamelCase. 값 형식은 §1.1(Instant, date, 정수).
@@ -874,6 +882,8 @@ END:VCALENDAR
 
 Controller: `OnboardingController`. Service: `OnboardingService`, `DiagnosticSuggestionService`, 도메인 `SelfAssessmentPropagation` (`03-system-architecture.md` §3.2).
 
+온보딩 3단계는 **짧은 진단**이다(자기평가 입력이 아니다). 진단을 건너뛰면 기존 자기평가 입력으로 대체한다. 마지막 단계에서 **사이드 프로젝트를 하나 만든다**(SP-1, §19). 둘 다 같은 `POST /onboarding` 요청에 담는다.
+
 ### 4.1 `POST /onboarding` — 온보딩 일괄 처리
 
 | 항목 | 값 |
@@ -883,8 +893,8 @@ Controller: `OnboardingController`. Service: `OnboardingService`, `DiagnosticSug
 | 온보딩 전 | 허용 (이 endpoint 자체) |
 | 요청 | `OnboardingRequest` |
 | 응답 | 201 `OnboardingResponse` |
-| 오류 | 400 `VALIDATION_FAILED`(`TIMEZONE_INVALID`, `DATE_OUT_OF_RANGE`, `DATE_ORDER_INVALID`, `SKILL_CODE_UNKNOWN`, `DUPLICATE_VALUE`), 409 `ONBOARDING_ALREADY_COMPLETED` |
-| Sprint · 요구사항 | S1 (`suggestedDiagnostics`는 S3, 그 전에는 `[]`; 8단계 seed 카드는 S2부터, 그 전에는 `assignedSeedCardCount = 0`; 9단계 snapshot은 S5부터, 그 전에는 `latestRiskLevel`·`latestRatioBp = null`) · FR-02, FR-03, FR-04, FR-24, AC-11 |
+| 오류 | 400 `VALIDATION_FAILED`(`TIMEZONE_INVALID`, `DATE_OUT_OF_RANGE`, `DATE_ORDER_INVALID`, `SKILL_CODE_UNKNOWN`, `DUPLICATE_VALUE`, `ONE_OF_REQUIRED`, `MUTUALLY_EXCLUSIVE`, `URL`), 409 `ONBOARDING_ALREADY_COMPLETED`, 422 `SECRET_DETECTED_BLOCKED` |
+| Sprint · 요구사항 | S1 (8단계 seed 카드 배정과 9단계 snapshot은 S2부터 — S1 빌드는 `assignedSeedCardCount = 0`, `latestRiskLevel`·`latestRatioBp = null`. 11단계 진단 제안은 S3부터 — 그 전 빌드는 `[]`. 모두 M1 안이다) · FR-02, FR-03, FR-04, FR-24, AC-11, SP-1 |
 
 ```java
 public record OnboardingRequest(
@@ -896,7 +906,9 @@ public record OnboardingRequest(
         @NotNull ExperienceProfile experienceProfile,
         LocalDate careerStartDate,
         @NotNull @Valid CareerGoalInput careerGoal,
-        @NotNull @Size(max = 13) List<@NotNull @Valid SelfAssessmentInput> selfAssessments,
+        @NotNull Boolean runDiagnostic,                             // 3단계: true = 짧은 진단, false = 자기평가 입력으로 대체
+        @NotNull @Size(max = 13) List<@NotNull @Valid SelfAssessmentInput> selfAssessments,  // runDiagnostic = true면 []
+        @Valid SideProjectInput sideProject,                        // null = 건너뛰기 (SP-1)
         @NotNull Boolean useTemplate) {}
 
 public record CareerGoalInput(
@@ -909,12 +921,19 @@ public record SelfAssessmentInput(
         @NotNull SkillCategory category,
         @NotNull @Min(0) @Max(5) Integer level) {}   // SkillLevel ordinal
 
+public record SideProjectInput(                      // onboarding.presentation. 필드는 §19.2 생성 요청과 같다
+        @NotBlank @Size(max = 100) String name,
+        @Size(max = 1000) String description,
+        @Size(max = 500) String repoUrl,             // 저장만 한다. 서버는 fetch하지 않는다 (07-security-and-privacy.md §5.5)
+        @Size(max = 300) String stack) {}
+
 public record OnboardingResponse(
         MeResponse user,
         CareerGoalView careerGoal,                          // §5.1
         PlanSummaryView activePlan,                         // §7.1
+        SideProjectView sideProject,                        // §19.1. 건너뛰었으면 null
         int assignedSeedCardCount,
-        List<DiagnosticSuggestionView> suggestedDiagnostics) {}  // §4.2
+        List<DiagnosticSuggestionView> suggestedDiagnostics) {}  // §4.2. runDiagnostic = false면 []
 ```
 
 ```json
@@ -932,12 +951,14 @@ public record OnboardingResponse(
     "targetCompletionDate": "2027-04-01",
     "focusSkillCodes": ["SPRING.TRANSACTION", "DATABASE.JPA_MAPPING"]
   },
-  "selfAssessments": [
-    { "category": "JAVA", "level": 3 },
-    { "category": "SPRING", "level": 2 },
-    { "category": "DATABASE", "level": 2 },
-    { "category": "ALGORITHM", "level": 1 }
-  ],
+  "runDiagnostic": true,
+  "selfAssessments": [],
+  "sideProject": {
+    "name": "주문 시스템",
+    "description": "회원가입 · 상품 · 주문 · 취소까지 직접 만드는 학습용 백엔드",
+    "repoUrl": "https://github.com/example/order-service",
+    "stack": "Spring Boot, PostgreSQL"
+  },
   "useTemplate": true
 }
 ```
@@ -952,8 +973,11 @@ public record OnboardingResponse(
                   "focusSkills": [ { "id": "…", "code": "SPRING.TRANSACTION", "name": "Spring Transaction", "category": "SPRING" } ],
                   "replanRecommended": false, "createdAt": "2026-09-30T12:10:44Z", "updatedAt": "2026-09-30T12:10:44Z", "version": 0 },
   "activePlan": { "id": "9e2b…", "planVersion": 1, "status": "ACTIVE", "title": "Java 백엔드 이직 준비", "changeReason": null,
-                  "milestoneCount": 6, "latestRiskLevel": "MEDIUM", "latestRatioBp": 9400,
+                  "milestoneCount": 9, "latestRiskLevel": "MEDIUM", "latestRatioBp": 9400,
                   "createdAt": "2026-09-30T12:10:44Z", "supersededAt": null },
+  "sideProject": { "id": "3f7c…", "name": "주문 시스템", "description": "회원가입 · 상품 · 주문 · 취소까지 직접 만드는 학습용 백엔드",
+                   "repoUrl": "https://github.com/example/order-service", "stack": "Spring Boot, PostgreSQL", "status": "ACTIVE",
+                   "createdAt": "2026-09-30T12:10:44Z", "updatedAt": "2026-09-30T12:10:44Z", "version": 0 },
   "assignedSeedCardCount": 184,
   "suggestedDiagnostics": [
     { "category": "JAVA", "selfAssessedLevel": 3,
@@ -973,20 +997,27 @@ public record OnboardingResponse(
 | `careerGoal.applicationStartDate` | 오늘 − 1년 이후, `targetCompletionDate` 이하 (`career_goal` CHECK) | `DATE_OUT_OF_RANGE` / `DATE_ORDER_INVALID` |
 | `careerGoal.focusSkillCodes[i]` | 활성 skill code | `SKILL_CODE_UNKNOWN` |
 | `selfAssessments[i].category` | 목록 안에서 유일 | `DUPLICATE_VALUE` |
+| `selfAssessments` (`runDiagnostic = false`) | 1개 이상 — 진단을 건너뛰면 자기평가가 시작점이다 | `ONE_OF_REQUIRED` |
+| `selfAssessments` (`runDiagnostic = true`) | 비어 있어야 한다 — 진단 결과가 시작점이다 | `MUTUALLY_EXCLUSIVE` |
+| `sideProject.repoUrl` | `java.net.URI` 파싱 성공, scheme `http`/`https`, host 존재 (`07-security-and-privacy.md` §5.5) | `URL` |
 
 처리 (한 트랜잭션, 이 순서):
 1. `app_user`를 version 조건으로 조회한다. `onboarding_completed_at`이 있으면 409 `ONBOARDING_ALREADY_COMPLETED`. 동시 요청의 `career_goal.user_id` unique 위반도 같은 코드로 변환한다.
 2. 도메인 검사(위 표).
 3. `app_user` 갱신: 요청의 프로필 필드, `onboarding_completed_at = now`.
 4. `career_goal` + `career_goal_focus_skill` INSERT.
-5. `user_skill_state` (`SelfAssessmentPropagation`, `19-content-spec.md` §9): career goal 역할의 role target이 있는 **활성 non-root skill**마다 행을 만든다. 레벨 4축은 0, `self_assessment_active = true`, `self_assessed_level` = 요청에 그 skill의 category가 있으면 그 `level`, 없으면 `null`. root skill에는 행을 만들지 않는다. planning level 규칙은 `06-learning-engine-rules.md` §7.5.
+5. `user_skill_state` (`SelfAssessmentPropagation`, `19-content-spec.md` §9): career goal 역할의 role target이 있는 **활성 non-root skill**마다 행을 만든다. 레벨 4축은 0, `self_assessment_active = true`. root skill에는 행을 만들지 않는다. planning level 규칙은 `06-learning-engine-rules.md` §7.5.
+   - `runDiagnostic = false`(자기평가 모드): `self_assessed_level` = 요청에 그 skill의 category가 있으면 그 `level`, 없으면 `null`.
+   - `runDiagnostic = true`(진단 모드): `self_assessed_level`은 **전부 `null`**이다. 시작점은 진단 결과가 정한다(`06-learning-engine-rules.md` §7.4 `DIAG_PASSED`/`DIAG_FAILED`). 진단을 하나도 풀지 않으면 4축 0에서 시작한다.
 6. `learning_plan` INSERT (`06-learning-engine-rules.md` §11.3): `plan_version = 1`, `status = ACTIVE`, `career_goal_id`, `title` = 템플릿 `planTitle`(`06-learning-engine-rules.md` §11.3, 예: `Java 백엔드 이직 준비`), `supersedes_plan_id = null`, `change_reason = null`. `role_skill_target(target_role)` 전체를 `plan_skill_target`으로 복사한다(`adjustment = ROLE_DEFAULT`).
 7. `useTemplate = true`면 JAVA_BACKEND plan 템플릿의 milestone을 `06-learning-engine-rules.md` §11.3이 가리키는 계획 템플릿 배치 알고리즘(`19-content-spec.md` §5)으로 날짜를 정해 `plan_milestone`(`status = PLANNED`, `sort_order` = 템플릿 순서)·`milestone_skill`로 만든다. `false`면 milestone 없이 plan만 만든다(사용자가 Plan 화면에서 replan으로 추가).
 8. (S2부터) seed 복습 카드를 사용자 `review_item`으로 복사한다(`SeedCardAssignmentService.assignForNewUser`, `source_type = SEED_CARD`, `origin = SEED`). 첫 due 분산은 `06-learning-engine-rules.md` §6.3 첫 행. target이 없는 skill의 카드는 정렬에서 LATER 뒤에 둔다(`06-learning-engine-rules.md` §6.5 "없음"과 같은 위치). `assignedSeedCardCount` = 복사한 행 수. S1 빌드에는 이 단계가 없고 `assignedSeedCardCount = 0`이다(S2 배포 후 backfill, `04-domain-model-and-db.md` §9).
-9. (S5부터) 오늘 날짜로 `plan_progress_snapshot`을 upsert한다(`06-learning-engine-rules.md` §3, §4.1~§4.3). `activePlan.latestRiskLevel`, `latestRatioBp`는 이 값이다. S1~S4 빌드에는 이 단계가 없고 두 값은 `null`이다.
-10. 커밋 후 `suggestedDiagnostics`를 §4.2 규칙으로 계산한다(S3 이전 `[]`).
+9. (S2부터) 오늘 날짜로 `plan_progress_snapshot`을 upsert한다(`06-learning-engine-rules.md` §3, §4.1~§4.3). `activePlan.latestRiskLevel`, `latestRatioBp`는 이 값이다. S1 빌드에는 이 단계가 없고 두 값은 `null`이다.
+10. `sideProject`가 있으면 `side_project` INSERT(`status = ACTIVE`, `user_id` = 요청 사용자). `name`·`description`·`stack`은 마스킹 후 저장한다(§1.11). `null`이면 만들지 않는다 — 이때 planner는 `PROJECT_TASK`를 제안하지 않는다(SP-1, `06-learning-engine-rules.md` §5.3). 기본 이름("주문 시스템")은 **클라이언트가 채워 보낸다**(`02-user-scenarios-and-ux.md` SCR-ONBOARDING). 서버는 기본값을 만들지 않는다.
+11. 커밋 후 `suggestedDiagnostics`를 §4.2 규칙으로 계산한다. `runDiagnostic = false`면 `[]`다.
 
 - 이 요청은 learning event를 만들지 않는다.
+- 진단은 이 요청 안에서 채점되지 않는다. 클라이언트는 `suggestedDiagnostics`의 `challengeId`로 `POST /challenges/{challengeId}/attempts`(§10.5)를 이어서 호출한다. 진단을 하나도 풀지 않고 넘어가도 온보딩은 완료 상태다.
 - 나이, 성별, 연봉 같은 입력은 받지 않는다(알 수 없는 속성 → 400 `MALFORMED_REQUEST`).
 
 ### 4.2 `GET /diagnostics/suggestions` — 진단 challenge 제안
@@ -1004,7 +1035,7 @@ public record DiagnosticSuggestionsResponse(List<DiagnosticSuggestionView> items
 
 public record DiagnosticSuggestionView(
         SkillCategory category,
-        int selfAssessedLevel,     // 그 category의 자기평가 값 (3~5)
+        Integer selfAssessedLevel, // 자기평가 모드면 그 category의 값(3~5), 진단 모드면 null
         SkillRef skill,            // 진단 대상 skill
         UUID challengeId,
         String title,
@@ -1013,7 +1044,9 @@ public record DiagnosticSuggestionView(
 ```
 
 선택 규칙 (`DiagnosticSuggestionService`, 결정적):
-1. 대상 category: `user_skill_state` 중 `self_assessment_active = true`인 행의 `self_assessed_level` 최댓값이 3 이상인 category. `SkillCategory` 선언 순서로 처리한다.
+1. 대상 category — `SkillCategory` 선언 순서로 처리하고, 결과는 **최대 5개**로 자른다(category당 1문제, 설계 §8).
+   - **진단 모드**(`user_skill_state` 중 `self_assessed_level`이 `null`이 아닌 행이 하나도 없음 = 온보딩에서 `runDiagnostic = true`): `self_assessment_active = true`인 행이 있는 category 전부.
+   - **자기평가 모드**: `self_assessment_active = true`인 행의 `self_assessed_level` 최댓값이 3 이상인 category.
 2. 그 category에서 사용자가 `purpose = DIAGNOSTIC` challenge attempt를 이미 가진 경우(상태 무관) category 전체를 제외한다. 진단은 category당 1회 제안한다.
 3. 후보 challenge: `status = VALIDATED`, `purpose = DIAGNOSTIC`, `owner_user_id IS NULL`, `challenge_skill` 중 하나 이상이 그 category에 속하고 해당 skill의 `self_assessment_active = true`.
 4. 정렬: 대상 skill의 활성 plan `plan_skill_target.priority`(MUST → SHOULD → LATER → target 없음) → `career_importance` DESC → `challenge.seed_key` ASC. 첫 번째 1개를 고른다. challenge가 여러 skill에 걸치면 이 정렬에서 가장 앞선 skill을 `skill`로 쓴다.
@@ -1288,15 +1321,15 @@ public record BudgetView(
   "status": "ACTIVE",
   "title": "Java 백엔드 이직 준비",
   "supersedesPlanId": "4b7d…",
-  "changeReason": "10월 야근으로 Spring/JPA milestone 2주 지연",
+  "changeReason": "야근으로 주문 생성 milestone 2주 지연",
   "replanRecommended": false,
   "milestones": [
-    { "id": "a1…", "title": "Java 기초 다지기", "description": null, "startDate": "2026-09-30", "endDate": "2026-10-25",
+    { "id": "a1…", "title": "기반 다지기", "description": null, "startDate": "2026-09-30", "endDate": "2026-10-25",
       "priority": "MUST", "status": "IN_PROGRESS", "sortOrder": 0,
-      "skillCodes": ["JAVA.COLLECTION", "JAVA.EXCEPTION"], "updatedAt": "2026-10-20T11:00:00Z", "version": 1 },
-    { "id": "a2…", "title": "Spring Boot/JPA", "description": "트랜잭션과 영속성 컨텍스트 중심", "startDate": "2026-10-26",
+      "skillCodes": ["SPRING.MVC_REST", "TESTING.JUNIT"], "updatedAt": "2026-10-20T11:00:00Z", "version": 1 },
+    { "id": "a2…", "title": "주문 생성", "description": "트랜잭션 경계와 재고 차감 중심", "startDate": "2026-10-26",
       "endDate": "2026-12-06", "priority": "MUST", "status": "PLANNED", "sortOrder": 1,
-      "skillCodes": ["DATABASE.JPA_MAPPING", "SPRING.TRANSACTION"], "updatedAt": "2026-10-20T11:00:00Z", "version": 0 }
+      "skillCodes": ["SPRING.TRANSACTION", "DATABASE.TRANSACTION.LOCKING"], "updatedAt": "2026-10-20T11:00:00Z", "version": 0 }
   ],
   "skillTargets": [
     { "skill": { "id": "…", "code": "SPRING.TRANSACTION", "name": "Spring Transaction", "category": "SPRING" },
@@ -1388,7 +1421,7 @@ public record MilestonePatchRequest(
 | 요청 | `ReplanRequest` (`@Validated(Default.class)` — `reason` 필수 아님) |
 | 응답 | 200 `ReplanPreviewResponse` |
 | 오류 | 400 `VALIDATION_FAILED`(§7.8 도메인 검사와 같음), 404 `PLAN_NOT_FOUND`, 409 `PLAN_NOT_ACTIVE`, 409 `CONCURRENT_MODIFICATION`, 404 `CAREER_GOAL_NOT_FOUND`, 422 `SECRET_DETECTED_BLOCKED` |
-| Sprint · 요구사항 | S5 · FR-05, AC-03 |
+| Sprint · 요구사항 | S2 · FR-05, AC-03, AC-30 |
 
 ```java
 public record ReplanPreviewResponse(
@@ -1404,6 +1437,7 @@ public record ReplanPreviewResponse(
         RiskLevel riskLevel,
         List<DeferSuggestionView> deferSuggestions,                       // 제안 순서 그대로
         List<TargetReductionSuggestionView> mustTargetReductionSuggestions,
+        List<ExpansionSuggestionView> expansionSuggestions,               // 여유가 있을 때만 (06 §4.4 6단계). 위 두 목록과 동시에 비어 있지 않은 경우는 없다
         RiskEstimateView riskAfterSuggestions) {}
 
 public record DeferSuggestionView(
@@ -1420,6 +1454,16 @@ public record TargetReductionSuggestionView(
         int planningLevel,
         int savedMinutes) {}            // 앞선 제안을 적용한 상태 기준으로 줄어드는 requiredMust
 
+public record ExpansionSuggestionView(
+        ExpansionKind kind,             // RESTORE_DEFERRED | RAISE_TARGET (06 §4.4 6단계)
+        SkillRef skill,
+        Priority priority,              // RESTORE_DEFERRED면 SHOULD 또는 LATER, RAISE_TARGET이면 MUST
+        int careerImportanceBp,
+        SkillAxis axis,                 // RAISE_TARGET일 때만, 그 외 null
+        Integer currentTarget,          // RAISE_TARGET일 때만
+        Integer newTarget,              // RAISE_TARGET일 때만. currentTarget + 1, 5 이하
+        int addedMinutes) {}            // 앞선 제안을 적용한 상태 기준으로 늘어나는 required (복원이면 requiredMinutes, 상향이면 그 축 +1 비용)
+
 public record RiskEstimateView(
         int requiredMustMinutes,
         int requiredShouldMinutes,
@@ -1429,29 +1473,30 @@ public record RiskEstimateView(
 
 계산 (저장하지 않음):
 1. 검사 순서와 도메인 검사는 §7.8과 같다(단 `reason` 필수 검사 제외).
-2. 현재 plan의 `plan_skill_target`을 메모리로 복사하고 요청의 `acceptedDeferrals`, `acceptedTargetReductions`, `restoredDeferrals`를 적용한다(§7.8 처리의 `plan_skill_target` 적용 규칙과 같다).
+2. 현재 plan의 `plan_skill_target`을 메모리로 복사하고 요청의 `acceptedDeferrals`, `acceptedTargetReductions`, `restoredDeferrals`, `acceptedTargetRaises`를 적용한다(§7.8 처리의 `plan_skill_target` 적용 규칙과 같다).
 3. budget: `06-learning-engine-rules.md` §3 (career goal horizon, 사용자 학습 시간, completion rate).
 4. required minutes·risk: `06-learning-engine-rules.md` §4.1~§4.3 (planning level은 `06-learning-engine-rules.md` §7.5).
-5. 제안: `06-learning-engine-rules.md` §4.4. 이미 `deferred = true`인 항목은 defer 후보에서 뺀다. risk ≤ MEDIUM이면 두 제안 목록은 `[]`이고 `riskAfterSuggestions`는 현재 값과 같다.
-6. `riskAfterSuggestions` = 모든 defer 제안과 축소 제안을 적용한 뒤 `06-learning-engine-rules.md` §4.2~§4.3으로 다시 계산한 값.
+5. 제안: `06-learning-engine-rules.md` §4.4. 방향은 한쪽뿐이다 — risk ≥ HIGH면 축소·defer, risk LOW이고 `ratioBp ≤ 7000`이면 확장(`expansionSuggestions`), 그 사이(또는 `ratioBp = null`)면 세 목록 모두 `[]`. 이미 `deferred = true`인 항목은 defer 후보에서 빼고, 확장의 복원 후보는 `deferred = true`인 SHOULD/LATER 항목이다. 제안이 없으면 `riskAfterSuggestions`는 현재 값과 같다.
+6. `riskAfterSuggestions` = 모든 제안(축소·defer 또는 목표 상향)을 적용한 뒤 `06-learning-engine-rules.md` §4.2~§4.3으로 다시 계산한 값. 복원(SHOULD/LATER)은 risk 계산에 들어가지 않는다(§4.4 6단계).
 
 - milestone 편집은 budget·required 계산에 영향을 주지 않는다(`06-learning-engine-rules.md` §3~§4는 plan_skill_target만 사용). preview가 milestone을 검증하는 이유는 commit 실패를 미리 알리기 위해서다.
 
 ```json
 {
-  "reason": "10월 야근으로 Spring/JPA milestone 2주 지연",
+  "reason": "야근으로 주문 생성 milestone 2주 지연",
   "version": 3,
   "milestones": [
-    { "id": "a1…", "title": "Java 기초 다지기", "description": null, "startDate": "2026-09-30", "endDate": "2026-10-25",
-      "priority": "MUST", "status": "DONE", "sortOrder": 0, "skillCodes": ["JAVA.COLLECTION", "JAVA.EXCEPTION"] },
-    { "id": "a2…", "title": "Spring Boot/JPA", "description": null, "startDate": "2026-10-26", "endDate": "2026-12-20",
-      "priority": "MUST", "status": "IN_PROGRESS", "sortOrder": 1, "skillCodes": ["DATABASE.JPA_MAPPING", "SPRING.TRANSACTION"] },
+    { "id": "a1…", "title": "기반 다지기", "description": null, "startDate": "2026-09-30", "endDate": "2026-10-25",
+      "priority": "MUST", "status": "DONE", "sortOrder": 0, "skillCodes": ["SPRING.MVC_REST", "TESTING.JUNIT"] },
+    { "id": "a2…", "title": "주문 생성", "description": null, "startDate": "2026-10-26", "endDate": "2026-12-20",
+      "priority": "MUST", "status": "IN_PROGRESS", "sortOrder": 1, "skillCodes": ["SPRING.TRANSACTION", "DATABASE.TRANSACTION.LOCKING"] },
     { "id": null, "title": "면접 준비", "description": null, "startDate": "2026-12-21", "endDate": "2027-01-04",
       "priority": "SHOULD", "status": "PLANNED", "sortOrder": 2, "skillCodes": ["INTERVIEW.PROJECT_STORY"] }
   ],
   "acceptedDeferrals": ["SYSTEM_DESIGN.CACHE"],
   "acceptedTargetReductions": [ { "skillCode": "DEVOPS.DOCKER", "axis": "DEBUGGING", "newTarget": 3 } ],
-  "restoredDeferrals": ["DEVOPS.CI_GITHUB_ACTIONS"]
+  "restoredDeferrals": ["DEVOPS.CI_GITHUB_ACTIONS"],
+  "acceptedTargetRaises": []
 }
 ```
 
@@ -1481,6 +1526,7 @@ public record RiskEstimateView(
     { "skill": { "id": "…", "code": "WEB_HTTP.CACHING", "name": "HTTP 캐싱", "category": "WEB_HTTP" },
       "axis": "IMPLEMENTATION", "currentTarget": 4, "newTarget": 3, "planningLevel": 1, "savedMinutes": 172 }
   ],
+  "expansionSuggestions": [],
   "riskAfterSuggestions": { "requiredMustMinutes": 1896, "requiredShouldMinutes": 0, "ratioBp": 9890, "riskLevel": "MEDIUM" }
 }
 ```
@@ -1500,8 +1546,8 @@ public record RiskEstimateView(
 | 인증 / IK | Bearer / IK |
 | 요청 | `ReplanRequest` (`@Validated({Default.class, ReplanRequest.Commit.class})`) |
 | 응답 | 201 `ReplanCommitResponse` |
-| 오류 | 400 `VALIDATION_FAILED`(`DATE_ORDER_INVALID`, `DATE_OUT_OF_RANGE`, `MILESTONE_NOT_IN_PLAN`, `DUPLICATE_VALUE`, `MUTUALLY_EXCLUSIVE`, `SKILL_CODE_UNKNOWN`, `SKILL_NOT_IN_PLAN`, `TARGET_NOT_REDUCED`, `VALUE_NOT_ALLOWED`), 404 `PLAN_NOT_FOUND`, 409 `PLAN_NOT_ACTIVE`, 409 `CONCURRENT_MODIFICATION`, 422 `SECRET_DETECTED_BLOCKED` |
-| Sprint · 요구사항 | S1 최소 구현(milestone 편집·reason. `acceptedDeferrals`, `acceptedTargetReductions`, `restoredDeferrals`가 비어 있지 않으면 `VALUE_NOT_ALLOWED`) → S5 완성 · FR-04, FR-05, AC-01, AC-03, AC-24 |
+| 오류 | 400 `VALIDATION_FAILED`(`DATE_ORDER_INVALID`, `DATE_OUT_OF_RANGE`, `MILESTONE_NOT_IN_PLAN`, `DUPLICATE_VALUE`, `MUTUALLY_EXCLUSIVE`, `SKILL_CODE_UNKNOWN`, `SKILL_NOT_IN_PLAN`, `TARGET_NOT_REDUCED`, `TARGET_NOT_RAISED`, `VALUE_NOT_ALLOWED`), 404 `PLAN_NOT_FOUND`, 409 `PLAN_NOT_ACTIVE`, 409 `CONCURRENT_MODIFICATION`, 422 `SECRET_DETECTED_BLOCKED` |
+| Sprint · 요구사항 | S1 최소 구현(milestone 편집·reason. `acceptedDeferrals`, `acceptedTargetReductions`, `restoredDeferrals`, `acceptedTargetRaises`가 비어 있지 않으면 `VALUE_NOT_ALLOWED`) → S2 완성 · FR-04, FR-05, AC-01, AC-03, AC-24 |
 
 ```java
 public record ReplanRequest(
@@ -1510,7 +1556,8 @@ public record ReplanRequest(
         @NotNull @Size(max = 24) List<@NotNull @Valid MilestoneInput> milestones,
         @NotNull @Size(max = 100) @UniqueElements List<@NotBlank @Size(max = 100) String> acceptedDeferrals,
         @NotNull @Size(max = 400) List<@NotNull @Valid TargetReductionInput> acceptedTargetReductions,
-        @NotNull @Size(max = 100) @UniqueElements List<@NotBlank @Size(max = 100) String> restoredDeferrals) {
+        @NotNull @Size(max = 100) @UniqueElements List<@NotBlank @Size(max = 100) String> restoredDeferrals,
+        @NotNull @Size(max = 400) List<@NotNull @Valid TargetRaiseInput> acceptedTargetRaises) {   // 확장 제안 RAISE_TARGET을 받아들일 때
 
     public interface Commit {}
 }
@@ -1527,6 +1574,11 @@ public record MilestoneInput(
         @NotNull @Size(max = 30) @UniqueElements List<@NotBlank @Size(max = 100) String> skillCodes) {}
 
 public record TargetReductionInput(
+        @NotBlank @Size(max = 100) String skillCode,
+        @NotNull SkillAxis axis,
+        @NotNull @Min(0) @Max(5) Integer newTarget) {}
+
+public record TargetRaiseInput(
         @NotBlank @Size(max = 100) String skillCode,
         @NotNull SkillAxis axis,
         @NotNull @Min(0) @Max(5) Integer newTarget) {}
@@ -1552,12 +1604,13 @@ public record MilestoneIdMappingView(UUID previousId, UUID newId) {}
 | `acceptedDeferrals[i]` | 활성 skill / 대상 plan의 `plan_skill_target`에 있음 | `SKILL_CODE_UNKNOWN` / `SKILL_NOT_IN_PLAN` |
 | `acceptedTargetReductions[i]` | skill 존재·plan 소속, `(skillCode, axis)` 유일, `newTarget` < 현재 그 축 target | `SKILL_CODE_UNKNOWN` / `SKILL_NOT_IN_PLAN` / `DUPLICATE_VALUE` / `TARGET_NOT_REDUCED` |
 | `restoredDeferrals[i]` | 활성 skill / 대상 plan의 `plan_skill_target`에 있음 / `acceptedDeferrals`에 같은 code가 없음 | `SKILL_CODE_UNKNOWN` / `SKILL_NOT_IN_PLAN` / `MUTUALLY_EXCLUSIVE` |
+| `acceptedTargetRaises[i]` | skill 존재·plan 소속, `(skillCode, axis)` 유일, 같은 `(skillCode, axis)`가 `acceptedTargetReductions`에 없음, 같은 skill이 `acceptedDeferrals`에 없음, 현재 그 축 target < `newTarget` ≤ 5 | `SKILL_CODE_UNKNOWN` / `SKILL_NOT_IN_PLAN` / `DUPLICATE_VALUE` / `MUTUALLY_EXCLUSIVE` / `MUTUALLY_EXCLUSIVE` / `TARGET_NOT_RAISED` |
 
 처리: `06-learning-engine-rules.md` §11.2 3~9단계를 한 트랜잭션으로 수행한다.
 - 이전 plan `SUPERSEDED` + **flush** 후 새 plan INSERT(I-02). 동시 replan으로 `uq_learning_plan_one_active` 또는 `unique(user_id, plan_version)` 위반이 나면 409 `CONCURRENT_MODIFICATION`(AC-24).
 - 새 milestone은 모두 새 UUID를 받는다. `milestoneIdMapping`으로 이전 id를 알려준다.
-- `plan_skill_target`은 이전 plan에서 복사한 뒤 적용한다: `acceptedDeferrals` → `deferred = true`, `adjustment = DEFERRED` / `acceptedTargetReductions` → 해당 축 target = `newTarget`, `adjustment = TARGET_REDUCED` (같은 skill이 defer와 축소를 모두 받으면 `DEFERRED`) / `restoredDeferrals` → `deferred = false`, `adjustment = USER_EDITED` (`06-learning-engine-rules.md` §11.2 7단계). 복원과 축소를 함께 받은 skill은 `TARGET_REDUCED`. 이전 plan에서 `deferred = false`인 skill을 복원 목록에 넣으면 변경 없음(no-op). 복원하지 않은 defer 항목은 그대로 복사된다.
-- `PLAN_REPLANNED` learning event(`04-domain-model-and-db.md` §6), (S5부터) 오늘 snapshot upsert.
+- `plan_skill_target`은 이전 plan에서 복사한 뒤 적용한다: `acceptedDeferrals` → `deferred = true`, `adjustment = DEFERRED` / `acceptedTargetReductions` → 해당 축 target = `newTarget`, `adjustment = TARGET_REDUCED` (같은 skill이 defer와 축소를 모두 받으면 `DEFERRED`) / `restoredDeferrals` → `deferred = false`, `adjustment = USER_EDITED` / `acceptedTargetRaises` → 해당 축 target = `newTarget`, `adjustment = USER_EDITED`(축소와 함께 받은 skill은 `TARGET_REDUCED`) (`06-learning-engine-rules.md` §11.2 7단계). 복원과 축소를 함께 받은 skill은 `TARGET_REDUCED`. 이전 plan에서 `deferred = false`인 skill을 복원 목록에 넣으면 변경 없음(no-op). 복원하지 않은 defer 항목은 그대로 복사된다.
+- `PLAN_REPLANNED` learning event(`04-domain-model-and-db.md` §6), (S2부터) 오늘 snapshot upsert.
 - 과거 `daily_plan`, `learning_task`는 이전 plan·milestone id를 그대로 참조한다.
 
 ### 7.9 `GET /plans/active/budget` — 현재 budget·risk
@@ -1568,7 +1621,7 @@ public record MilestoneIdMappingView(UUID previousId, UUID newId) {}
 | 인증 / IK | Bearer / — |
 | 응답 | 200 `BudgetView` |
 | 오류 | 404 `PLAN_NOT_FOUND`, 404 `CAREER_GOAL_NOT_FOUND` |
-| Sprint · 요구사항 | S5 · FR-05, AC-03 |
+| Sprint · 요구사항 | S2 · FR-05, AC-03, AC-30 |
 
 - 요청 시점에 `06-learning-engine-rules.md` §3, §4.1~§4.3으로 계산한다. 저장하지 않는다(저장은 `ProgressSnapshotJob`, replan, 온보딩). 제안은 포함하지 않는다(preview 사용).
 
@@ -1601,6 +1654,8 @@ public record MainTaskView(
         String skillName,              // null 가능
         UUID milestoneId,              // null 가능
         UUID challengeId,              // taskType = CHALLENGE일 때만
+        UUID sideProjectId,            // taskType = PROJECT_TASK일 때만 (learning_task.side_project_id, SP-2, §19)
+        String readingKey,             // taskType = READ_CODE일 때만 (learning_task.reading_key, §19.7)
         String title,
         String description,            // null 가능
         int estimatedMinutes,
@@ -1641,8 +1696,11 @@ public record TaskStatusView(          // PATCH 응답
 | `{planningImplementation}` | `planningImplementation` (int 0~5) | `LARGE_SKILL_GAP` |
 | `{targetImplementation}` | `targetImplementation` (int 0~5) | `LARGE_SKILL_GAP` |
 | `{overdueDays}` | `overdueDays` (int, 상한 없음) | `REVIEW_OVERDUE` |
+| `{repo.name}` | `repoName` (string) | `READ_REAL_CODE` |
 
 - 필요한 변수가 `null`이거나 `reasonParams`가 없으면(이전 버전 데이터) 그 reason은 코드만 두고 `text`는 변수 부분을 뺀 고정 문구로 만든다: `milestone 핵심 항목`, `다음 milestone 준비`, `목표 수준과 차이가 큼`, `복습이 밀림`.
+
+`sideProjectId`·`readingKey` 저장 규칙: `PROJECT_TASK`는 생성 시점의 `ACTIVE` 사이드 프로젝트 중 `updated_at`이 가장 최근인 것 하나를 `learning_task.side_project_id`에 저장한다(SP-3, `06-learning-engine-rules.md` §5.3). `ACTIVE` 프로젝트가 없으면 `PROJECT_TASK`를 제안하지 않는다(SP-1). `READ_CODE`는 고른 reading의 key를 `learning_task.reading_key`에 저장한다(`CuratedReadingRegistry`, `19-content-spec.md` §3 `curated-repos.yaml`). 두 값은 **생성 시점에 고정**되고 조회 때 다시 계산하지 않는다(`reasons`와 같은 원칙). 프로젝트가 삭제되면 `side_project_id`는 `null`이 되고(§19.6) task는 그대로 남는다.
 
 `learning_task.milestone_id` 저장 규칙: 선택된 skill이 오늘을 포함하는 milestone에 있으면 그 milestone(여러 개면 `end_date` ASC, `id` ASC 첫 번째), 아니면 다음 milestone(`06-learning-engine-rules.md` §5.2의 2번), 둘 다 아니면 null.
 
@@ -1705,7 +1763,7 @@ public record TodayGenerateRequest(
 처리 (한 트랜잭션):
 1. 오늘 plan-day 계산(`06-learning-engine-rules.md` §2). 활성 plan이 없으면 404 `PLAN_NOT_FOUND`.
 2. 기존 daily_plan과 main task 상태에 따라 `06-learning-engine-rules.md` §5.9 표를 적용한다(409 두 가지 포함). 삭제·`DEFERRED` 전환 뒤에는 새 task INSERT 전에 flush한다.
-3. 입력 계산: `aiStatus`(§1.9.1 — `DISABLED`/`BALANCE_EXHAUSTED`이면 `TaskProposalPolicy`가 `CHALLENGE` 제안을 건너뛴다, `06-learning-engine-rules.md` §5.3), risk(`06-learning-engine-rules.md` §3~§4.3, 요청 시점 계산 → `deadline_risk`; **S2~S4 빌드에는 budget 규칙이 없으므로 `deadline_risk = null`이고 modifier는 `LOW`로 취급**), comebackMode(`06-learning-engine-rules.md` §5.5), 후보·제안·점수·modifier·reason(`06-learning-engine-rules.md` §5.2~§5.5, §5.8), 시간 배분(`06-learning-engine-rules.md` §5.6), due review(`06-learning-engine-rules.md` §6.5).
+3. 입력 계산: `aiStatus`(§1.9.1 — `DISABLED`/`BALANCE_EXHAUSTED`이면 `TaskProposalPolicy`가 `CHALLENGE` 제안을 건너뛴다, `06-learning-engine-rules.md` §5.3), risk(`06-learning-engine-rules.md` §3~§4.3, 요청 시점 계산 → `deadline_risk`. budget·risk 규칙은 Today와 같은 S2에 들어온다 — 사용자가 등록한 이직 시점이 첫 Today부터 우선순위에 반영된다), comebackMode(`06-learning-engine-rules.md` §5.5), 후보·제안·점수·modifier·reason(`06-learning-engine-rules.md` §5.2~§5.5, §5.8), 시간 배분(`06-learning-engine-rules.md` §5.6), due review(`06-learning-engine-rules.md` §6.5).
 4. `daily_plan` INSERT 또는 갱신: `available_minutes`, `energy_level`, `deadline_risk`, `comeback_mode`, `learning_plan_id`, `generated_at = now`, 재생성이면 `generation_count + 1`.
 5. main task INSERT: `is_main = true`, `sort_order` = 그 daily_plan main task의 최대 `sort_order` + 1 (처음이면 1), `reason_codes`, `score_breakdown`(`reasonParams` 포함, `04-domain-model-and-db.md` §5.1). 후보 skill이 하나도 없으면 main task를 만들지 않고 `mainTask = null`이다(`06-learning-engine-rules.md` §5.2). 이때 6단계 조건을 만족하면 REVIEW task만 만든다.
 6. REVIEW task: `reviewMinutes ≥ 1`이고(`06-learning-engine-rules.md` §5.6, `learning_task.estimated_minutes` CHECK ≥ 1), 그 daily_plan에 `PLANNED`가 아닌 REVIEW task가 없을 때만 INSERT(`is_main = false`, `sort_order = 0`, `estimated = reviewMinutes`). `reviewMinutes = 0`이면(예: `availableMinutes = 5`) due review가 있어도 만들지 않고 `reviewTask = null`이다. 기존 `PLANNED` REVIEW task는 2단계에서 삭제된 상태다.
@@ -1744,13 +1802,14 @@ public record TaskStatusPatchRequest(
 - `SKIPPED → PLANNED`는 같은 daily_plan에 `PLANNED`/`IN_PROGRESS` main task가 없을 때만 허용한다(main task에만 해당). 동시 요청의 partial unique index 위반도 409 `INVALID_STATE_TRANSITION`.
 - 오늘이 아닌 plan-day의 task도 같은 규칙으로 변경할 수 있다.
 - REVIEW task(`is_main = false`)도 같은 전이표를 쓴다.
+- **`READ_CODE` task의 `IN_PROGRESS → COMPLETED`**는 그 task를 대상으로 하는 `COMPLETED` 러버덕 세션(`targetType = CODE_READING`, `targetId = taskId`)이 **1개 이상** 있어야 한다(RC-1, `06-learning-engine-rules.md` §5.3). 없으면 409 `INVALID_STATE_TRANSITION`. 읽었다는 체크만으로는 완료가 아니다. `SKIPPED`·`DEFERRED`에는 이 조건이 없다.
 - 이 요청은 learning session을 만들지 않는다. 클라이언트는 `IN_PROGRESS`로 바꾼 뒤 `POST /learning-sessions`(§9.1)를 호출한다.
 
 ---
 
-## 9. Learning 모듈 (세션)
+## 9. Learning 모듈 (세션) · 러버덕 (`rubberduck` 모듈)
 
-Controller: `LearningSessionController`. Service: `LearningSessionService`, `LearningEventRecorder`.
+Controller: `LearningSessionController`(`/learning-sessions*`, `learning` 모듈), `RubberDuckController`(`/rubber-duck*`, `rubberduck` 모듈). Service: `LearningSessionService`, `LearningEventRecorder`, `RubberDuckService`, 도메인 `RubberDuckPolicy`(`03-system-architecture.md` §2.2·§3.2 — 러버덕은 여러 모듈의 대상을 읽으므로 순환을 피해 독립 모듈이다).
 
 ```java
 public record SessionView(
@@ -1847,6 +1906,248 @@ public record SessionCompleteRequest(
 | Sprint · 요구사항 | S2 · FR-08 |
 
 - `from`과 `to`가 모두 있으면 `from ≤ to`, 기간(`daysBetween(from, to) + 1`)은 366일 이하.
+
+### 9.5 러버덕 공통
+
+러버덕은 학습자가 설명하고 **AI는 답을 주지 않고 질문만 되묻는** 대화다(RD-1~RD-7 = `06-learning-engine-rules.md` §9.5, AI 계약은 `17-ai-integration.md` §3.11·§3.12·§4.10·§4.11·§6.8). 세션 하나는 대상 1개와 skill 1개를 다루고, 종료할 때 정리를 **한 번만** 한다.
+
+Service: `RubberDuckService`. 두 AI operation을 쓴다 — 턴마다 `RUBBER_DUCK`(동기), 종료 시 1회 `RUBBER_DUCK_SUMMARY`(동기).
+
+```java
+public record RubberDuckTurnView(
+        int turnNo,
+        String userText,                       // 마스킹본 (RD-6)
+        String question,                       // 그 턴의 AI 질문
+        boolean learnerStuck,                  // 이 턴의 설명이 "모르겠다"인지 — 서버 결정적 판정(06 §9.5 RD-3, AI 출력 아님)
+        Instant createdAt,
+        AiMeta aiMeta) {}                      // 그 턴의 RUBBER_DUCK 호출. ai_call_log가 지워졌으면 null
+
+public record RubberDuckGapView(
+        String conceptKey,
+        String whatWasMissed,
+        String whyItMatters,
+        String reviewQuestion,
+        UUID reviewItemId) {}                  // 이 gap에 연결된 복습 카드. 기존 카드의 due를 당긴 경우 그 카드 id
+
+public record RubberDuckSummaryView(
+        List<RubberDuckGapView> gaps,          // 0~3 (17 §4.11)
+        List<String> confirmed,                // 0~5
+        String overallNote) {}
+
+public record RubberDuckSessionView(
+        UUID id,
+        RubberDuckTargetType targetType,
+        UUID targetId,                         // CONCEPT이면 null
+        String conceptKey,                     // CONCEPT일 때만
+        String readingKey,                     // targetType = CODE_READING일 때만 (§19.7)
+        String targetTitle,                    // 대상을 사람이 알아볼 문구. 대상이 지워졌으면 null
+        SkillRef skill,                        // null 가능 (RD-7 — 이벤트를 남기지 않는 세션)
+        RubberDuckStatus status,
+        int turnCount,
+        int maxTurns,                          // devpilot.rubberduck.max-turns (기본 5)
+        boolean suggestHint,                   // RD-3: 마지막 2턴의 learnerStuck이 모두 true
+        List<RubberDuckTurnView> turns,        // turnNo ASC. 조회 응답에만 채운다
+        RubberDuckSummaryView summary,         // COMPLETED이고 정리에 성공했을 때만, 그 외 null
+        AsyncFailureCode summarySkippedReason, // 정리 AI가 실패했을 때만 (§1.9.4), 그 외 null
+        UUID learningSessionId,                // 시작 시점의 IN_PROGRESS 학습 세션. 없으면 null
+        Instant startedAt,
+        Instant completedAt,                   // COMPLETED · ABANDONED일 때만
+        long version) {}
+```
+
+공통 규칙:
+
+| 항목 | 규칙 |
+|---|---|
+| 소유권 | `sessionId`가 본인 것이 아니면 **없는 것과 똑같이** 404 `RESOURCE_NOT_FOUND`(§1.1) |
+| 상태 | `RubberDuckStatus`: `IN_PROGRESS → COMPLETED \| ABANDONED`. `COMPLETED`·`ABANDONED`에서 나가는 전이는 없다 |
+| 동시 세션 | 사용자당 `IN_PROGRESS` 세션은 **최대 1개**다. 새로 시작하면 이전 세션을 `ABANDONED`로 바꾼다(§9.6, `POST /learning-sessions`의 I-05와 같은 방식) |
+| 방치된 세션 | `IN_PROGRESS`인 채 `devpilot.rubberduck.stale-after`(24h)가 지나면 `StaleRubberDuckJob`이 `ABANDONED`로 바꾼다. 정리 AI를 부르지 않고 복습 카드도 만들지 않는다 |
+| 턴 상한 | `turn_count ≥ devpilot.rubberduck.max-turns`이면 더 낼 수 없다(RD-4). 클라이언트는 §9.8 `complete`로 유도한다 |
+| 마스킹 | 설명은 저장·AI 전송 전에 `SecretMasker`를 통과한다(RD-6, §1.11). 원문은 어디에도 남기지 않는다 |
+| AI 없이 | `aiStatus`가 `DISABLED`·`BALANCE_EXHAUSTED`이면 클라이언트는 시작 버튼을 막는다(`17-ai-integration.md` §3.10). 이미 있는 세션의 **조회**는 언제나 된다 |
+| 이벤트 | 턴에서는 학습 이벤트를 남기지 않는다. `RUBBER_DUCK_COMPLETED`는 §9.8에서만 남는다 |
+
+대상(`targetType`)별 계약:
+
+| targetType | `targetId`가 가리키는 것 | 소유·존재 검사 | `skillCode` 생략 시 유도 | `targetTitle` / `17` §3.11 `targetSummary` |
+|---|---|---|---|---|
+| `CODE_READING` | `learning_task.id` (`task_type = READ_CODE`) | 본인 task | task의 `skill_id` | task의 `reading_key`로 찾은 reading의 저장소·경로·줄 범위·`question` (§19.7) |
+| `CHALLENGE` | `challenge_attempt.id` | 본인 attempt | 그 challenge의 `challenge_skill` 첫 행(`sort_order` ASC, `skill.code` ASC) | challenge `title` + `prompt` |
+| `REVIEW_ITEM` | `review_item.id` | 본인 카드 | `review_item.skill_id` | `review_item.prompt` |
+| `CONCEPT` | (없음 — `conceptKey`를 쓴다) | — | `conceptKey`의 접두사와 같은 활성 `skill.code`. 없으면 null | `conceptKey` |
+| `PROJECT_WORK` | `side_project.id` | 본인 프로젝트 | 유도하지 않는다(없으면 null) | `side_project.name` + `description` |
+
+- 대상이 지워졌으면(예: 프로젝트 삭제) 세션은 남고 `targetTitle`이 `null`이 된다. `rubber_duck_session.target_id`에는 FK를 두지 않는다(`04-domain-model-and-db.md` §3).
+
+### 9.6 `POST /rubber-duck` — 세션 시작
+
+| 항목 | 값 |
+|---|---|
+| operationId | `learningStartRubberDuck` |
+| 인증 / IK | Bearer / IK |
+| 요청 | `RubberDuckStartRequest` |
+| 응답 | 201 `RubberDuckStartResponse` |
+| 오류 | 400 `VALIDATION_FAILED`(`ONE_OF_REQUIRED`, `MUTUALLY_EXCLUSIVE`, `REFERENCE_NOT_FOUND`, `SKILL_CODE_UNKNOWN`, `Pattern`), 400 `UNKNOWN_ENUM_VALUE`, 409 `CONCURRENT_MODIFICATION` |
+| Sprint · 요구사항 | S3 · FR-25, AC-26, RD-7 |
+
+```java
+public record RubberDuckStartRequest(
+        @NotNull RubberDuckTargetType targetType,
+        UUID targetId,                                     // CONCEPT이 아니면 필수
+        @Size(max = 120) @Pattern(regexp = "^[A-Z][A-Z0-9_]*(\\.[A-Z][A-Z0-9_]*)+$") String conceptKey,  // CONCEPT이면 필수
+        @Size(max = 100) String skillCode) {}              // 생략하면 대상에서 유도한다 (§9.5 표, RD-7)
+
+public record RubberDuckStartResponse(
+        RubberDuckSessionView session,                     // turns = []
+        UUID abandonedSessionId) {}                        // 이번 요청으로 ABANDONED 처리한 이전 세션. 없으면 null
+```
+
+```json
+{ "targetType": "CODE_READING", "targetId": "e41b7f0c-9d53-4a11-8c2e-7a1f0b9d3c44", "conceptKey": null, "skillCode": "SPRING.MVC_REST" }
+```
+
+처리 (한 트랜잭션):
+1. 도메인 검사. `targetType = CONCEPT`이면 `conceptKey`가 있어야 하고(`ONE_OF_REQUIRED`, field `conceptKey`) `targetId`는 `null`이어야 한다(`MUTUALLY_EXCLUSIVE`, field `targetId`). 그 외 `targetType`은 반대로 `targetId` 필수·`conceptKey` 금지.
+2. 대상 조회(§9.5 표). 본인 것이 아니거나 없으면 400 `VALIDATION_FAILED`, field `targetId`, code `REFERENCE_NOT_FOUND` — 타인 소유와 존재하지 않음을 구분하지 않는다(§1.2.3).
+3. `skillCode`가 있으면 활성 skill 검사(`SKILL_CODE_UNKNOWN`), 없으면 §9.5 표대로 유도한다. 유도에 실패하면 `skill_id`를 `null`로 둔다(그 세션은 학습 이벤트를 남기지 않는다 — RD-7).
+4. 사용자의 다른 `IN_PROGRESS` 러버덕 세션이 있으면 `ABANDONED`로 바꾸고 flush한다. 그 id가 `abandonedSessionId`다.
+5. `rubber_duck_session` INSERT: `status = IN_PROGRESS`, `turn_count = 0`, `started_at = now`, `learning_session_id` = 지금 `IN_PROGRESS`인 학습 세션(없으면 null).
+6. partial unique index 위반(동시 시작)은 409 `CONCURRENT_MODIFICATION`.
+
+- **AI를 호출하지 않는다.** 그래서 §1.9.3 예산·차단 검사도 하지 않는다. 첫 검사는 §9.7에서 한다.
+- 학습 이벤트를 남기지 않는다.
+
+### 9.7 `POST /rubber-duck/{sessionId}/turns` — 설명 제출 → AI 질문
+
+| 항목 | 값 |
+|---|---|
+| operationId | `learningSubmitRubberDuckTurn` |
+| 인증 / IK | Bearer / IK |
+| 요청 | `RubberDuckTurnRequest` |
+| 응답 | 201 `RubberDuckTurnResponse` |
+| 오류 | 404 `RESOURCE_NOT_FOUND`, 409 `INVALID_STATE_TRANSITION`, 409 `CONCURRENT_MODIFICATION`, 413 `CONTENT_TOO_LARGE`, 422 `SECRET_DETECTED_BLOCKED`, 429 `AI_*`, 502 `AI_OUTPUT_INVALID`, 502 `AI_REFUSED`, 503 `AI_UNAVAILABLE`, 504 `AI_TIMEOUT` |
+| Sprint · 요구사항 | S3 · FR-25, AC-26, RD-1, RD-2, RD-3, RD-6 |
+
+```java
+public record RubberDuckTurnRequest(
+        @NotBlank String explanation) {}       // 상한은 컨트롤러가 검사한다 → 413 (아래 2번)
+
+public record RubberDuckTurnResponse(
+        int turnNo,                            // 이번에 저장한 턴 번호 (1부터)
+        String question,                       // AI의 되묻는 질문 (17 §4.10 question)
+        boolean suggestHint,                   // RD-3
+        int remainingTurns,                    // max-turns − turnNo
+        AiMeta aiMeta,
+        long version) {}                       // 갱신된 세션 version
+```
+
+```json
+{ "explanation": "OwnerController가 Repository를 직접 주입받는 이유는 이 컨트롤러가 조회만 하고 규칙이 없기 때문입니다." }
+```
+
+```json
+{ "turnNo": 1, "question": "조회만 한다고 하셨는데, 폼 제출을 처리하는 메서드는 어디에 규칙을 두고 있나요?",
+  "suggestHint": false, "remainingTurns": 4,
+  "aiMeta": { "model": "deepseek-flash", "promptVersion": "rubber.duck@v1", "guardActions": [] }, "version": 1 }
+```
+
+처리 순서 (§1.11 순서 그대로):
+1. Bean Validation(400).
+2. 크기: `explanation`의 길이(UTF-16 code unit) > `devpilot.rubberduck.max-explanation-chars`(2000)이면 413 `CONTENT_TOO_LARGE` (§17). 컨트롤러에서 검사하고 아무것도 저장하지 않는다.
+3. `IdempotencyService`(§1.7). 같은 키 재시도는 저장된 201 body를 재생한다 — AI를 다시 부르지 않는다.
+4. `SecretMasker`를 `explanation`에 적용한다(§1.11, RD-6). 차단 패턴(private key 블록)이 있으면 422 `SECRET_DETECTED_BLOCKED` — 턴을 저장하지 않고 AI를 호출하지 않는다. 감사 로그 `SECRET_BLOCKED`. 마스킹 개수는 저장·응답하지 않는다.
+5. tx1 — 세션 조회. 본인 것이 아니면 404 `RESOURCE_NOT_FOUND`. `status ≠ IN_PROGRESS`면 409 `INVALID_STATE_TRANSITION`. `turn_count ≥ max-turns`면 409 `INVALID_STATE_TRANSITION`(RD-4 — 더 낼 수 없다. 클라이언트는 §9.8 `complete`를 부른다).
+6. AI 차단 검사(§1.9.3) → 429 / 503. 저장하지 않는다.
+7. `RUBBER_DUCK` 호출(`17-ai-integration.md` §3.11, SYNC · timeout 20s · 재시도 0). 가드는 CodeLeak · Language · `NoAnswerGuard`(`17-ai-integration.md` §6.8)다. 실패·가드 위반은 §1.9.4 "동기, 대체 없음" — **턴을 저장하지 않고 `turn_count`도 늘지 않는다.** 학습자의 설명은 클라이언트가 유지한다.
+8. tx2 — 세션 `version`이 tx1과 다르면 409 `CONCURRENT_MODIFICATION`(§1.6). `rubber_duck_turn` INSERT(`turn_no = turn_count + 1`, `user_text` = 마스킹본, `ai_question` = `question`, `learner_stuck` = `RubberDuckPolicy.isDontKnow(설명 원문을 마스킹한 값)` — `06` §9.5 RD-3 규칙(문구 목록 + 길이), AI 출력이 아니다, `ai_call_id`), `turn_count += 1`.
+9. `suggestHint` = 이번 턴을 포함한 **마지막 `devpilot.rubberduck.stuck-turns-before-hint`(2)턴의 `learner_stuck`이 모두 true**(RD-3). `turn_count`가 그보다 적으면 항상 `false`.
+
+- `17-ai-integration.md` §4.10의 `targetsGap`은 응답에도 DB에도 넣지 않는다. 다음 턴 프롬프트에도 들어가지 않는다.
+- `suggestHint = true`일 때 클라이언트 행동: 대상이 `CHALLENGE`면 그 attempt의 Hint Ladder(`POST /challenge-attempts/{attemptId}/hints`, §10.8)로 넘어간다 — `HINT_DISCLOSED` 이벤트는 그 경로에서 정상 기록된다. 그 외 대상은 hint endpoint가 없으므로 §9.8 `complete`로 마무리하도록 안내한다. **러버덕 전용 hint endpoint는 두지 않는다.**
+- 학습 이벤트를 남기지 않는다.
+
+### 9.8 `POST /rubber-duck/{sessionId}/complete` — 종료 · 정리
+
+| 항목 | 값 |
+|---|---|
+| operationId | `learningCompleteRubberDuck` |
+| 인증 / IK | Bearer / IK |
+| 요청 | body 없음 |
+| 응답 | 200 `RubberDuckCompleteResponse` |
+| 오류 | 404 `RESOURCE_NOT_FOUND`, 409 `INVALID_STATE_TRANSITION`, 409 `CONCURRENT_MODIFICATION` |
+| Sprint · 요구사항 | S3 · FR-25, AC-26, RD-4, RD-5 |
+
+```java
+public record RubberDuckCompleteResponse(
+        UUID sessionId,
+        RubberDuckStatus status,               // 턴이 1개 이상이면 COMPLETED, 0개면 ABANDONED
+        List<RubberDuckGapView> gaps,          // 정리 실패·턴 0개면 []
+        List<String> confirmed,                // 〃
+        String overallNote,                    // 〃 null
+        int createdReviewItemCount,            // 이번 요청으로 새로 만든 복습 카드 수 (due만 당긴 것은 세지 않는다)
+        AsyncFailureCode summarySkippedReason, // 정리 AI가 실패했을 때만, 그 외 null
+        AiMeta aiMeta,                         // RUBBER_DUCK_SUMMARY 호출. 호출하지 않았으면 null
+        long version) {}
+```
+
+```json
+{
+  "sessionId": "8b1e…", "status": "COMPLETED",
+  "gaps": [ { "conceptKey": "SPRING.TRANSACTION", "whatWasMissed": "읽기 전용 조회에도 트랜잭션 경계가 필요한 이유를 설명하지 못했다.",
+              "whyItMatters": "경계를 모르면 지연 로딩과 커넥션 반환 시점을 예측할 수 없다.",
+              "reviewQuestion": "조회만 하는 메서드에 트랜잭션을 여는 이유를 설명해 보세요.",
+              "reviewItemId": "c92a…" } ],
+  "confirmed": ["컨트롤러에 규칙이 없다는 점을 정확히 짚었다"],
+  "overallNote": "계층의 목적은 잡았고, 트랜잭션 경계가 다음 차례다.",
+  "createdReviewItemCount": 1, "summarySkippedReason": null,
+  "aiMeta": { "model": "deepseek-flash", "promptVersion": "rubber.duck.summary@v1", "guardActions": [] }, "version": 4
+}
+```
+
+처리:
+1. `IdempotencyService`(§1.7). 재생 시 AI를 다시 부르지 않는다.
+2. tx1 — 세션 조회(본인 아니면 404). `status ≠ IN_PROGRESS`면 409 `INVALID_STATE_TRANSITION`(정리는 세션당 1회다, RD-4).
+3. **`turn_count = 0`이면 AI를 호출하지 않는다.** `status = ABANDONED`, `completed_at = now`로 끝낸다. 복습 카드·학습 이벤트 없음, `summary = null`, `summarySkippedReason = null`, `aiMeta = null`. 200이다(오류가 아니다).
+4. AI 차단 검사(§1.9.3). 차단이면 **오류를 내지 않고** 6번의 실패 경로로 간다(§1.9.4 "동기, 대체 있음").
+5. `RUBBER_DUCK_SUMMARY` 호출(`17-ai-integration.md` §3.12, SYNC · timeout 30s · 재시도 0). 가드는 CodeLeak · SkillCode · Language · `NoAnswerGuard`다.
+6. tx2 — 세션 `version`이 tx1과 다르면 409 `CONCURRENT_MODIFICATION`.
+   - **성공**: `summary_json` 저장, `status = COMPLETED`, `completed_at = now`. `gaps[]`마다 복습 카드를 만든다 — `review_item`(`source_type = RUBBER_DUCK`, `source_id` = 세션 id, `origin = AI_GENERATED`, `skill_id` = 세션 skill — **세션 skill이 null이면** `conceptKey`와 `.` 경계로 접두사가 가장 길게 일치하는 활성 `skill.code`, 그것도 없으면 **그 gap은 카드를 만들지 않고** `reviewItemId = null`, `concept_key` = gap의 `conceptKey`, `review_type = EXPLAIN`, `prompt` = `reviewQuestion`, `expected_answer` = 두 줄 목록(`- {whatWasMissed}`, `- {whyItMatters}`)(답이 아니라 답이 다뤄야 할 것 — 러버덕은 답을 만들지 않는다, NA-4), `rubric_json` = `[{"id": "G1", "criterion": whatWasMissed}]`), 첫 due는 `06-learning-engine-rules.md` §6.3의 "challenge 실패 / coach finding / 수동 생성" 행을 따른다. **같은 `concept_key`의 활성 카드가 이미 있으면 새로 만들지 않고 due를 당긴다**(같은 절). `createdReviewItemCount`는 새로 만든 수만 센다.
+   - `summary_json`에는 가드가 gap을 제거하기 전의 수 `rawGapCount`를 함께 저장한다(`04-domain-model-and-db.md` §5.9). `skill_id`가 있으면 `RUBBER_DUCK_COMPLETED` 이벤트를 남긴다(`04-domain-model-and-db.md` §6, payload `{ sessionId, turns, gapCount, targetType, hintDisclosed }` — `gapCount` = `rawGapCount`). `skill_id`가 `null`이면 남기지 않는다(RD-7). `rawGapCount`가 0이고 `turn_count ≥ 3`이면 EXPLANATION 축 증거로 쓰인다(RD-5 — coverage 고정 7000, `hintDisclosed = false`일 때 독립, `06-learning-engine-rules.md` §7.2).
+   - **실패**(§1.9.4의 사유 전부 — 차단·공급자 오류·timeout·가드 위반): `status = COMPLETED`, `summary_json = null`, `summarySkippedReason` = `AsyncFailureCode`. 복습 카드도 학습 이벤트도 만들지 않는다. **대화 기록은 남는다** — 대화 자체가 학습이므로 세션을 실패로 만들지 않는다.
+7. `READ_CODE` task의 완료 조건은 이 endpoint가 `COMPLETED`를 만든 세션 1개다(RC-1, §8.4). `targetType = CODE_READING`인 세션이 `COMPLETED`가 되면(정리 AI 실패로 `summarySkippedReason`이 있어도) 같은 tx2에서 대상 `learning_task`가 `PLANNED`·`IN_PROGRESS`이면 `COMPLETED`로 바꾼다(`completed_at = now`). 클라이언트는 따로 완료를 호출하지 않는다 — 과제 상태로 알 수 있다.
+
+- 재시도 endpoint는 없다. 정리를 놓친 세션은 그대로 둔다(대화는 남아 있다).
+
+### 9.9 `POST /rubber-duck/{sessionId}/abandon` — 중단
+
+| 항목 | 값 |
+|---|---|
+| operationId | `learningAbandonRubberDuck` |
+| 인증 / IK | Bearer / — (상태 전이가 자연히 멱등, §1.7) |
+| 요청 | body 없음 |
+| 응답 | 200 `RubberDuckSessionView` (`turns` 포함) |
+| 오류 | 404 `RESOURCE_NOT_FOUND`, 409 `INVALID_STATE_TRANSITION`(IN_PROGRESS 아님) |
+| Sprint · 요구사항 | S3 · FR-25, AC-26 |
+
+- `status = ABANDONED`, `completed_at = now`. `summary_json`은 `null`로 둔다.
+- **AI를 호출하지 않는다.** 복습 카드도 학습 이벤트도 만들지 않는다. 턴 기록은 남는다.
+- IK를 받아도 무시하고 idempotency record를 만들지 않는다(§1.7).
+
+### 9.10 `GET /rubber-duck/{sessionId}` — 세션 조회
+
+| 항목 | 값 |
+|---|---|
+| operationId | `learningGetRubberDuck` |
+| 인증 / IK | Bearer / — |
+| 응답 | 200 `RubberDuckSessionView` |
+| 오류 | 404 `RESOURCE_NOT_FOUND` |
+| Sprint · 요구사항 | S3 · FR-25, AC-26 |
+
+- `turns`는 `turn_no` ASC 전체다. 페이징하지 않는다(최대 `max-turns`개).
+- `userText`는 마스킹본이다. 원문은 저장하지 않으므로 복원할 수 없다.
+- AI가 불가한 상태에서도 조회는 된다(`17-ai-integration.md` §3.10).
+- 목록 endpoint는 두지 않는다. 진행 중 세션은 시작 응답(§9.6)과 클라이언트 로컬 상태로 추적하고, 지난 세션은 `GET /learning-sessions`(§9.4)와 복습 카드로 이어진다.
 
 ---
 
@@ -2128,7 +2429,7 @@ public record SelfExplanationRequest(
 검사·처리 순서 (`06-learning-engine-rules.md` §9.1, test vector `06-learning-engine-rules.md` §9.2):
 1. `requestedLevel = SELF_EXPLAIN` 또는 `skipSelfExplanation = true` → 400 `VALIDATION_FAILED`(`VALUE_NOT_ALLOWED`).
 2. attempt 조회(404) → `status = ABANDONED`이면 409 `INVALID_STATE_TRANSITION`.
-3. HL-2: 자기 설명 기록(`self_explanation` 또는 `self_explanation_skipped`)이 없으면 409 `SELF_EXPLANATION_REQUIRED`.
+3. HL-2: 자기 설명 기록(`self_explanation` 또는 `self_explanation_skipped`)이 없으면 409 `SELF_EXPLANATION_REQUIRED`. **예외**: 이 attempt를 대상(`targetType = CHALLENGE`)으로 한 러버덕 세션에 턴이 1개 이상 있으면 자기 설명을 한 것으로 본다(`06-learning-engine-rules.md` §9.5 RD-3 연결).
 4. HL-1: `requestedLevel ≤ max_hint_level`이면 `hint_disclosure` 중 요청 단계 이하에서 가장 높은 단계의 내용을 반환한다. 요청 단계 이하 저장 내용이 없으면 저장된 가장 낮은 단계의 내용을 반환한다. AI 호출·저장·이벤트 없음, `skippedLevels = []`.
 5. HL-4: `requestedLevel ≥ PSEUDOCODE`이고 `acknowledgeEvidenceImpact = false` → 409 `HINT_CONFIRMATION_REQUIRED`.
 6. HL-5: `requestedLevel = FULL_EXAMPLE`이고 `submission_count = 0`이고 `giveUp = false` → 409 `FULL_EXAMPLE_NOT_ALLOWED`.
@@ -2440,15 +2741,16 @@ Controller: `CoachReviewController`. Service: `CoachReviewService`, `CoachFindin
 | 인증 / IK | Bearer / IK |
 | 요청 | `CoachReviewCreateRequest` |
 | 응답 | 202 `AsyncStatusView` (`id` = reviewId, `maskedSecretCount`, `pollPath` = `/api/v1/coach/reviews/{reviewId}`) |
-| 오류 | 400 `VALIDATION_FAILED`(`AssertTrue`, `SKILL_CODE_UNKNOWN`), 400 `UNKNOWN_ENUM_VALUE`, 413 `CONTENT_TOO_LARGE`, 422 `SECRET_DETECTED_BLOCKED`, 429 `AI_*`, 503 `AI_UNAVAILABLE` |
+| 오류 | 400 `VALIDATION_FAILED`(`AssertTrue`, `SKILL_CODE_UNKNOWN`, `REFERENCE_NOT_FOUND`), 400 `UNKNOWN_ENUM_VALUE`, 413 `CONTENT_TOO_LARGE`, 422 `SECRET_DETECTED_BLOCKED`, 429 `AI_*`, 503 `AI_UNAVAILABLE` |
 | Sprint · 요구사항 | S4 · FR-12, FR-14, AC-06, AC-14, AC-19, AC-23 |
 
 ```java
 public record CoachReviewCreateRequest(
+        UUID sideProjectId,                              // null 가능. 이 리뷰가 어느 사이드 프로젝트 코드인지 (§19)
         @NotNull CoachContentType contentType,
         CodeLanguage language,
         @NotBlank String content,                        // UTF-8 30,000 byte, 1,000줄 이하 (컨트롤러 검사 → 413)
-        @NotNull @AssertTrue Boolean confidentialConsent, // "회사·비밀 코드가 아니며, 코드가 AI 공급자 DeepSeek(중국 소재)로 전송되고 학습 미사용 약정이 없음에 동의" (02 SCR-COACH 문구)
+        @NotNull @AssertTrue Boolean confidentialConsent, // "회사·비밀 코드가 아니며, 코드가 AI 공급자 DeepSeek(중국 소재)로 전송되고 학습 미사용 약정이 없음에 동의" (02 SCR-COACH-NEW 문구)
         @Size(max = 5000) String userSelfReview,
         @NotNull @Valid CoachContextInput context) {}
 
@@ -2463,6 +2765,7 @@ public record CoachContextInput(
 
 ```json
 {
+  "sideProjectId": "3f7c8a02-1c3e-4b7f-9a55-6d2e4b1c0f77",
   "contentType": "CODE",
   "language": "JAVA",
   "content": "public class ConfigLoader {\n  public Config load(String path) {\n    try {\n      FileInputStream in = new FileInputStream(path);\n      …",
@@ -2473,13 +2776,13 @@ public record CoachContextInput(
 ```
 
 검사·처리 순서 (`03-system-architecture.md` §5.3, I-14):
-1. Bean Validation(400). `confidentialConsent`가 `true`가 아니면 400 `VALIDATION_FAILED`(code `AssertTrue`). 동의 문구(회사 코드 금지 + DeepSeek 데이터 정책)는 `02-user-scenarios-and-ux.md` SCR-COACH와 `07-security-and-privacy.md` §8이 정한다.
+1. Bean Validation(400). `confidentialConsent`가 `true`가 아니면 400 `VALIDATION_FAILED`(code `AssertTrue`). 동의 문구(회사 코드 금지 + DeepSeek 데이터 정책)는 `02-user-scenarios-and-ux.md` SCR-COACH-NEW와 `07-security-and-privacy.md` §8이 정한다.
 2. 크기(413 `CONTENT_TOO_LARGE`): `content`의 UTF-8 byte 수 > `devpilot.coach.max-content-bytes`(30000) 또는 줄 수 > `devpilot.coach.max-content-lines`(1000). 줄 수 = `\n` 개수 + (마지막 문자가 `\n`이 아니면 1).
 3. `IdempotencyService`(§1.7).
 4. `SecretMasker`를 `content`와 `userSelfReview`에 적용한다(§1.11). 차단 패턴(private key 블록)이 있으면 422 `SECRET_DETECTED_BLOCKED` — 아무것도 저장하지 않고 AI를 호출하지 않는다. 감사 로그 `SECRET_BLOCKED`.
-5. `context.skillCodes[i]` 활성 skill 검사(`SKILL_CODE_UNKNOWN`).
+5. `context.skillCodes[i]` 활성 skill 검사(`SKILL_CODE_UNKNOWN`). `sideProjectId`가 있으면 본인 `side_project`인지 확인한다 — 아니거나 없으면 400 `VALIDATION_FAILED`(field `sideProjectId`, code `REFERENCE_NOT_FOUND`).
 6. AI 차단 검사(§1.9.3) → 429/503.
-7. 트랜잭션: `coach_review` INSERT — `status = PENDING`, `content` = 마스킹본, `content_sha256` = 마스킹본 SHA-256 hex, `content_bytes`/`content_lines` = 마스킹본 기준, `masked_secret_count` = content와 self-review 마스킹 수 합, `user_self_review` = 마스킹본, `confidential_consent = true`, `context_json`(`fileName`의 `/`, `\` 제거, `04-domain-model-and-db.md` §5.5), `content_retention_until = now + devpilot.privacy.coach-content-retention-days`.
+7. 트랜잭션: `coach_review` INSERT — `side_project_id`(있으면), `status = PENDING`, `content` = 마스킹본, `content_sha256` = 마스킹본 SHA-256 hex, `content_bytes`/`content_lines` = 마스킹본 기준, `masked_secret_count` = content와 self-review 마스킹 수 합, `user_self_review` = 마스킹본, `confidential_consent = true`, `context_json`(`fileName`의 `/`, `\` 제거, `04-domain-model-and-db.md` §5.5), `content_retention_until = now + devpilot.privacy.coach-content-retention-days`.
 8. 커밋 후 `CoachAnalysisTask`(`03-system-architecture.md` §5.3): `COACH_REVIEW` → 출력 가드(verification `06-learning-engine-rules.md` §10, finding 최대 `devpilot.coach.max-findings`) → finding INSERT, `self_review_axes`, `mentioned_by_user`, `INCORRECT_CLAIM` observation(`06-learning-engine-rules.md` §9.3) → `status = COMPLETED`, `completed_at`. AI가 회사/비밀 코드로 판단하면 `FAILED(CONFIDENTIAL_SUSPECTED)`.
 
 ### 12.2 `GET /coach/reviews/{reviewId}` — 리뷰 조회·분석 폴링
@@ -2495,6 +2798,7 @@ public record CoachContextInput(
 ```java
 public record CoachReviewView(
         UUID id,
+        UUID sideProjectId,                   // null 가능 (§12.1). 프로젝트 삭제 후에는 null
         AsyncJobStatus status,
         AsyncFailureCode failureCode,
         Instant statusUpdatedAt,
@@ -3168,6 +3472,10 @@ public record JobCreateRequest(
 
 ---
 
+> 사이드 프로젝트(`project` 모듈)와 코드 읽기 콘텐츠 조회는 **§19**에 있다. §16~§18은 다른 문서가 절 번호로 참조하는 부록이라 번호를 밀지 않았다. 읽는 순서는 §15 → §19 → §16이다.
+
+---
+
 ## 16. Ops
 
 ### 16.1 `GET /actuator/health`
@@ -3205,10 +3513,18 @@ public record JobCreateRequest(
 | milestone `title` / `description` | 1~200자 / ≤ 2000자 | 400 | `varchar(200)` / `varchar(2000)` |
 | milestone `skillCodes` | ≤ 30, 유일 | 400 | — |
 | milestone `sortOrder` | 0~10000 | 400 | — |
-| `acceptedDeferrals` / `acceptedTargetReductions` / `restoredDeferrals` | ≤ 100 / ≤ 400 / ≤ 100 (deferral과 restore는 겹칠 수 없음) | 400 | — |
+| `acceptedDeferrals` / `acceptedTargetReductions` / `restoredDeferrals` / `acceptedTargetRaises` | ≤ 100 / ≤ 400 / ≤ 100 / ≤ 400 (deferral과 restore, 축소와 상향은 겹칠 수 없음) | 400 | — |
 | `availableMinutes` | 5~720 | 400 | CHECK 5~720 |
 | `actualMinutes` | 0~720, ≤ ⌈경과 분 × 1.5⌉ | 400 | CHECK |
 | `selfReflection` | ≤ 5000자 | 400 | text |
+| 러버덕 `explanation` | ≤ 2000자 (`devpilot.rubberduck.max-explanation-chars`) | 413 `CONTENT_TOO_LARGE` | `rubber_duck_turn.user_text` text |
+| 러버덕 `conceptKey` | `^[A-Z][A-Z0-9_]*(\.[A-Z][A-Z0-9_]*)+$`, ≤ 120자 | 400 | `rubber_duck_session.concept_key varchar(120)` |
+| 러버덕 턴 수 | ≤ `devpilot.rubberduck.max-turns`(5) | 409 `INVALID_STATE_TRANSITION` | `turn_count smallint` |
+| 사이드 프로젝트 `name` | 1~100자 | 400 | `side_project.name varchar(100)` |
+| 사이드 프로젝트 `description` | ≤ 1000자 | 400 | `varchar(1000)` |
+| 사이드 프로젝트 `repoUrl` | ≤ 500자, http(s) URL (저장만, fetch 금지) | 400 | `varchar(500)` |
+| 사이드 프로젝트 `stack` | ≤ 300자 | 400 | `varchar(300)` |
+| reading `key` (path) | `^[A-Z0-9][A-Z0-9_.]{2,149}$` | 400 | `learning_task.reading_key varchar(150)` |
 | 세션 조회 기간 | ≤ 366일 | 400 | — |
 | challenge `difficulty` / `targetMinutes` | 1~5 / 5~180 | 400 | CHECK |
 | self-explanation `text` | ≤ 5000자 | 400 | text |
@@ -3249,10 +3565,194 @@ public record JobCreateRequest(
 | 스냅샷 | `docs/api/openapi.yaml`. `test` profile 통합 테스트가 `/v3/api-docs.yaml`을 받아 스냅샷과 비교한다. 다르면 CI 실패. API를 바꾸는 PR은 스냅샷 갱신을 함께 커밋한다 |
 | 클라이언트 모델 | Flutter는 스냅샷을 기준으로 freezed 모델을 수기 작성한다(DEC-12) |
 | operationId | `<module><Action>` lowerCamelCase. 각 endpoint 절의 값을 `@Operation(operationId = ...)`로 고정한다 |
-| tag | 모듈 이름: `user`, `onboarding`, `career`, `skill`, `plan`, `today`, `learning`, `training`, `review`, `coach`, `dashboard`, `evidence`, `job`, `dev`(`devIssueToken`, `devJwks` — `auth-mode=devtoken`일 때만 스키마에 나타난다) |
+| tag | 모듈 이름: `user`, `onboarding`, `career`, `skill`, `plan`, `today`, `learning`, `rubber-duck`(`rubberduck` 모듈의 `/rubber-duck*`, §9.5~§9.10), `project`(§19.1~§19.6), `training`, `review`, `coach`, `dashboard`, `evidence`, `job`, `dev`(`devIssueToken`, `devJwks` — `auth-mode=devtoken`일 때만 스키마에 나타난다). `GET /readings/{key}`(§19.7)는 `today` tag를 쓴다 |
 | security scheme | `bearerAuth` (HTTP bearer, JWT). 전역 적용, `userGetCalendarFeed`만 `security: []` |
 | 공통 component | header parameter `IdempotencyKey`(IK endpoint에 `required: true`, preview에는 `required: false`), schema `ProblemDetail`(§1.2 확장 필드 포함), `FieldError`, `AsyncStatusView`, `AiMeta`, `SkillRef`, `AxisLevels`, `CursorPage_<T>` |
 | 오류 응답 | 모든 operation에 `default` 응답 `application/problem+json` → `ProblemDetail`. 각 endpoint 표의 오류 status를 명시적으로 나열한다 |
 | enum | `04-domain-model-and-db.md` §3 값 목록을 schema `enum`으로 생성한다(Java enum에서 자동) |
 | nullable | nullable 필드는 schema에 `nullable`(OpenAPI 3.1이면 `type: [..., "null"]`)로 표시한다. 필수 여부: 응답 필드는 모두 `required`(null 포함 항상 존재) |
 | 예시 | 이 문서의 JSON 예시를 `@ExampleObject`로 넣지 않는다(스냅샷 크기 관리). 예시의 기준은 이 문서다 |
+
+
+---
+
+## 19. Project 모듈 (사이드 프로젝트) · 코드 읽기 콘텐츠
+
+Controller: `SideProjectController`(`/side-projects*`, `project` 모듈), `ReadingController`(`/readings*`, `today` 모듈 — `CuratedReadingRegistry`를 읽는다, `03-system-architecture.md` §2.2). Service: `SideProjectService`, `SideProjectQueryService`(`today`·`coach`가 사용).
+
+사이드 프로젝트는 **학습이 적용될 대상**이다. 온보딩 마지막 단계에서 하나 만든다(SP-1, §4.1). 없으면 planner가 `PROJECT_TASK`를 제안하지 않는다.
+
+`repo_url`은 **저장만 한다.** 서버는 이 URL을 요청하지 않는다(`07-security-and-privacy.md` §5.5 URL 필드 규칙, `job_posting.source_url`·`coach_finding.source_reference`와 같은 취급). 저장소 내용이 필요하면 사용자가 로컬에서 본다.
+
+### 19.1 공통 view record
+
+```java
+public record SideProjectView(
+        UUID id,
+        String name,
+        String description,          // null 가능
+        String repoUrl,              // null 가능. 서버는 fetch하지 않는다
+        String stack,                // null 가능
+        SideProjectStatus status,    // ACTIVE | PAUSED | DONE (04 §3)
+        Instant createdAt,
+        Instant updatedAt,
+        long version) {}
+```
+
+- 소유권: `sideProjectId`가 본인 것이 아니면 404 `RESOURCE_NOT_FOUND`(§1.1).
+- `updated_at`은 `PATCH`로 값이 실제로 바뀔 때만 갱신한다. planner의 SP-3(가장 최근 `ACTIVE` 하나)이 이 값을 쓴다.
+
+### 19.2 `POST /side-projects` — 프로젝트 등록
+
+| 항목 | 값 |
+|---|---|
+| operationId | `projectCreate` |
+| 인증 / IK | Bearer / IK |
+| 요청 | `SideProjectCreateRequest` |
+| 응답 | 201 `SideProjectView` |
+| 오류 | 400 `VALIDATION_FAILED`(`URL`), 422 `SECRET_DETECTED_BLOCKED` |
+| Sprint · 요구사항 | S1 · FR-26, AC-27, SP-1 |
+
+```java
+public record SideProjectCreateRequest(
+        @NotBlank @Size(max = 100) String name,
+        @Size(max = 1000) String description,
+        @Size(max = 500) String repoUrl,
+        @Size(max = 300) String stack) {}
+```
+
+```json
+{ "name": "주문 시스템", "description": "회원가입 · 상품 · 주문 · 취소까지 직접 만드는 학습용 백엔드",
+  "repoUrl": "https://github.com/example/order-service", "stack": "Spring Boot, PostgreSQL" }
+```
+
+- `repoUrl` 검사: `java.net.URI` 파싱 성공, scheme `http`/`https`, host 존재(`07-security-and-privacy.md` §5.5). 실패하면 400 `VALIDATION_FAILED`, field `repoUrl`, code `URL`.
+- `name`·`description`·`stack`은 마스킹 후 저장한다(§1.11). `repoUrl`은 URL 필드라 마스킹 대상이 아니다.
+- `status = ACTIVE`로 만든다. 사용자는 `ACTIVE`를 여러 개 가질 수 있다(SP-3).
+- 빈 문자열 `description`·`repoUrl`·`stack`은 `null`로 저장한다.
+
+### 19.3 `GET /side-projects` — 목록
+
+| 항목 | 값 |
+|---|---|
+| operationId | `projectList` |
+| 인증 / IK | Bearer / — |
+| query | `status`: `SideProjectStatus`, 선택(생략하면 전부) / `limit`, `cursor` (§1.5) |
+| 정렬 | `updatedAt` DESC, `id` DESC |
+| 응답 | 200 `CursorPage<SideProjectView>` |
+| 오류 | 400 `UNKNOWN_ENUM_VALUE`, 400 `INVALID_CURSOR` |
+| Sprint · 요구사항 | S1 · FR-26, AC-27 |
+
+### 19.4 `GET /side-projects/{sideProjectId}` — 조회
+
+| 항목 | 값 |
+|---|---|
+| operationId | `projectGet` |
+| 인증 / IK | Bearer / — |
+| 응답 | 200 `SideProjectView` |
+| 오류 | 404 `RESOURCE_NOT_FOUND` |
+| Sprint · 요구사항 | S1 · FR-26, AC-27 |
+
+### 19.5 `PATCH /side-projects/{sideProjectId}` — 수정
+
+| 항목 | 값 |
+|---|---|
+| operationId | `projectUpdate` |
+| 인증 / IK | Bearer / — |
+| 요청 | `SideProjectPatchRequest` |
+| 응답 | 200 `SideProjectView` |
+| 오류 | 400 `VALIDATION_FAILED`(`NOT_BLANK_IF_PRESENT`, `URL`), 400 `UNKNOWN_ENUM_VALUE`, 404 `RESOURCE_NOT_FOUND`, 409 `CONCURRENT_MODIFICATION`, 422 `SECRET_DETECTED_BLOCKED` |
+| Sprint · 요구사항 | S1 · FR-26, AC-27, SP-3 |
+
+```java
+public record SideProjectPatchRequest(
+        @Size(max = 100) String name,
+        @Size(max = 1000) String description,
+        @Size(max = 500) String repoUrl,
+        @Size(max = 300) String stack,
+        SideProjectStatus status,
+        @NotNull Long version) {}
+```
+
+- PATCH 의미는 §1.1과 같다. `null`(또는 생략)은 "변경하지 않음"이다.
+- 값을 지우려면 `description`·`repoUrl`·`stack`에 **빈 문자열**을 보낸다 → `null`로 저장한다. `name`은 지울 수 없다(공백만이면 400 `NOT_BLANK_IF_PRESENT`).
+- `version`이 다르면 409 `CONCURRENT_MODIFICATION`(§1.6).
+- 상태 전이에는 제약이 없다(`ACTIVE ↔ PAUSED ↔ DONE` 모두 허용). `DONE`으로 바꿔도 이미 만들어진 `PROJECT_TASK`는 그대로 남는다. planner는 다음 생성부터 그 프로젝트를 고르지 않는다(SP-3).
+- 실제로 바뀐 필드가 하나도 없으면 `updated_at`과 `version`을 그대로 둔다.
+
+### 19.6 `DELETE /side-projects/{sideProjectId}` — 삭제
+
+| 항목 | 값 |
+|---|---|
+| operationId | `projectDelete` |
+| 인증 / IK | Bearer / — |
+| 응답 | 204 (body 없음) |
+| 오류 | 404 `RESOURCE_NOT_FOUND` |
+| Sprint · 요구사항 | S1 · FR-26, AC-27 |
+
+- 행을 지운다. `learning_task.side_project_id`와 `coach_review.side_project_id`는 `on delete set null`이라 task·리뷰는 남고 참조만 끊긴다(`04-domain-model-and-db.md` §5).
+- `rubber_duck_session.target_id`에는 FK가 없으므로 지난 러버덕 세션은 그대로 남는다. 조회 시 `targetTitle`이 `null`이 된다(§9.5).
+- 이미 삭제된 id로 다시 부르면 404다(멱등 204를 주지 않는다 — 소유권과 존재를 구분하지 않는 §1.1 규칙과 같다).
+
+### 19.7 `GET /readings/{readingKey}` — 코드 읽기 과제 조회
+
+| 항목 | 값 |
+|---|---|
+| operationId | `todayGetReading` |
+| 인증 / IK | Bearer / — |
+| 응답 | 200 `CuratedReadingView` |
+| 오류 | 400 `VALIDATION_FAILED`(`Pattern`), 404 `RESOURCE_NOT_FOUND` |
+| Sprint · 요구사항 | S3 · FR-27, AC-28, RC-1~RC-4 |
+
+```java
+public record CuratedRepoView(
+        String key,                  // 예: "petclinic"
+        String name,
+        String url,                  // 저장소 URL. 서버는 요청하지 않는다
+        String subPath,              // 저장소 안의 하위 경로. 없으면 ""
+        String license,              // 명시가 없으면 "UNSPECIFIED" (19 §3.8) — 그 저장소는 읽기만, 코드 인용 금지
+        String licenseNote,          // null 가능. 예: "라이선스 명시 없음 — 읽기만"
+        String stack,
+        String why,                  // 이 저장소를 읽는 이유
+        String cloneHint,            // 로컬로 가져오는 명령 한 줄 (RC-4)
+        String pinnedCommit) {}      // 줄 번호의 기준 커밋 SHA. null 가능
+
+public record CuratedReadingView(
+        String key,                  // 예: "READ.PETCLINIC.CONTROLLER_SLICE.001"
+        CuratedRepoView repo,
+        String path,                 // repo.subPath 기준 상대 경로 (19 §3.8). 로컬 파일은 <clone 위치>/<subPath>/<path>
+        int startLine,
+        int endLine,                 // startLine ≤ endLine
+        List<SkillRef> skills,       // skillCodes를 활성 skill로 해석한 것. 없는 code는 뺀다
+        Integer estimatedMinutes,    // null 가능
+        String question,             // 읽고 답할 질문 (러버덕 대상이 된다)
+        List<String> lookFor) {}     // 볼 지점 목록
+```
+
+```json
+{
+  "key": "READ.PETCLINIC.CONTROLLER_SLICE.001",
+  "repo": { "key": "petclinic", "name": "Spring PetClinic", "url": "https://github.com/spring-projects/spring-petclinic",
+            "subPath": "", "license": "Apache-2.0", "stack": "Spring Boot 4.1, Java 17, Spring Data JPA",
+            "why": "Spring 공식 샘플. 계층 구조와 테스트 작성법의 정석.",
+            "cloneHint": "git clone https://github.com/spring-projects/spring-petclinic.git && cd spring-petclinic && git checkout 818c4136ea971c21674525f9053de0d9c7ad8cfe",
+            "licenseNote": null,
+            "pinnedCommit": "818c4136ea971c21674525f9053de0d9c7ad8cfe" },
+  "path": "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java",
+  "startLine": 48, "endLine": 122,
+  "skills": [ { "id": "…", "code": "SPRING.MVC_REST", "name": "Spring MVC REST", "category": "SPRING" } ],
+  "estimatedMinutes": 15,
+  "question": "이 컨트롤러는 Repository를 직접 주입받고 Service 계층이 없습니다. 이렇게 두어도 괜찮은 경우와 곤란해지는 경우를 나눠서 설명해 보세요.",
+  "lookFor": ["계층을 나누는 목적", "트랜잭션 경계가 어디에 생기는가", "지금 내 프로젝트는 어느 쪽에 가까운가"]
+}
+```
+
+| 항목 | 규칙 |
+|---|---|
+| 출처 | `content/curated-repos.yaml`을 기동 시 적재한 `CuratedReadingRegistry`(`03-system-architecture.md` §2.2, `19-content-spec.md` §3). DB 조회가 아니고 사용자별 데이터도 아니다 |
+| 인증 | 필요하다. 하지만 **사용자 소유 리소스가 아니다** — 모든 사용자가 같은 내용을 본다. 권한 격리 catalog에는 `SCOPED_COLLECTION`이 아니라 공용 조회로 넣는다(`09-test-and-quality.md` §9.2 `GET /skills/tree`와 같은 취급) |
+| `readingKey` 형식 | `^[A-Z0-9][A-Z0-9_.]{2,149}$`. 어긋나면 400 `VALIDATION_FAILED`(field `readingKey`, code `Pattern`). 형식이 맞아도 registry에 없으면 404 `RESOURCE_NOT_FOUND` |
+| **코드 본문** | **반환하지 않는다.** 이 응답에는 파일 경로와 줄 범위만 있다. 서버는 `repo.url`을 fetch하지 않는다(`07-security-and-privacy.md` §5.5). 사용자가 `cloneHint`로 로컬에 clone해 IDE로 읽는다(RC-4) |
+| 줄 번호 | `pinnedCommit` 기준이다. 저장소가 바뀌면 줄이 밀리므로 클라이언트는 `pinnedCommit`을 함께 보여준다(`19-content-spec.md`) |
+| 쓰임 | `TaskView.readingKey`(§8.1)와 러버덕 `targetType = CODE_READING`(§9.5)이 이 key를 쓴다. `READ_CODE` 과제의 완료 조건은 러버덕 세션 1개다(RC-1, §8.4) |
+| AI | 이 endpoint는 AI를 호출하지 않는다. 비용 0이다 |

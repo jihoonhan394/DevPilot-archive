@@ -161,6 +161,14 @@ devpilot:
     easy-min-days: 4
     variant-after-failures: 2
     suspend-after-failures: 4
+  rubberduck:
+    max-turns: 5                            # 06 §9.5 RD-4
+    stuck-turns-before-hint: 2             # RD-3
+    dont-know-max-chars: 30                # RD-3 판정: 공백 제거 길이 < 30 이고
+    dont-know-phrases: ["모르겠", "모름", "잘 모르", "생각 안", "idk", "no idea", "don't know", "dont know"]   # 06 §9.5
+    stale-after: 24h                       # StaleRubberDuckJob (§6)
+    max-explanation-chars: 2000
+    evidence-coverage-bp: 7000             # 06 §7.2 러버덕 설명 증거의 고정 coverage (E2·E3용, E4 미만)
   skill:
     rule-window-days: 60
     axis-change-cooldown: 24h
@@ -204,6 +212,8 @@ devpilot:
       REVIEW_EVALUATE:         { mode: SYNC,  thinking: false, max-tokens: 2000,  timeout: 20s,  max-retries: 0, input-token-budget: 3000 }
       EVIDENCE_DRAFT:          { mode: ASYNC, thinking: true,  reasoning-effort: low,  max-tokens: 16000, timeout: 120s, max-retries: 1, input-token-budget: 6000 }
       JOB_EXTRACT:             { mode: ASYNC, thinking: false, max-tokens: 8000,  timeout: 120s, max-retries: 1, input-token-budget: 8000 }
+      RUBBER_DUCK:             { mode: SYNC,  thinking: false, max-tokens: 1500,  timeout: 20s,  max-retries: 0, input-token-budget: 6000 }
+      RUBBER_DUCK_SUMMARY:     { mode: SYNC,  thinking: true,  reasoning-effort: low, max-tokens: 4000, timeout: 30s, max-retries: 0, input-token-budget: 8000 }
     trusted-source-hosts: [docs.spring.io, spring.io, docs.oracle.com, openjdk.org, www.postgresql.org, owasp.org, cheatsheetseries.owasp.org, www.kisa.or.kr, supabase.com, dart.dev, docs.flutter.dev, api.flutter.dev, pmd.github.io, spotbugs.readthedocs.io, checkstyle.org, junit.org, hibernate.org, docs.jboss.org, developer.mozilla.org, www.rfc-editor.org]
     curated-sources-location: classpath:content/curated-sources.yaml
     pricing:                    # USD / 1M tokens, 2026-09-18 확인
@@ -215,6 +225,7 @@ devpilot:
       language-min-letters: 30
       language-hangul-weight: 3
       language-min-ratio-bp: 4000
+      no-answer-phrases: ["맞습니다", "틀렸습니다", "정답은", "사실은", "올바른 답은", "해야 합니다", "하면 됩니다", "를 쓰세요", "을 쓰세요"]   # NoAnswerGuard (17 §6.8)
     prompts:                                             # 활성 prompt 버전
       coach.review: v1
       coach.response-feedback: v1
@@ -225,3 +236,5 @@ devpilot:
       review.evaluate: v1
       evidence.draft: v1
       job.extract: v1
+      rubber.duck: v1
+      rubber.duck.summary: v1

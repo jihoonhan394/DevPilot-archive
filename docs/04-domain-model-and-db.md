@@ -38,8 +38,10 @@
 | learning | `LearningSession` | `learning_session` | `user_id` | 수정 |
 | learning | `LearningEvent` | `learning_event` | `user_id` | append-only (무효화만) |
 | learning | `HintDisclosure` | `hint_disclosure` | `user_id` | append-only |
+| rubberduck | `RubberDuckSession` | `rubber_duck_session`, `rubber_duck_turn` | `user_id` | 세션은 수정, 턴은 append-only |
 | plan | `LearningPlan` | `learning_plan`, `plan_milestone`, `milestone_skill`, `plan_skill_target` | `user_id` | 구조 변경 = 새 version (`06` §11) |
 | plan | `PlanProgressSnapshot` | `plan_progress_snapshot` | `user_id` | job이 upsert |
+| project | `SideProject` | `side_project` | `user_id` | 수정 |
 | today | `DailyPlan` | `daily_plan`, `learning_task` | `user_id` | 수정 |
 | training | `Challenge` | `challenge`, `challenge_skill` | `owner_user_id` (null = seed 공용) | AI·수동 생성분은 생성 후 불변(status만 변경). seed는 §9의 갱신 규칙 |
 | training | `ChallengeAttempt` | `challenge_attempt`, `challenge_submission` | `user_id` | 수정 |
@@ -90,7 +92,7 @@
 | `ReviewRating` (review.domain) | `AGAIN`(0), `HARD`(1), `GOOD`(2), `EASY`(3) | review_answer, review_item.last_result |
 | `RatingAdjustment` (review.domain) | `EVALUATED_INCORRECT`, `EVALUATED_PARTIAL`, `HINT_CAP_AGAIN`, `HINT_CAP_HARD`, `HINT_CAP_GOOD` | review_answer.adjusted_by |
 | `ReviewType` (review.domain) | `RECALL`, `BUG_SPOT`, `EXPLAIN`, `CHOICE` | review_item |
-| `ReviewItemSourceType` (review.domain) | `SEED_CARD`, `MANUAL`, `CHALLENGE_ATTEMPT`, `COACH_FINDING`, `EVIDENCE` | review_item.source_type |
+| `ReviewItemSourceType` (review.domain) | `SEED_CARD`, `MANUAL`, `CHALLENGE_ATTEMPT`, `COACH_FINDING`, `EVIDENCE`, `RUBBER_DUCK` | review_item.source_type — `RUBBER_DUCK`은 러버덕 정리의 gap(`05` §9.8) |
 | `ReviewItemStatus` (review.domain) | `ACTIVE`, `SUSPENDED`, `ARCHIVED` | review_item — due 여부는 `due_at < planDayStart(today + 1)`로 계산 (`06` §6.5) |
 | `VariantStatus` (review.domain) | `NONE`, `PENDING`, `RUNNING`, `READY`, `FAILED` | review_item.variant_status |
 | `EvaluatedOutcome` (learning.domain) | `CORRECT`, `PARTIAL`, `INCORRECT`, `NOT_EVALUATED` | submission, attempt, review_answer |
@@ -107,20 +109,24 @@
 | `Priority` (plan.domain) | `MUST`, `SHOULD`, `LATER` | milestone, role/plan skill target |
 | `PlanStatus` (plan.domain) | `ACTIVE`, `SUPERSEDED`, `ARCHIVED` | learning_plan |
 | `MilestoneStatus` (plan.domain) | `PLANNED`, `IN_PROGRESS`, `DONE`, `DEFERRED`, `DROPPED` | plan_milestone |
-| `TargetAdjustment` (plan.domain) | `ROLE_DEFAULT`, `DEFERRED`, `TARGET_REDUCED`, `USER_EDITED` | plan_skill_target.adjustment |
-| `TaskType` (today.domain) | `RECALL`, `REVIEW`, `CHALLENGE`, `PROJECT_TASK`, `COACH_REVIEW`, `READING`, `EXPLAIN` | learning_task |
+| `TargetAdjustment` (plan.domain) | `ROLE_DEFAULT`, `DEFERRED`, `TARGET_REDUCED`, `USER_EDITED` | plan_skill_target.adjustment. 확장 제안을 받아들인 목표 상향도 `USER_EDITED`다(`06` §11.2) |
+| `ExpansionKind` (plan.domain) | `RESTORE_DEFERRED`, `RAISE_TARGET` | replan preview 응답 `expansionSuggestions[].kind` (저장 안 함, `06` §4.4 6단계) |
+| `TaskType` (today.domain) | `RECALL`, `REVIEW`, `CHALLENGE`, `PROJECT_TASK`, `COACH_REVIEW`, `READING`, `READ_CODE`, `EXPLAIN` | learning_task — `READ_CODE`는 큐레이션 저장소 읽기(`06` §5, RC-1~4) |
 | `TaskStatus` (today.domain) | `PLANNED`, `IN_PROGRESS`, `COMPLETED`, `SKIPPED`, `DEFERRED` | learning_task |
 | `ReasonCode` (today.domain) | §5.1 | learning_task.reason_codes |
 | `SessionStatus` (learning.domain) | `IN_PROGRESS`, `COMPLETED`, `ABANDONED` | learning_session |
+| `RubberDuckTargetType` (rubberduck.domain) | `CODE_READING`, `CHALLENGE`, `REVIEW_ITEM`, `CONCEPT`, `PROJECT_WORK` | rubber_duck_session.target_type — `CONCEPT`이면 `target_id` 대신 `concept_key`, `PROJECT_WORK`이면 `target_id`가 `side_project.id` |
+| `RubberDuckStatus` (rubberduck.domain) | `IN_PROGRESS`, `COMPLETED`, `ABANDONED` | rubber_duck_session.status |
+| `SideProjectStatus` (project.domain) | `ACTIVE`, `PAUSED`, `DONE` | side_project.status |
 | `SkillAxis` (skill.domain) | `KNOWLEDGE`, `IMPLEMENTATION`, `EXPLANATION`, `DEBUGGING` | skill_state_change |
 | `SkillLevel` (skill.domain) | `UNKNOWN`(0), `SEEN`(1), `GUIDED`(2), `INDEPENDENT_BASIC`(3), `PRACTICAL`(4), `TRANSFERABLE`(5) | 표시용 (DB는 smallint) |
 | `SkillCategory` (skill.domain) | `JAVA`, `SPRING`, `DATABASE`, `WEB_HTTP`, `NETWORK`, `CS`, `ALGORITHM`, `TESTING`, `DEVOPS`, `SECURITY`, `PRACTICAL_ENGINEERING`, `SYSTEM_DESIGN`, `INTERVIEW` (13개) | skill |
 | `LearningEventType` (learning.domain) | §6 | learning_event |
-| `EventSourceType` (learning.domain) | `LEARNING_SESSION`, `CHALLENGE_ATTEMPT`, `CHALLENGE_SUBMISSION`, `REVIEW_ITEM`, `COACH_REVIEW`, `COACH_FINDING`, `EVIDENCE`, `LEARNING_PLAN` | learning_event.source_type |
+| `EventSourceType` (learning.domain) | `LEARNING_SESSION`, `CHALLENGE_ATTEMPT`, `CHALLENGE_SUBMISSION`, `REVIEW_ITEM`, `COACH_REVIEW`, `COACH_FINDING`, `EVIDENCE`, `LEARNING_PLAN`, `RUBBER_DUCK_SESSION` | learning_event.source_type |
 | `EvidenceStatus` (evidence.domain) | `CANDIDATE`, `ACCEPTED`, `REJECTED` | evidence_candidate |
 | `RequirementType` (job.domain) | `REQUIRED`, `PREFERRED` | job_requirement |
 | `JobFitCategory` (job.domain) | `READY`, `STRETCH`, `LATER` | job_requirement |
-| `AiOperation` (integration.ai.api) | `COACH_REVIEW`, `COACH_RESPONSE_FEEDBACK`, `CHALLENGE_GENERATE`, `CHALLENGE_EVALUATE`, `HINT_GENERATE`, `REVIEW_VARIANT`, `REVIEW_EVALUATE`, `EVIDENCE_DRAFT`, `JOB_EXTRACT` | ai_call_log |
+| `AiOperation` (integration.ai.api) | `COACH_REVIEW`, `COACH_RESPONSE_FEEDBACK`, `CHALLENGE_GENERATE`, `CHALLENGE_EVALUATE`, `HINT_GENERATE`, `REVIEW_VARIANT`, `REVIEW_EVALUATE`, `EVIDENCE_DRAFT`, `JOB_EXTRACT`, `RUBBER_DUCK`, `RUBBER_DUCK_SUMMARY` | ai_call_log — 러버덕은 턴마다 `RUBBER_DUCK`(prompt `rubber.duck`), 종료 정리 1회는 `RUBBER_DUCK_SUMMARY`(prompt `rubber.duck.summary`). 설정이 달라 나눈다 (`03` §9, `17`) |
 | `AiCallStatus` (integration.ai.api) | `SUCCESS`, `INVALID_OUTPUT`, `REFUSED`, `TIMEOUT`, `RATE_LIMITED`, `PROVIDER_ERROR`, `BUDGET_BLOCKED` | ai_call_log |
 
 ---
@@ -192,6 +198,31 @@ CoachReview `status`: `PENDING → RUNNING → COMPLETED | FAILED`. `COMPLETED` 
 - Evidence `status`: `CANDIDATE → ACCEPTED | REJECTED`, `REJECTED → CANDIDATE`(복원). `ACCEPTED`는 되돌리지 않고, 수정만 허용한다.
 - Evidence `generation_status`: `NONE → PENDING → RUNNING → COMPLETED | FAILED`
 - AppUser `status`: `ACTIVE → DELETION_REQUESTED` → (AccountDeletionJob이 row 삭제)
+
+### 4.8 RubberDuckSession (`RubberDuckStatus`)
+
+| From → To | 트리거 | 부수효과 |
+|---|---|---|
+| (new) → `IN_PROGRESS` | `POST /rubber-duck` | `started_at`. 사용자당 `IN_PROGRESS`는 1개다(I-18) — 이전 `IN_PROGRESS` 세션을 `ABANDONED`로 바꾸고 flush한 뒤 INSERT한다 |
+| `IN_PROGRESS → COMPLETED` | `POST /rubber-duck/{id}/complete` — 턴 상한 도달 또는 사용자 종료 (`06` RD-4) | `RUBBER_DUCK_SUMMARY` 호출 1회 → `summary_json`, `completed_at`. `gaps[]` → 복습 카드, `skill_id`가 있으면 `RUBBER_DUCK_COMPLETED` 이벤트(정리 AI가 실패하면 없음). 레벨 증거가 되는 것은 `gapCount = 0`·`turns ≥ 3`인 것뿐 (`06` RD-5·RD-7, §7.2) |
+| `IN_PROGRESS → ABANDONED` | `POST /rubber-duck/{id}/abandon`, 새 세션 시작(I-18), `StaleRubberDuckJob`(24시간), 턴 0개로 `complete` | 정리·이벤트·복습 카드 없음 |
+
+- `COMPLETED`·`ABANDONED`에서 나가는 전이는 없다. 정리를 다시 만들지 않는다(RD-4).
+- 턴 추가(`POST /rubber-duck/{id}/turns`)는 `IN_PROGRESS`에서만 허용한다. 다른 상태면 `409 INVALID_STATE_TRANSITION`.
+- 방치 정리: `StaleRubberDuckJob`(`03` §6)이 `started_at`에서 `devpilot.rubberduck.stale-after`(24h)가 지난 `IN_PROGRESS` 세션을 `ABANDONED`로 바꾼다 (인덱스 §11).
+- `rubber_duck_turn.learner_stuck`은 그 턴의 설명이 RD-3 "모르겠다"인지 서버 규칙으로 판정한 값이다(`06` §9.5). AI 출력이 아니다.
+
+### 4.9 SideProject (`SideProjectStatus`)
+
+| From → To | 트리거 |
+|---|---|
+| (new) → `ACTIVE` | 온보딩 마지막 단계 또는 `POST /side-projects` (`06` SP-1) |
+| `ACTIVE → PAUSED` | `PATCH /side-projects/{id}` |
+| `PAUSED → ACTIVE` | `PATCH /side-projects/{id}` |
+| `ACTIVE/PAUSED → DONE` | `PATCH /side-projects/{id}` |
+| `DONE → ACTIVE/PAUSED` | `PATCH /side-projects/{id}` (끝낸 프로젝트를 다시 이어 간다) |
+
+세 상태 사이의 모든 전이를 허용하고 같은 상태로의 변경은 no-op이다(`05` §19.5). `ACTIVE`는 사용자당 여러 개일 수 있고, planner는 가장 최근 `updated_at`인 `ACTIVE` 하나만 쓴다(`06` SP-3).
 
 ---
 
@@ -285,7 +316,7 @@ coverage 계산은 서버가 한다(`06` §8.1).
   "weekStartDate": "2026-10-05",
   "completedSessions": 5, "studyMinutes": 310,
   "independentSolveRateBp": 5000, "averageHintLevelMilli": 1800, "recallSuccessRateBp": 7200,
-  "selfFoundRiskCount": 2, "acceptedEvidenceCount": 1,
+  "selfFoundRiskCount": 2, "acceptedEvidenceCount": 1, "completedRubberDuckSessions": 4,
   "riskLevel": "MEDIUM", "ratioBp": 9400,
   "weakThinkingAxes": ["RESOURCE_LIFECYCLE", "CONCURRENCY"]
 }
@@ -301,6 +332,28 @@ coverage 계산은 서버가 한다(`06` §8.1).
 // interview_topics — 사용자 확정본
 ["try-with-resources와 소유권"]
 ```
+
+### 5.9 `rubber_duck_session.summary_json`
+
+```json
+{
+  "gaps": [
+    { "conceptKey": "SPRING.TRANSACTION.PROPAGATION",
+      "whatWasMissed": "전파 속성이 다른 두 메서드가 같은 트랜잭션을 쓰는지 설명하지 못함",
+      "whyItMatters": "주문 생성과 재고 차감이 한 트랜잭션인지를 결정한다",
+      "reviewQuestion": "주문 생성 메서드가 재고 차감 메서드를 부를 때 트랜잭션이 몇 개 생기는지 설명해 보세요.",
+      "reviewItemId": "c92a…" }
+  ],
+  "confirmed": ["프록시 기반 AOP라서 내부 호출에는 전파가 적용되지 않는다는 점"],
+  "overallNote": "계층의 목적은 잡았고, 트랜잭션 경계가 다음 차례다.",
+  "rawGapCount": 1,
+  "promptVersion": "rubber.duck.summary@v1"
+}
+```
+- `RUBBER_DUCK_SUMMARY` 출력(`17` §4.11)을 가드 적용 후 그대로 저장하고, 서버가 두 값을 더한다: gap마다 `reviewItemId`(만든 카드 또는 due를 당긴 기존 카드, 카드를 만들 수 없었으면 null — `05` §9.8), 그리고 `rawGapCount`(가드가 gap을 제거하기 **전**의 수, RD-5 판정에 쓴다). 세션이 `COMPLETED`가 된 뒤에는 바뀌지 않는다.
+- `gaps[].conceptKey`는 복습 카드의 `review_item.concept_key`가 된다(`06` §6).
+- `rawGapCount = 0`이고 `turn_count >= 3`이면 EXPLANATION 증거로 인정한다(`06` RD-5).
+- 정리 텍스트는 사용자 설명에서 나온 것이므로 저장 전 `SecretMasker`를 통과한 `rubber_duck_turn.user_text`만 입력으로 쓴다(RD-6).
 
 ---
 
@@ -322,6 +375,7 @@ coverage 계산은 서버가 한다(`06` §8.1).
 | `CHALLENGE_EVALUATED` | CHALLENGE_SUBMISSION | 〃 | `{ attemptId, challengeId, submissionNo, difficulty, purpose, isTransfer, evaluatedOutcome, outcome, rubricCoverageBp, explanationCoverageBp?, maxHintLevel, transferTargetSkillCodes[] }` | `CHALLENGE_EVALUATED:{submissionId}:{skillId}` |
 | `REVIEW_ANSWERED` | REVIEW_ITEM | item skill | `{ reviewItemId, reviewAnswerId, conceptKey, reviewType, wasVariant, selfRating, evaluatedOutcome, rubricCoverageBp?, hintLevel, finalRating, intervalBefore, intervalAfter }` | `REVIEW_ANSWERED:{reviewAnswerId}` |
 | `LEECH_DETECTED` | REVIEW_ITEM | item skill | `{ reviewItemId, consecutiveFailures }` | `LEECH:{reviewItemId}:{reviewAnswerId}` |
+| `RUBBER_DUCK_COMPLETED` | RUBBER_DUCK_SESSION | session skill (`rubber_duck_session.skill_id`, null이면 기록 생략 — `06` RD-7) | `{ sessionId, turns, gapCount, targetType, hintDisclosed }` — `gapCount`는 가드 적용 **전** gap 수(`summary_json.rawGapCount`, RD-5), `hintDisclosed`는 세션 시작 이후 같은 대상에 `HINT_DISCLOSED`가 있었는지(`06` §7.2 독립 판정) | `RUBBER_DUCK:{sessionId}:{skillId}` |
 | `COACH_REVIEW_COMPLETED` | COACH_REVIEW | 관련 skill별 (`context.skillCodes` + finding skill) | `{ coachReviewId, findingCount, selfReviewAxes[] }` | `COACH_COMPLETED:{coachReviewId}:{skillId}` |
 | `COACH_FINDING_CLOSED` | COACH_FINDING | finding.skill_id (없으면 기록 생략) | `{ coachReviewId, findingId, findingType, axis, confidence, discoveredBy, maxHintLevel, finalStatus }` | `FINDING_CLOSED:{findingId}` |
 | `DIAGNOSTIC_PASSED` / `DIAGNOSTIC_FAILED` | CHALLENGE_ATTEMPT | challenge skill별 | `{ attemptId, challengeId, claimedLevel, rubricCoverageBp }` | `DIAGNOSTIC:{attemptId}:{skillId}` |
@@ -352,6 +406,11 @@ coverage 계산은 서버가 한다(`06` §8.1).
 | I-13 | learning_event 수정 금지 (무효화 컬럼 제외) | entity setter 미제공 |
 | I-14 | coach content는 마스킹 후 저장 | `CoachReviewService` 순서 + 테스트 (AC-14) |
 | I-15 | 타 사용자 리소스 접근 불가 | 모든 조회 `userId` 조건 + 권한 격리 테스트 |
+| I-16 | 러버덕 세션 안에서 `turn_no`는 유일하다 (1부터 1씩 증가) | `rubber_duck_turn` `unique (session_id, turn_no)` + `RubberDuckService` (턴 상한은 `devpilot.rubberduck.max-turns`) |
+| I-17 | `READ_CODE` 과제에만 `reading_key`가 있고, `READ_CODE` 과제에는 반드시 있다 | CHECK `learning_task_reading_key_type` + `TaskProposalPolicy`(`06` §5.3). 값은 `content/curated-repos.yaml`의 reading `key`이고 FK가 없다 — 콘텐츠에서 reading이 은퇴해도 과제 행은 남는다(`19` §8.2) |
+| I-18 | 사용자당 `IN_PROGRESS` 러버덕 세션은 1개다 | partial unique index `uq_rubber_duck_session_one_in_progress` + `RubberDuckService`(시작 시 이전 세션 `ABANDONED` → flush → INSERT, 동시 시작 위반은 409 `CONCURRENT_MODIFICATION`, `05` §9.6). I-05(학습 세션)와 같은 방식 |
+
+- `rubber_duck_turn`에는 `user_id`가 없다. 소유자 검증은 `coach_finding`과 같이 부모(`rubber_duck_session.user_id`)로 한다(I-15).
 
 ---
 
@@ -364,8 +423,10 @@ coverage 계산은 서버가 한다(`06` §8.1).
 | `ai_call_log` | 180일 | 삭제. 계정 삭제 시 `user_id=null` |
 | `idempotency_record` | 24시간 | 만료분 삭제 |
 | 학습 기록 (event, answer, state change, finding, evidence) | 계정 유지 기간 | 계정 삭제 시 cascade |
+| 러버덕 (`rubber_duck_session`, `rubber_duck_turn` — `user_text`는 마스킹본만, 원문 없음) | 계정 유지 기간 | 계정 삭제 시 cascade. `IN_PROGRESS`로 24시간 방치된 세션은 `StaleRubberDuckJob`이 `ABANDONED`로 바꾼다(삭제하지 않음) |
+| `side_project` | 사용자가 삭제할 때까지 | `DELETE /side-projects/{id}` → 행 삭제, `learning_task`·`coach_review`의 `side_project_id`는 null. 계정 삭제 시 cascade |
 | catalog (`skill`, `role_skill_target`, seed challenge) | 영구 | 비활성화 (`active=false`, `RETIRED`) |
-| 백업 | 일간 14개 + 월간 6개 | `10-deployment-and-operations.md` §8 |
+| 백업 | 서버 7일 + 로컬 PC 8주(주 1회 pull) | `10-deployment-and-operations.md` §8 |
 
 ---
 
@@ -379,7 +440,7 @@ coverage 계산은 서버가 한다(`06` §8.1).
   3. YAML에서 사라진 skill은 `active=false`, challenge는 `RETIRED`로 둔다. 삭제하지 않는다.
   4. (S2부터, `review_item`은 V4) seed review card는 공용 테이블이 없다. 카드 정의는 `review.application.SeedCardRegistry`(메모리, `PlanTemplateRegistry`와 같은 방식으로 `content`가 기동 시 등록)에 두고, **사용자 온보딩 시 해당 사용자의 `review_item`으로 복사**한다(`SeedCardAssignmentService.assignForNewUser`, `source_type=SEED_CARD`, `concept_key` 동일). 새 카드가 추가되면 `ContentSeeder`가 기동 끝에 `SeedCardAssignmentService.backfillAll()`을 호출해 기존 사용자에게도 추가한다(이미 있는 concept_key는 건너뜀).
   5. challenge upsert는 `devpilot.content.seed-challenges`(S2 빌드 기본 `false`, S3부터 `true`)일 때만 실행한다. `false`면 challenge YAML은 검증만 한다.
-- S1에 온보딩한 사용자는 seed 카드가 없다(`review_item` 테이블이 S2의 V4에서 생김). S2 배포 후 기동 시 step 4의 backfill로 배정된다. risk snapshot은 S5부터 만든다.
+- S1에 온보딩한 사용자는 seed 카드가 없다(`review_item` 테이블이 S2의 V4에서 생김). S2 배포 후 기동 시 step 4의 backfill로 배정된다. risk snapshot은 S2부터 만든다(budget·risk 규칙이 S2에 들어온다, `11` §3).
 - seed 트랜잭션은 한 번에 처리한다. 사용자 수가 적고 데이터가 수천 행 이하이므로 문제없다.
 
 ---
@@ -398,9 +459,12 @@ coverage 계산은 서버가 한다(`06` §8.1).
 | `V6__coach.sql` | S4 | `coach_review`, `coach_finding`, `thinking_pattern_observation` |
 | `V7__evidence_weekly.sql` | S5–S6 | `evidence_candidate`, `weekly_review` |
 | `V8__job_radar.sql` | S7 | `job_posting`, `job_requirement` |
+| `V9__rubberduck_project.sql` | S1(`side_project`) · S3(러버덕) | `side_project`, `rubber_duck_session`, `rubber_duck_turn`, `learning_task.side_project_id`·`reading_key`(+ CHECK `learning_task_reading_key_type`)·`coach_review.side_project_id` 추가 |
 
 규칙:
-- **적용된 migration 파일은 수정하지 않는다.** 변경은 새 `V{n}`으로 한다.
+- **적용된 migration 파일은 수정하지 않는다.** 변경은 새 `V{n}`으로 한다. 이 규칙은 **첫 배포 시점부터** 발효한다 — `V1`~`V9`는 아직 어떤 환경에도 적용된 적이 없으므로(백엔드 코드가 없다) v3 설계로 늘어난 enum 값(`learning_event.event_type`·`source_type`, `learning_task.task_type`, `ai_call_log.operation`)은 `V9`의 `alter ... drop/add constraint`가 아니라 `V4`를 직접 고쳐 반영했다.
+- Sprint 열은 그 테이블을 **처음 쓰는 단계**다(`11-development-roadmap.md` §3의 `S0`~`S7`). migration 파일은 V1~V9가 이미 저장소에 있고 Flyway는 버전 순서대로 **전부** 적용한다 — 단계별로 파일을 나눠 넣지 않는다. 그래서 `V9`가 `V6`의 `coach_review`를 고쳐도 순서 문제가 없다.
+- **서버 개발 DB 초기화 (1회)**: SP-2(`11` §4) 때 서버 `devpilot` DB에 당시 migration 전체를 적용했다. 그 뒤 `V4`를 고치고 `V9`를 추가했으므로, 백엔드가 처음 Flyway를 돌리기 전에 그 DB의 `devpilot` schema를 지우고 다시 만든다(실데이터 없음). 그대로 두면 `V4` checksum 불일치로 기동이 실패한다.
 - 각 migration은 `schema.sql`의 해당 부분과 같아야 한다. `schema.sql`은 전체 migration 적용 결과의 스냅샷이므로 migration을 추가하면 함께 갱신한다.
 - 파괴적 변경(컬럼 삭제, 타입 축소)은 백업 확인 후 2단계로 한다: (1) 코드가 쓰지 않게 배포 (2) 다음 migration에서 삭제.
 - 통합 테스트: 빈 DB → 전체 migration → `ddl-auto=validate` 기동 성공.
@@ -421,4 +485,11 @@ coverage 계산은 서버가 한다(`06` §8.1).
 | `idx_coach_review_retention` | purge job |
 | `idx_snapshot_user_date` | dashboard risk 추세 |
 | `idx_thinking_obs_user_axis_time` | thinking pattern 추세, D 하락 규칙 |
+| `idx_rubber_duck_session_user_time (user_id, started_at desc)` | 러버덕 세션 목록·최근 세션: `where user_id=? order by started_at desc` |
+| `idx_rubber_duck_session_in_progress (started_at) where status='IN_PROGRESS'` | `StaleRubberDuckJob` (§4.8). 부분 인덱스라 완료된 세션은 담지 않는다 |
+| `uq_rubber_duck_session_one_in_progress (user_id) where status='IN_PROGRESS'` | I-18(사용자당 진행 중 1개) 강제 + 진행 중 세션 조회(`where user_id=? and status='IN_PROGRESS'`) |
+| `rubber_duck_turn` `unique (session_id, turn_no)` | 세션의 턴을 순서대로 조회(`where session_id=? order by turn_no`). unique 제약의 인덱스가 정렬을 겸하므로 별도 인덱스를 두지 않는다 |
+| `idx_side_project_user_status (user_id, status, updated_at desc)` | planner: `where user_id=? and status='ACTIVE' order by updated_at desc limit 1` (`06` SP-3), 프로젝트 목록 |
 | FK 인덱스 (`idx_*_plan`, `_review`, `_posting` 등) | 부모 삭제 cascade, 자식 조회 |
+
+`learning_task.side_project_id`·`reading_key`와 `coach_review.side_project_id`에는 인덱스를 두지 않는다 — `learning_task.challenge_id`·`milestone_id`와 같은 기준이다(프로젝트 삭제가 드물고, 프로젝트별 과제·리뷰 목록 조회가 없다). 조회가 생기면 그때 인덱스를 추가한다.

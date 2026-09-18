@@ -20,6 +20,8 @@ prompts/<prompt-id>/<version>/user-template.md   # 요청별 맥락. {{variable}
 | `review.evaluate` | `REVIEW_EVALUATE` | SYNC |
 | `evidence.draft` | `EVIDENCE_DRAFT` | ASYNC |
 | `job.extract` | `JOB_EXTRACT` | ASYNC |
+| `rubber.duck` | `RUBBER_DUCK` | SYNC |
+| `rubber.duck.summary` | `RUBBER_DUCK_SUMMARY` | SYNC |
 
 ## 규칙
 

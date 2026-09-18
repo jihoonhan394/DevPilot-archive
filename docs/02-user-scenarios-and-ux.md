@@ -1,8 +1,10 @@
 # 02. User Scenarios & UX
 
-> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: DEC-10, DEC-12, DEC-18, `01-product-requirements.md`, `05-api-spec.md`, `06-learning-engine-rules.md`
+> Status: Accepted (v3) · Last updated: 2026-09-18 · Related: DEC-10, DEC-12, DEC-18, `01-product-requirements.md`, `05-api-spec.md`, `06-learning-engine-rules.md`, `17-ai-integration.md`
 >
 > 이 문서는 Flutter 클라이언트의 **화면 ID(SCR), 라우트, 화면별 레이아웃·데이터·상태·검증·문구, 핵심 흐름, 오류 코드별 UI 처리, 공통 컴포넌트, 접근성, PWA, 테마 토큰**을 정의한다. 기능 규칙은 `01`의 FR, 요청·응답 필드는 `05-api-spec.md`가 기준이다. API는 base `/api/v1`을 생략하고 `METHOD path`로 적는다.
+>
+> **v3 (2026-09-18)** — 핵심 루프 "읽는다 → 만든다 → 설명한다 → 반복한다"(`01` §5)에 맞춰 SCR-RUBBER-DUCK·SCR-READ-CODE·SCR-PROJECTS를 추가하고(§3.16), 온보딩을 5단계(짧은 진단·사이드 프로젝트)로 바꾸고, 기한 역산 확장 제안을 SCR-REPLAN에 넣었다. 핵심 루프 하루 시나리오는 §4.16이다.
 >
 > 클라이언트 스택: Flutter web(PWA), Riverpod, go_router, dio, freezed(DEC-10, DEC-12). 인증은 `AUTH_MODE` dart-define으로 고른다 — `dev`(기본: `POST /api/v1/dev/token`) / `supabase`(Later: `supabase_flutter`).
 
@@ -20,6 +22,7 @@
 | U-6 | **생각 먼저, 도움은 한 단계씩** | 답·힌트·분석 전에 self-explanation/self-review 입력을 먼저 보여준다. 힌트는 다음 단계 버튼만 활성화한다 |
 | U-7 | **긴 AI 응답은 접는다** | 요약 1~2줄 + "자세히" 펼침. 코드·원문은 기본 접힘 |
 | U-8 | **기다림을 막지 않는다** | 비동기 AI 작업 중에도 다른 화면으로 이동할 수 있고 결과는 저장된다고 알린다 |
+| U-9 | **읽고 만든 뒤에는 설명하게 한다** | 코드 읽기·프로젝트 과제·문제 결과·복습 끝에 "설명하기(러버덕)" 진입점을 둔다. 러버덕 화면에서 AI 말풍선은 질문만 담고, 정답·채점 표시(✓/✗, "맞아요")를 두지 않는다(RD-1) |
 
 ---
 
@@ -37,6 +40,7 @@
 
 - 최소 지원 폭은 360이다. 360~599는 같은 레이아웃이다.
 - 화면 방향 전환이나 창 크기 변경 시 입력 중인 내용은 유지한다(상태는 Riverpod provider에 둔다).
+- **하단 탭은 v3에서도 4개(Today · Review · Plan · More)를 유지한다.** 러버덕은 중심 기능이지만 탭으로 두지 않는다 — ① 러버덕 세션은 항상 대상(읽은 코드, 문제, 복습 카드, 개념, 프로젝트 작업)이 있어야 시작되므로 그 대상 화면에서 여는 편이 결정 비용이 낮고(U-2), ② 세션 목록 API가 없어(`05` §9.10) 탭 첫 화면이 빈 화면이 되며, ③ Today가 `READ_CODE`·`PROJECT_TASK`로 러버덕을 매일 끌어오고 진행 중 세션은 Today에서 이어 열 수 있고(§3.5), ④ 360px에서 탭 5개는 라벨이 좁아진다. 사이드 프로젝트는 자주 여는 화면이 아니므로 More(모바일)·rail(태블릿·데스크톱)에 둔다.
 
 ### 2.2 목적지
 
@@ -47,6 +51,7 @@
 | Training | `fitness_center` | `/training` | More | rail | S3 |
 | Coach | `rate_review` | `/coach` | More | rail | S4 |
 | Plan | `timeline` | `/plan` | 탭 | rail | S1 |
+| Projects | `code_blocks` | `/projects` | More | rail | S1 |
 | Skill | `account_tree` | `/skills` | More | rail | S1 |
 | Evidence | `workspace_premium` | `/evidence` | More | rail | S6 |
 | Jobs | `work` | `/jobs` | More | rail | S7 |
@@ -54,14 +59,15 @@
 | More | `menu` | `/more` | 탭 | 없음 | S2 |
 
 - Dashboard(`/dashboard`)와 Weekly(`/weekly`)는 목적지가 아니다. SCR-TODAY 헤더의 "진행 현황" 링크, SCR-MORE, SCR-PLAN에서 진입한다.
-- 현재 라우트가 목적지 하위(예: `/training/attempts/…`)면 해당 목적지를 선택 상태로 표시한다. `/dashboard`, `/weekly/*`는 Mobile에서 More, 그 외에서는 Today를 선택 상태로 표시한다.
+- 러버덕(`/rubber-duck/*`)은 목적지가 아니다. 진입점: SCR-READ-CODE "읽었으면 설명하기", SCR-TODAY(PROJECT_TASK·EXPLAIN 카드, 진행 중 세션 이어 하기), SCR-TRAINING-ATTEMPT 결과, SCR-REVIEW-SESSION 끝 화면, SCR-REVIEW-ITEMS 메뉴, SCR-SKILL-DETAIL "개념 설명하기", SCR-PROJECTS "이 프로젝트 작업 설명하기". 러버덕 화면은 하단 탭·rail을 숨기는 집중 화면이다(SCR-REVIEW-SESSION과 같음).
+- 현재 라우트가 목적지 하위(예: `/training/attempts/…`, `/today/read/…`)면 해당 목적지를 선택 상태로 표시한다. `/dashboard`, `/weekly/*`는 Mobile에서 More, 그 외에서는 Today를 선택 상태로 표시한다.
 - 하위 화면은 앱 바 뒤로가기(`←`)를 둔다. 목적지 화면에는 뒤로가기가 없다.
 - 브라우저 뒤로가기는 go_router 히스토리를 따른다. 작성 중인 입력이 있으면 §6.8 이탈 확인을 띄운다.
 
 ### 2.3 라우트 표 (go_router)
 
 - `인증` = 저장된 access token 필요. `온보딩` = `GET /me.onboardingCompleted=true` 필요.
-- 경로 파라미터는 UUID(주간 리뷰만 `yyyy-MM-dd`). 형식이 틀리면 SCR-NOT-FOUND.
+- 경로 파라미터는 UUID(주간 리뷰만 `yyyy-MM-dd`, 코드 읽기만 reading key `^[A-Z0-9][A-Z0-9_.]{2,149}$`). 형식이 틀리면 SCR-NOT-FOUND.
 - `/`는 `/today`로 redirect한다. S1(Today 출시 전)에는 `/plan`으로 redirect한다.
 
 | 경로 | SCR ID | 인증 | 온보딩 | Sprint |
@@ -71,10 +77,15 @@
 | `/not-allowed` | SCR-NOT-ALLOWED | N (세션만 있음) | N | S1 |
 | `/onboarding/goal` | SCR-ONBOARDING (1 목표) | Y | 미완료만 | S1 |
 | `/onboarding/time` | SCR-ONBOARDING (2 시간) | Y | 미완료만 | S1 |
-| `/onboarding/level` | SCR-ONBOARDING (3 현재 수준) | Y | 미완료만 | S1 |
-| `/onboarding/plan` | SCR-ONBOARDING (4 계획 확인) | Y | 완료 직후 | S1 |
+| `/onboarding/level` | SCR-ONBOARDING (3 현재 수준 — 짧은 진단 / 자기평가) | Y | 미완료만 | S1 (진단 선택지 S3) |
+| `/onboarding/project` | SCR-ONBOARDING (4 사이드 프로젝트) | Y | 미완료만 | S1 |
+| `/onboarding/plan` | SCR-ONBOARDING (5 계획 확인) | Y | 완료 직후 | S1 |
 | `/today` | SCR-TODAY | Y | Y | S2 |
 | `/today/diagnostics` | SCR-DIAGNOSTICS | Y | Y | S3 |
+| `/today/read/:readingKey` | SCR-READ-CODE | Y | Y | S3 |
+| `/rubber-duck/new` | SCR-RUBBER-DUCK (시작 전) | Y | Y | S3 |
+| `/rubber-duck/:sessionId` | SCR-RUBBER-DUCK | Y | Y | S3 |
+| `/projects` | SCR-PROJECTS | Y | Y | S1 |
 | `/dashboard` | SCR-DASHBOARD | Y | Y | S2 (최소) / S5 (완성) |
 | `/review` | SCR-REVIEW-HOME | Y | Y | S2 |
 | `/review/session` | SCR-REVIEW-SESSION | Y | Y | S2 |
@@ -88,7 +99,7 @@
 | `/coach/new` | SCR-COACH-NEW | Y | Y | S4 |
 | `/coach/:reviewId` | SCR-COACH-DETAIL | Y | Y | S4 |
 | `/plan` | SCR-PLAN | Y | Y | S1 |
-| `/plan/replan` | SCR-REPLAN | Y | Y | S1 (저장만) / S5 (미리보기) |
+| `/plan/replan` | SCR-REPLAN | Y | Y | S1 (저장만) / S2 (미리보기·축소/확장 제안) |
 | `/plan/goal` | SCR-CAREER-GOAL | Y | Y | S1 |
 | `/plan/versions` | SCR-PLAN-HISTORY | Y | Y | S1 |
 | `/plan/versions/:planId` | SCR-PLAN-VERSION | Y | Y | S1 |
@@ -102,7 +113,7 @@
 | `/jobs` | SCR-JOBS-LIST | Y | Y | S7 |
 | `/jobs/new` | SCR-JOB-NEW | Y | Y | S7 |
 | `/jobs/:jobId` | SCR-JOB-DETAIL | Y | Y | S7 |
-| `/settings` | SCR-SETTINGS | Y | N | S1 (캘린더 S2, AI 사용량 S3, export·삭제 S6) |
+| `/settings` | SCR-SETTINGS | Y | N | S1 (AI 사용량 S3, 캘린더 S5, export·삭제 S6) |
 | `/settings/delete-account` | SCR-ACCOUNT-DELETE | Y | N | S6 |
 | `/more` | SCR-MORE | Y | Y | S2 (폭 ≥ 600이면 `/today`로 redirect) |
 | 그 외 | SCR-NOT-FOUND | N | N | S0 |
@@ -117,6 +128,9 @@
 | `/review/items` | `skillId`, `status` | 필터 초기값 |
 | `/training` | `skillId` | 필터 초기값 |
 | `/training/challenges/:challengeId` | `taskId` | Today CHALLENGE task에서 진입 |
+| `/today/read/:readingKey` | `taskId` (필수) | Today READ_CODE task. 러버덕 대상(`CODE_READING`의 `targetId`)이자 완료 대상. 없으면 읽기 안내만 보이고 "설명하기"는 비활성 |
+| `/rubber-duck/new` | `targetType` (필수), `targetId` 또는 `conceptKey`, `skillCode`(선택), `taskId`(선택) | 시작 전 화면. `05` §9.6 `RubberDuckStartRequest`와 같은 값. `taskId`는 Today task에서 왔을 때 끝나고 돌아갈 곳(`/today?complete=`) |
+| `/rubber-duck/:sessionId` | `taskId` (선택) | 같음 |
 | `/coach/new` | `taskId` | Today COACH_REVIEW task에서 진입 |
 | `/plan/replan` | `from=goal` | 목표 변경 후 진입 안내 |
 | `/settings/delete-account` | `reauth=1` | 재로그인 직후 |
@@ -133,11 +147,11 @@ go_router `redirect`는 아래 순서로 평가하고 처음 해당하는 규칙
 | 4 | `meProvider` 오류 `USER_NOT_ALLOWED` | `/not-allowed` |
 | 5 | `meProvider.status == DELETION_REQUESTED` (삭제 요청 계정은 `GET /me`만 200, 그 외 API는 403 `FORBIDDEN`) | 토큰 삭제(`supabase` 모드면 `signOut`) → `/login?reason=deleted` |
 | 6 | `onboardingCompleted=false` + 온보딩 필요 경로 | `/onboarding/goal` |
-| 7 | `onboardingCompleted=true` + `/onboarding/goal|time|level` | `/today` |
+| 7 | `onboardingCompleted=true` + `/onboarding/goal|time|level|project` | `/today` |
 | 8 | 경로의 feature flag가 꺼짐 | `/today` (S1은 `/plan`) |
 
 - `meProvider`는 `GET /me` 결과다. 앱 시작, 로그인 직후, 브라우저 탭이 다시 보일 때(`visibilitychange`), AI 관련 429/503 응답 직후 다시 읽는다.
-- feature flag는 `lib/app/feature_flags.dart`의 `const bool` 값이며 빌드 시 `--dart-define=DEVPILOT_FEATURES=today,review,…`로 켠다. 꺼진 기능의 목적지·진입 버튼·라우트는 모두 숨긴다. 플래그 이름: `today`, `review`, `dashboard_full`, `calendar`, `training`, `diagnostics`, `ai_usage`, `review_evaluate`, `coach`, `replan_preview`, `weekly`, `evidence`, `account`, `jobs`.
+- feature flag는 `lib/app/feature_flags.dart`의 `const bool` 값이며 빌드 시 `--dart-define=DEVPILOT_FEATURES=today,review,…`로 켠다. 꺼진 기능의 목적지·진입 버튼·라우트는 모두 숨긴다. 플래그 이름과 켜지는 단계: `projects`(S1), `today`·`review`·`replan_preview`(S2), `training`·`diagnostics`·`ai_usage`·`review_evaluate`·`read_code`·`rubber_duck`(S3), `coach`(S4), `dashboard_full`·`weekly`·`calendar`·`challenge_generate`(S5), `evidence`·`account`(S6), `jobs`(S7). `diagnostics`가 꺼져 있으면 온보딩 3단계는 자기평가만 보인다. `rubber_duck`이 꺼져 있으면 모든 러버덕 진입 버튼을 숨긴다. `challenge_generate`는 SCR-TRAINING-LIST "AI로 문제 만들기"만 켠다.
 
 ---
 
@@ -146,6 +160,9 @@ go_router `redirect`는 아래 순서로 평가하고 처음 해당하는 규칙
 ### 3.1 표기 · 공통 규칙
 
 **화면 명세 항목**: 목적 · 진입 경로 · 레이아웃(모바일 기준, 폭 360) · 컴포넌트 · 데이터 · 상태 · 사용자 행동과 검증 · 주요 문구. 상태 칸에 "공통"이라고 쓴 것은 §3.3 기본 동작을 그대로 쓴다는 뜻이다.
+
+- **Sprint** 칸의 S0~S7은 구현 단계 ID다(`01` §7). 기간·날짜가 없다. M1 = S0~S3(S3 완료 = 실사용 시작), M2 = S4~S7.
+- 와이어프레임 안의 날짜·이름·숫자는 모두 **예시**다. 이직 완료 목표일·지원 시작일은 사용자가 등록한 값이 들어간다.
 
 **문구 key와 l10n**
 - 파일: `lib/l10n/app_ko.arb` 하나(한국어만, `01` §10.1 C-3). `flutter gen-l10n`을 쓴다.
@@ -170,7 +187,11 @@ go_router `redirect`는 아래 순서로 평가하고 처음 해당하는 규칙
 | Enum | 값 → 라벨 |
 |---|---|
 | `EnergyLevel` | LOW 낮음 · NORMAL 보통 · HIGH 좋음 |
-| `TaskType` | RECALL 떠올리기 · REVIEW 복습 · CHALLENGE 문제 풀이 · PROJECT_TASK 프로젝트 과제 · COACH_REVIEW 코드 리뷰 · READING 개념 읽기 · EXPLAIN 설명하기 |
+| `TaskType` | RECALL 떠올리기 · REVIEW 복습 · CHALLENGE 문제 풀이 · PROJECT_TASK 프로젝트 과제 · COACH_REVIEW 코드 리뷰 · READING 개념 읽기 · READ_CODE 코드 읽기 · EXPLAIN 설명하기 |
+| `RubberDuckTargetType` | CODE_READING 읽은 코드 · CHALLENGE 문제 풀이 · REVIEW_ITEM 복습 카드 · CONCEPT 개념 · PROJECT_WORK 프로젝트 작업 |
+| `RubberDuckStatus` | IN_PROGRESS 설명 중 · COMPLETED 정리함 · ABANDONED 그만둠 |
+| `SideProjectStatus` | ACTIVE 진행 중 · PAUSED 잠시 멈춤 · DONE 완료 |
+| `ExpansionKind` | RESTORE_DEFERRED 다시 포함 · RAISE_TARGET 목표 올리기 |
 | `TaskStatus` | PLANNED 예정 · IN_PROGRESS 진행 중 · COMPLETED 완료 · SKIPPED 건너뜀 · DEFERRED 미룸 |
 | `RiskLevel` | LOW 여유 · MEDIUM 보통 · HIGH 빠듯함 · CRITICAL 매우 빠듯함 |
 | `Priority` | MUST 필수 · SHOULD 권장 · LATER 나중 |
@@ -213,7 +234,12 @@ go_router `redirect`는 아래 순서로 평가하고 처음 해당하는 규칙
 | `applicationStartDate` | 같음 | 선택, 오늘−1년 ≤ 값 ≤ `targetCompletionDate` | `validation.applicationAfterCompletion` |
 | `careerStartDate` | SCR-ONBOARDING | 선택, 1970-01-01 ≤ 값 ≤ 오늘 | `validation.datePast` |
 | `focusSkillCodes` | SCR-ONBOARDING, SCR-CAREER-GOAL | 0~10개 | `validation.maxItems` |
-| 카테고리 자기평가 | SCR-ONBOARDING | 13개 모두 0~4 (기본 0) | — |
+| 카테고리 자기평가 | SCR-ONBOARDING | 자기평가를 고른 경우에만. 13개 모두 0~4 (기본 0). 짧은 진단을 고르면 보내지 않는다(`[]`) | — |
+| 사이드 프로젝트 `name` | SCR-ONBOARDING, SCR-PROJECTS | 앞뒤 공백 제거 후 1~100자 (온보딩 기본값 "주문 시스템") | `validation.required`, `validation.maxLength` |
+| 사이드 프로젝트 `description` | SCR-PROJECTS | 0~1000자 | `validation.maxLength` |
+| 사이드 프로젝트 `repoUrl` | SCR-PROJECTS | 선택, `http://` 또는 `https://`, ≤ 500자 | `validation.url`, `validation.maxLength` |
+| 사이드 프로젝트 `stack` | SCR-PROJECTS | 0~300자 | `validation.maxLength` |
+| 러버덕 `explanation` | SCR-RUBBER-DUCK | 공백 아닌 문자 1개 이상, ≤ 2000자(`devpilot.rubberduck.max-explanation-chars`), private key 정규식 불일치 | `validation.required`, `validation.maxLength`, `rubberDuck.validation.privateKey` |
 | milestone `title` | SCR-REPLAN | 1~200자 | `validation.required`, `validation.maxLength` |
 | milestone `description` | SCR-PLAN, SCR-REPLAN | 0~2000자 | `validation.maxLength` |
 | milestone 기간 | SCR-REPLAN | 오늘−1년 ~ 오늘+3년, `startDate ≤ endDate` | `validation.dateRange` |
@@ -371,15 +397,15 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 #### SCR-ONBOARDING
 
-- **목적**: 4단계로 목표·시간·현재 수준을 받고 계획 v1을 만든다(FR-02). **진입**: `onboardingCompleted=false` redirect. **Sprint**: S1.
-- **공통 레이아웃**: 상단 진행 막대 + `n / 4`, 제목, 본문(스크롤), 하단 고정 버튼 영역(좌 "이전" `TextButton`, 우 "다음" `FilledButton`). 1단계에는 "이전"이 없다. 4단계에는 "이전"이 없다(이미 저장됨). 데스크톱은 폭 560 카드 가운데 정렬.
-- **입력 보관**: ①~③ 입력은 `onboardingDraftProvider`에 두고, 새로고침 대비로 `localStorage` key `devpilot.onboarding.draft.<externalAuthId>`에 저장한다(읽기·쓰기 모두 try/catch, 실패해도 동작). 제출 성공 시 삭제한다.
+- **목적**: 5단계로 목표(이직 시점)·시간·현재 수준 확인 방식·사이드 프로젝트를 받고 계획 v1을 만든다(FR-02, FR-26 SP-1). 현재 수준은 **짧은 진단이 기본**이고, 건너뛰면 자기평가로 대체한다. **진입**: `onboardingCompleted=false` redirect. **Sprint**: S1 (3단계 "짧은 진단" 선택지는 `diagnostics` flag가 켜지는 S3).
+- **공통 레이아웃**: 상단 진행 막대 + `n / 5`, 제목, 본문(스크롤), 하단 고정 버튼 영역(좌 "이전" `TextButton`, 우 "다음" `FilledButton`). 1단계에는 "이전"이 없다. 5단계에는 "이전"이 없다(이미 저장됨). 데스크톱은 폭 560 카드 가운데 정렬.
+- **입력 보관**: ①~④ 입력은 `onboardingDraftProvider`에 두고, 새로고침 대비로 `localStorage` key `devpilot.onboarding.draft.<externalAuthId>`에 저장한다(읽기·쓰기 모두 try/catch, 실패해도 동작). 제출 성공 시 삭제한다.
 
 **1단계 — 목표** (`/onboarding/goal`)
 
 ```text
 ┌────────────────────────────────┐
-│ ━━━━━━━──────────────────  1/4 │
+│ ━━━━━───────────────────── 1/5 │
 │ 목표를 알려 주세요              │
 │                                │
 │ 목표 직무                       │
@@ -398,6 +424,8 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 │ 이직 완료 목표일 *               │
 │ [3개월 후] [6개월 후] [직접 선택] │
 │ 2027년 4월 1일 (목)             │
+│ 이 날짜로 남은 시간을 거꾸로      │
+│ 계산해 무엇을 먼저 할지 정해요.   │
 │                                │
 │ 지원 시작일 (선택)               │
 │ [완료일 3개월 전] [직접] [없음]   │
@@ -407,16 +435,17 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 └────────────────────────────────┘
 ```
 
-- 기본값: `experienceProfile` 선택 없음(필수), 목표일 없음(필수), 지원 시작일 "없음".
+- 기본값: `experienceProfile` 선택 없음(필수), 목표일 없음(필수), 지원 시작일 "없음". 날짜는 사용자가 고른 값이다(와이어프레임의 날짜는 예시).
 - 목표 직무 위에 "표시 이름" 입력(1~100자, 기본값 `GET /me.displayName`)을 둔다.
 - "3개월 후" = 오늘+3개월, "완료일 3개월 전" = 완료일−3개월(오늘 이전이 되면 칩 비활성).
+- 목표일 아래에 `onboarding.goal.completion.help`를 둔다. 이 날짜는 나중에 설정 > 이직 목표(SCR-CAREER-GOAL)에서 바꿀 수 있다.
 - "다음" 활성 조건: `experienceProfile` 선택 + `displayName` 유효 + `targetCompletionDate` 유효(§3.2).
 
 **2단계 — 시간** (`/onboarding/time`)
 
 ```text
 ┌────────────────────────────────┐
-│ ━━━━━━━━━━━━━━───────────  2/4 │
+│ ━━━━━━━━━━──────────────── 2/5 │
 │ 공부할 수 있는 시간은?           │
 │                                │
 │ 평일 하루                       │
@@ -442,73 +471,129 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 - "직접 입력"은 숫자 입력 대화상자(0~720). 주간 합계 = 평일×5 + 주말×2.
 - 하루 시작 시각 선택지: 자정(0시)~새벽 6시.
 
-**3단계 — 현재 수준** (`/onboarding/level`)
+**3단계 — 현재 수준: 짧은 진단 또는 자기평가** (`/onboarding/level`)
 
 ```text
 ┌────────────────────────────────┐
-│ ━━━━━━━━━━━━━━━━━━━━━────  3/4 │
-│ 지금 수준을 골라 주세요          │
-│ 대략이면 충분해요. 실제 레벨은   │
-│ 학습 기록으로 정해져요.          │
+│ ━━━━━━━━━━━━━━━─────────── 3/5 │
+│ 지금 수준을 확인해요             │
 │                                │
-│ Java                           │
-│ [모름✓][본 적 있음][도움받아 가능]│
-│ [혼자 가능][실무 적용]           │
-│ ────────────────────────────── │
-│ Spring                         │
-│ [모름✓][본 적 있음] …           │
-│ ────────────────────────────── │
-│ … 13개 카테고리                 │
+│ ┌────────────────────────────┐ │
+│ │ (●) 짧은 진단으로 시작 [권장] │ │
+│ │ 분야마다 1문제, 최대 5문제예요.│ │
+│ │ 계획을 만든 뒤 바로 풀어요.    │ │
+│ │ 스스로 고르는 것보다 정확해요. │ │
+│ └────────────────────────────┘ │
+│ ┌────────────────────────────┐ │
+│ │ ( ) 진단 건너뛰고 직접 고르기 │ │
+│ │ 분야별 수준을 직접 골라요.     │ │
+│ └────────────────────────────┘ │
 │                                │
 │ ▸ 지금 프로젝트에 필요한 기술     │
 │   (선택, 최대 10개)              │
 │ ────────────────────────────── │
-│ [이전]            [계획 만들기]  │
+│ [이전]                [  다음  ] │
 └────────────────────────────────┘
 ```
 
-- 카테고리 순서는 §3.1 `SkillCategory` 표 순서. 선택지는 `ChoiceChip` 5개(0~4), 기본 0.
-- "프로젝트에 필요한 기술" 펼침: `GET /skills/tree?role=JAVA_BACKEND`의 skill을 카테고리별 검색 목록으로 보여주고 최대 10개 선택.
-- "계획 만들기" → `POST /onboarding` `{displayName, timezone, dayStartHour, weekdayStudyMinutes, weekendStudyMinutes, experienceProfile, careerStartDate, careerGoal: {targetRole, applicationStartDate, targetCompletionDate, focusSkillCodes}, selfAssessments: [13개], useTemplate: true}`(버튼 로딩, 이전·뒤로가기 비활성). 성공 → `meProvider` 갱신 → `/onboarding/plan`.
-- 3 이상을 고른 카테고리가 있으면 버튼 위에 `onboarding.level.diagnosticNote`를 보여준다(S3 이후).
+"진단 건너뛰고 직접 고르기"를 고르면 카드 아래에 자기평가 칩이 펼쳐진다(v2와 같은 입력):
 
-**4단계 — 계획 확인** (`/onboarding/plan`)
+```text
+│ (●) 진단 건너뛰고 직접 고르기     │
+│ 대략이면 충분해요. 실제 레벨은   │
+│ 학습 기록으로 정해져요.          │
+│ Java                           │
+│ [모름✓][본 적 있음][도움받아 가능]│
+│ [혼자 가능][실무 적용]           │
+│ ────────────────────────────── │
+│ … 13개 카테고리                 │
+```
+
+- 기본 선택 = 짧은 진단(`runDiagnostic=true`, `selfAssessments=[]`). 자기평가를 고르면 `runDiagnostic=false`, `selfAssessments` 13개(`05` §4.1: 진단 모드에서 자기평가를 보내면 `MUTUALLY_EXCLUSIVE`, 자기평가 모드에서 비우면 `ONE_OF_REQUIRED`).
+- `diagnostics` flag가 꺼진 빌드(S1~S2)는 두 카드 없이 자기평가 칩만 보여주고(제목 `onboarding.level.titleSelf`) `runDiagnostic=false`로 보낸다. 이 사용자는 S3 이후 자기평가 3 이상인 분야에 한해 Today에서 진단을 제안받는다(FR-15).
+- 진단 문제는 이 단계에서 풀지 않는다. 서버가 제출 응답의 `suggestedDiagnostics`(카테고리당 1문제, 최대 5개, `05` §4.2)로 문제를 정하므로 5단계 이후 SCR-DIAGNOSTICS에서 푼다.
+- 자기평가: 카테고리 순서는 §3.1 `SkillCategory` 표 순서. 선택지는 `ChoiceChip` 5개(0~4), 기본 0. 3 이상을 고른 카테고리가 있으면 칩 아래에 `onboarding.level.diagnosticNote`를 보여준다(S3 이후).
+- "프로젝트에 필요한 기술" 펼침: `GET /skills/tree?role=JAVA_BACKEND`의 skill을 카테고리별 검색 목록으로 보여주고 최대 10개 선택.
+- "다음"은 항상 활성이다(두 방식 모두 기본값이 있다). 여기서는 아직 제출하지 않는다.
+
+**4단계 — 사이드 프로젝트** (`/onboarding/project`)
 
 ```text
 ┌────────────────────────────────┐
-│ ━━━━━━━━━━━━━━━━━━━━━━━━━  4/4 │
-│ 계획을 만들었어요                │
-│ Java 백엔드 이직 준비 · v1       │
+│ ━━━━━━━━━━━━━━━━━━━━────── 4/5 │
+│ 무엇을 만들면서 배울까요?        │
+│ 배운 것을 바로 적용할 내 프로젝트 │
+│ 예요.                            │
 │                                │
-│ ● 9월 28일 – 10월 31일          │
-│ │ Java 기본기          [필수]   │
-│ │ Collection · Exception · …    │
-│ ○ 11월 1일 – 11월 30일          │
-│ │ Spring · JPA         [필수]   │
-│ ○ 12월 1일 – 12월 31일          │
-│ │ 테스트 · 배포        [권장]   │
-│ ○ …                             │
+│ 프로젝트 이름 *                  │
+│ [주문 시스템                  ]  │
 │                                │
-│ 복습 카드는 하루 5장씩 나눠       │
-│ 두었어요.                        │
-│ 계획은 Plan에서 언제든 바꿀 수    │
-│ 있어요.                          │
+│ ┌────────────────────────────┐ │
+│ │ 실무 시스템이 공통으로 갖는 것을│ │
+│ │ 만드는 순서로 배워요.          │ │
+│ │ 기반 → 회원·로그인 → 상품 CRUD │ │
+│ │ → 주문 → 취소·환불 → 조회 성능 │ │
+│ └────────────────────────────┘ │
+│ 저장소 주소와 스택은 나중에       │
+│ '사이드 프로젝트'에서 적을 수 있어요.│
 │ ────────────────────────────── │
-│ [계획 자세히]      [그대로 시작] │
+│ [이전]      건너뛰기 [계획 만들기]│
 └────────────────────────────────┘
 ```
 
-- 제목은 서버 `PlanView.title`을 그대로 표시한다(와이어프레임의 제목은 예시).
-- 데이터: milestone 목록은 `GET /plans/active`(응답의 `activePlan`은 요약이라 milestone이 없다). 제목 옆 risk 배지 = `activePlan.latestRiskLevel`(새로고침 후에는 `latestSnapshot.riskLevel`). 카드 문구에 `assignedSeedCardCount`를 쓴다. S2 배포 전(S1)에 온보딩한 사용자는 0일 수 있고(seed 카드는 S2 배포 때 backfill), 0이면 카드 문구를 숨긴다. `suggestedDiagnostics`는 SCR-TODAY 진단 카드 초기값으로 보관한다.
-- "그대로 시작" → `/today`(S1은 `/plan`). "계획 자세히" → `/plan`.
+- 이름 기본값 "주문 시스템"은 **클라이언트가 채운다**(서버는 기본값을 만들지 않는다, `05` §4.1 10단계). 온보딩에서는 이름만 바꿀 수 있다(SP-1). `description`은 고정 문구 `onboarding.project.defaultDescription`을 보내고 `repoUrl`, `stack`은 보내지 않는다(`null`). 나머지는 SCR-PROJECTS에서 고친다.
+- 안내 카드(`ReferenceProjectCard`)는 계획 템플릿 milestone 순서를 요약한 고정 문구다. 사용자가 이름을 바꿔도 그대로 둔다.
+- "건너뛰기" → 대화상자 `onboarding.project.skip.*`(건너뛰면 Today가 프로젝트 과제를 제안하지 않는다는 사실 + 나중에 만들 수 있음) → "건너뛰고 계획 만들기"를 누르면 `sideProject: null`로 바로 제출한다.
+- "계획 만들기" → `POST /onboarding` `{displayName, timezone, dayStartHour, weekdayStudyMinutes, weekendStudyMinutes, experienceProfile, careerStartDate, careerGoal: {targetRole, applicationStartDate, targetCompletionDate, focusSkillCodes}, runDiagnostic, selfAssessments, sideProject: {name, description} 또는 null, useTemplate: true}`(IK, 버튼 로딩, 이전·뒤로가기 비활성). 성공 → `meProvider` 갱신 → `/onboarding/plan`.
+- "계획 만들기" 활성 조건: 이름 1~100자(§3.2).
 
-- **컴포넌트**: `StepProgress`, `RadioListTile`, `DateQuickChips`, `ChoiceChip`, `SkillMultiPicker`, `MilestoneTimelineList`(§3.9와 공유).
-- **상태**: 1·2단계 — 로컬만, 로딩 없음. 3단계 — skill 목록 로딩 시 펼침 영역 skeleton, 실패 시 펼침 영역 안 인라인 오류(제출은 가능). 제출 중 — 버튼 로딩. 제출 오류 — §5(`VALIDATION_FAILED`는 해당 단계로 이동해 필드 오류 표시, `ONBOARDING_ALREADY_COMPLETED`는 `meProvider` 갱신 후 `/today`). Offline — 공통(제출 버튼 비활성). AI — 해당 없음.
+**5단계 — 계획 확인** (`/onboarding/plan`)
+
+```text
+┌────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━ 5/5 │
+│ 계획을 만들었어요                │
+│ Java 백엔드 이직 준비 · v1 [보통] │
+│                                │
+│ ● 9월 30일 – 10월 20일          │
+│ │ 기반 다지기          [필수]   │
+│ ○ 10월 21일 – 11월 10일         │
+│ │ 회원과 인증          [필수]   │
+│ ○ …  상품과 CRUD · 주문 생성 ·   │
+│ │    취소와 환불 · 조회 성능 [필수]│
+│ ○ …  구조 정리 · 배포와 운영 ·   │
+│      면접 준비          [권장]   │
+│                                │
+│ 사이드 프로젝트: 주문 시스템       │
+│ 복습 카드는 하루 5장씩 나눠       │
+│ 두었어요.                        │
+│ ┌────────────────────────────┐ │  짧은 진단을 골랐을 때
+│ │ 짧은 진단 5문제가 준비됐어요.  │ │
+│ │ 풀지 않은 분야는 처음부터       │ │
+│ │ 시작해요. 나중에 풀어도 돼요.   │ │
+│ └────────────────────────────┘ │
+│ 계획은 Plan에서 언제든 바꿀 수    │
+│ 있어요.                          │
+│ ────────────────────────────── │
+│ [나중에 하고 시작]   [진단 시작]  │
+│ 계획 자세히                       │
+└────────────────────────────────┘
+```
+
+- 제목은 서버 `PlanView.title`을 그대로 표시한다(와이어프레임의 제목·날짜는 예시). milestone은 9개이고 템플릿 순서대로 보인다.
+- 데이터: milestone 목록은 `GET /plans/active`(응답의 `activePlan`은 요약이라 milestone이 없다). 제목 옆 risk 배지 = `activePlan.latestRiskLevel`(새로고침 후에는 `latestSnapshot.riskLevel`). S2 이전 빌드는 `null`이라 배지를 숨긴다. 카드 문구에 `assignedSeedCardCount`를 쓴다. S2 배포 전(S1)에 온보딩한 사용자는 0일 수 있고(seed 카드는 S2 배포 때 backfill), 0이면 카드 문구를 숨긴다. `sideProject`가 있으면 `onboarding.plan.project`, `null`이면 `onboarding.plan.noProject`. `suggestedDiagnostics`는 SCR-DIAGNOSTICS·SCR-TODAY 진단 카드 초기값으로 보관한다.
+- 버튼(primary는 하나, U-1):
+  - 짧은 진단을 골랐고 `suggestedDiagnostics`가 비어 있지 않음: primary "진단 시작"(→ `/today/diagnostics`), 보조 "나중에 하고 시작"(→ `/today`), 링크 "계획 자세히"(→ `/plan`).
+  - 짧은 진단을 골랐는데 제안이 비어 있음(진단 문제 콘텐츠가 없는 분야뿐): 진단 카드 자리에 `onboarding.plan.diagnosticNone`, primary "그대로 시작".
+  - 자기평가를 골랐음: primary "그대로 시작"(→ `/today`, S1은 `/plan`), 보조 "계획 자세히".
+
+- **컴포넌트**: `StepProgress`, `RadioListTile`, `DateQuickChips`, `LevelModeCards`(진단/자기평가), `ChoiceChip`, `SkillMultiPicker`, `ProjectNameField`, `ReferenceProjectCard`, `MilestoneTimelineList`(§3.9와 공유), `DiagnosticReadyCard`.
+- **상태**: 1·2·4단계 — 로컬만, 로딩 없음. 3단계 — skill 목록 로딩 시 펼침 영역 skeleton, 실패 시 펼침 영역 안 인라인 오류(다음 단계로 갈 수 있다). 제출 중(4단계) — 버튼 로딩. 제출 오류 — §5(`VALIDATION_FAILED`는 오류 필드가 있는 단계로 이동해 필드 오류 표시: `sideProject.*` → 4단계, `selfAssessments` → 3단계, `careerGoal.*` → 1단계. `422 SECRET_DETECTED_BLOCKED`는 4단계 이름 필드 아래 인라인, `ONBOARDING_ALREADY_COMPLETED`는 `meProvider` 갱신 후 `/today`). Offline — 공통(제출 버튼 비활성). AI — 온보딩 자체는 AI를 쓰지 않는다. 진단 답안 평가는 AI가 필요하므로 AI 불가이면 5단계 진단 카드에 `diagnostics.aiNote`를 함께 보여준다.
 - **문구**
 
 | key | 문구 |
 |---|---|
-| `onboarding.progress` | {step} / 4 |
+| `onboarding.progress` | {step} / 5 |
 | `onboarding.next` | 다음 |
 | `onboarding.back` | 이전 |
 | `onboarding.goal.title` | 목표를 알려 주세요 |
@@ -518,6 +603,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `onboarding.goal.profile.starter.desc` | 실제 개발 경험이 적어요 |
 | `onboarding.goal.careerStart` | 경력 시작 (선택) |
 | `onboarding.goal.completion` | 이직 완료 목표일 |
+| `onboarding.goal.completion.help` | 이 날짜로 남은 시간을 거꾸로 계산해 무엇을 먼저 할지 정해요. |
 | `onboarding.goal.application` | 지원 시작일 (선택) |
 | `onboarding.goal.quick.3m` | 3개월 후 |
 | `onboarding.goal.quick.6m` | 6개월 후 |
@@ -531,13 +617,37 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `onboarding.time.dayStart` | 하루 시작 시각 |
 | `onboarding.time.dayStart.help` | {hour} 전에 한 공부는 전날 기록으로 남아요. |
 | `onboarding.time.timezone` | 시간대 |
-| `onboarding.level.title` | 지금 수준을 골라 주세요 |
+| `onboarding.level.title` | 지금 수준을 확인해요 |
+| `onboarding.level.titleSelf` | 지금 수준을 골라 주세요 |
+| `onboarding.level.diagnostic` | 짧은 진단으로 시작 |
+| `onboarding.level.diagnostic.badge` | 권장 |
+| `onboarding.level.diagnostic.desc` | 분야마다 1문제, 최대 5문제예요. 계획을 만든 뒤 바로 풀어요. 스스로 고르는 것보다 정확해요. |
+| `onboarding.level.self` | 진단 건너뛰고 직접 고르기 |
+| `onboarding.level.self.desc` | 분야별 수준을 직접 골라요. |
 | `onboarding.level.help` | 대략이면 충분해요. 실제 레벨은 학습 기록으로 정해져요. |
 | `onboarding.level.focus` | 지금 프로젝트에 필요한 기술 (선택, 최대 10개) |
 | `onboarding.level.diagnosticNote` | '혼자 가능' 이상인 분야는 나중에 짧은 확인 문제로 건너뛸 수 있어요. |
-| `onboarding.level.submit` | 계획 만들기 |
+| `onboarding.project.title` | 무엇을 만들면서 배울까요? |
+| `onboarding.project.subtitle` | 배운 것을 바로 적용할 내 프로젝트예요. |
+| `onboarding.project.name` | 프로젝트 이름 |
+| `onboarding.project.defaultName` | 주문 시스템 |
+| `onboarding.project.defaultDescription` | 회원가입 · 상품 · 주문 · 취소까지 직접 만드는 학습용 백엔드 |
+| `onboarding.project.reference` | 실무 시스템이 공통으로 갖는 것을 만드는 순서로 배워요. 기반 → 회원·로그인 → 상품 CRUD → 주문 → 취소·환불 → 조회 성능 |
+| `onboarding.project.later` | 저장소 주소와 스택은 나중에 '사이드 프로젝트'에서 적을 수 있어요. |
+| `onboarding.project.skip` | 건너뛰기 |
+| `onboarding.project.skip.title` | 프로젝트 없이 시작할까요? |
+| `onboarding.project.skip.body` | 건너뛰면 Today가 프로젝트 과제를 제안하지 않아요. 나중에 '사이드 프로젝트'에서 만들 수 있어요. |
+| `onboarding.project.skip.confirm` | 건너뛰고 계획 만들기 |
+| `onboarding.project.skip.cancel` | 프로젝트 만들기 |
+| `onboarding.submit` | 계획 만들기 |
 | `onboarding.plan.title` | 계획을 만들었어요 |
 | `onboarding.plan.cards` | 복습 카드 {count}장을 하루 5장씩 나눠 두었어요. |
+| `onboarding.plan.project` | 사이드 프로젝트: {name} |
+| `onboarding.plan.noProject` | 사이드 프로젝트 없이 시작해요. 프로젝트 과제는 제안되지 않아요. |
+| `onboarding.plan.diagnostic` | 짧은 진단 {count}문제가 준비됐어요. 풀지 않은 분야는 처음부터 시작해요. 나중에 풀어도 돼요. |
+| `onboarding.plan.diagnosticNone` | 지금 풀 수 있는 진단 문제가 없어요. 모든 분야를 처음부터 시작해요. |
+| `onboarding.plan.diagnosticStart` | 진단 시작 |
+| `onboarding.plan.startWithoutDiagnostic` | 나중에 하고 시작 |
 | `onboarding.plan.editLater` | 계획은 Plan에서 언제든 바꿀 수 있어요. |
 | `onboarding.plan.start` | 그대로 시작 |
 | `onboarding.plan.detail` | 계획 자세히 |
@@ -546,7 +656,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 #### SCR-TODAY
 
-- **목적**: 오늘 가능 시간·컨디션을 받아 main task 1개를 보여주고 시작·완료를 기록한다(FR-07, FR-08, FR-21). **진입**: 로그인 후 기본 화면, 하단 탭 Today, Training·Review 종료 후 복귀. **Sprint**: S2.
+- **목적**: 오늘 가능 시간·컨디션을 받아 main task 1개를 보여주고 시작·완료를 기록한다(FR-07, FR-08, FR-21). 핵심 루프의 출발점이다 — `READ_CODE`는 SCR-READ-CODE로, `PROJECT_TASK`는 사이드 프로젝트 구현과 러버덕으로 이어진다(FR-26, FR-27). **진입**: 로그인 후 기본 화면, 하단 탭 Today, Training·Review·러버덕 종료 후 복귀. **Sprint**: S2 (READ_CODE 카드·러버덕 진입 S3).
 - **레이아웃 (생성 전 — `404 TODAY_NOT_GENERATED`)**
 
 ```text
@@ -566,7 +676,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 │ │      오늘 계획 만들기        │ │
 │ └────────────────────────────┘ │
 │                                │
-│ ┌ 실력 확인 (선택) ──────────┐ │  S3, 제안이 있을 때
+│ ┌ 실력 확인 (선택) ──────────┐ │  S3, 제안이 있을 때 (진단 모드면 본문이 today.diagnostic.bodyDiagnosticMode)
 │ │ Java 확인 문제 · 약 10분     │ │
 │ │ 통과하면 기초 과제를 건너뛰어요│ │
 │ │ [풀기]  [건너뛰기]  [모두 보기]│ │
@@ -610,12 +720,60 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 └────────────────────────────────┘
 ```
 
+- **main 카드 — `READ_CODE`** (예: reading `READ.PETCLINIC.CONTROLLER_SLICE.001`)
+
+```text
+│ ┌────────────────────────────┐ │
+│ │ [코드 읽기] Spring MVC REST API│
+│ │ Spring PetClinic 읽기 —       │ │  title (06 §5.3 템플릿)
+│ │ OwnerController.java 48~122줄 │ │
+│ │ 약 15분                        │ │
+│ │ 이 컨트롤러는 Repository를 직접 │ │  description 2줄 + 펼치기
+│ │ 주입받고 Service 계층이 없…  ▾ │ │  (question + 완료 조건 문장)
+│ │ 코드는 내 컴퓨터에서 읽어요.    │ │  today.readCode.local
+│ │                              │ │
+│ │ 왜 오늘?                      │ │
+│ │ • Spring PetClinic에서 같은    │ │  READ_REAL_CODE
+│ │   문제를 어떻게 풀었는지 먼저   │ │
+│ │   봅니다                      │ │
+│ │ • 기반 다지기 milestone 핵심 항목│
+│ │ ┌──────────────────────────┐ │ │
+│ │ │          시작            │ │ │  → SCR-READ-CODE
+│ │ └──────────────────────────┘ │ │
+│ │         오늘은 건너뛰기       │ │
+│ └────────────────────────────┘ │
+```
+
+  - 제목·예상 시간·설명은 `MainTaskView`의 `title`, `estimatedMinutes`, `description`(서버가 `06` §5.3 템플릿으로 만든 값)을 그대로 쓴다. 파일·줄 범위를 클라이언트가 다시 조합하지 않는다.
+  - description은 reading의 `question` + "읽고 나서 러버덕으로 설명하면 완료입니다."(`06` §5.3)이다. 카드에서는 2줄로 접고 펼쳐 볼 수 있다. 그 아래 보조 줄 `today.readCode.local`로 코드는 사용자 컴퓨터에서 읽는다는 것을 알린다(서버는 코드를 가져오지 않는다).
+
+- **main 카드 — `PROJECT_TASK`** (SP-2: 제목에 사이드 프로젝트 이름)
+
+```text
+│ ┌────────────────────────────┐ │
+│ │ [프로젝트 과제] Spring Transaction│
+│ │ 주문 시스템에 Spring          │ │
+│ │ Transaction 적용하기          │ │
+│ │ 약 30분                        │ │
+│ │ 주문 시스템에서 이 개념을 적용할│ │
+│ │ 지점을 찾아 구현하고 이유를     │ │
+│ │ 적어 보세요.                  │ │
+│ │ 왜 오늘?                      │ │
+│ │ • 주문 생성 milestone 핵심 항목 │ │
+│ │ • 현재 프로젝트에 필요          │ │
+│ │ [ 시작 ]                      │ │
+│ └────────────────────────────┘ │
+```
+
+  - `IN_PROGRESS`가 되면 보조 버튼 "러버덕으로 설명하기"(`today.explainWithDuck`)가 생긴다 → `/rubber-duck/new?targetType=PROJECT_WORK&targetId={sideProjectId}&skillCode={skillCode}&taskId={taskId}`. 완료 조건이 아니라 권장이다. `sideProjectId`가 `null`(프로젝트 삭제)이면 이 버튼을 숨긴다.
+  - `EXPLAIN`·`READING` task도 `IN_PROGRESS`에서 같은 보조 버튼을 두고 `targetType=CONCEPT&conceptKey={skillCode}&skillCode={skillCode}`로 연다.
+
 - **main task 상태별 카드 하단**
 
 | main 상태 | 표시 | primary | 보조 |
 |---|---|---|---|
 | `PLANNED` | 이유 목록 | "시작" | "오늘은 건너뛰기" |
-| `IN_PROGRESS` | "진행 중 · {n}분째"(세션 `startedAt` 기준 1분마다 갱신) | "완료" | "여기까지 기록", CHALLENGE면 "문제로 돌아가기", COACH_REVIEW면 "리뷰로 돌아가기" |
+| `IN_PROGRESS` | "진행 중 · {n}분째"(세션 `startedAt` 기준 1분마다 갱신) | "완료". **`READ_CODE`는 이 task를 대상으로 한 러버덕이 `COMPLETED`로 확인될 때만 "완료"**, 아니면 primary는 "코드 읽기로 돌아가기"(RC-1) | "여기까지 기록", CHALLENGE면 "문제로 돌아가기", COACH_REVIEW면 "리뷰로 돌아가기", PROJECT_TASK·EXPLAIN·READING이면 "러버덕으로 설명하기" |
 | `COMPLETED` | 체크 아이콘 + "오늘의 핵심을 마쳤어요" + 기록한 시간 | 없음 | "하나 더 하기" |
 | `SKIPPED` (active main 없음) | "오늘 과제를 건너뛰었어요" | "다시 만들기" | "되돌리기" (같은 날 active main이 없을 때만) |
 | `DEFERRED` (active main 없음) | "내일 이어서 할 수 있어요" | "다시 만들기" | — |
@@ -641,13 +799,16 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
   - 시간 기본값 = 세션 시작부터 경과 분(반올림, 최소 1). 최댓값 = `min(720, ⌈경과 분 × 1.5⌉)`(`05-api-spec.md` §9.2). `−`/`+`는 5분 단위.
   - "여기까지 기록"도 같은 시트를 제목 `today.partial.title`로 연다. 0분으로 기록하면 세션을 abandon한다.
 
-- **컴포넌트**: `MinutesChips`, `EnergySegmented`, `MainTaskCard`, `ReasonList`, `RiskBadge`(§6.1), `ComebackBanner`, `ReviewTaskTile`, `DiagnosticSuggestionCard`, `CompleteSessionSheet`, `RegenerateSheet`(시간·컨디션 재입력).
+- **진행 중 러버덕 줄** (`ActiveRubberDuckTile`, S3): 기기에 저장한 진행 중 세션(`localStorage` `devpilot.rubberduck.active.<externalAuthId>` = `{sessionId, taskId}`, try/catch)이 있고 `GET /rubber-duck/{sessionId}`가 `IN_PROGRESS`이면 복습 줄 위에 `today.duck.resume` + "이어서 설명하기"(→ `/rubber-duck/{sessionId}`)를 한 줄로 보인다. `IN_PROGRESS`가 아니거나 404면 저장값을 지우고 숨긴다. 세션 목록 API가 없어서 다른 기기에서 시작한 세션은 보이지 않는다(`05` §9.10).
+- **`READ_CODE` 완료 확인**: 서버가 한다. `CODE_READING` 러버덕 세션이 `COMPLETED`가 되면 서버가 같은 트랜잭션에서 그 `READ_CODE` 과제를 `COMPLETED`로 바꾼다(`05` §9.8 7번, RC-1). 클라이언트는 러버덕 정리 화면에서 Today로 돌아오면 `GET /today`를 다시 읽어 과제 상태로 "완료"를 보인다(기기와 무관). 과제가 아직 `PLANNED`·`IN_PROGRESS`이면 "코드 읽기로 돌아가기"와 "설명하기"를 보인다. 읽기만 하고 완료 버튼을 누르면 서버가 `409 INVALID_STATE_TRANSITION`을 주고 토스트 `today.readCode.needDuck`.
+- **컴포넌트**: `MinutesChips`, `EnergySegmented`, `MainTaskCard`(유형별 변형: `READ_CODE`·`PROJECT_TASK` 위 와이어프레임), `ReasonList`, `RiskBadge`(§6.1), `ComebackBanner`, `ActiveRubberDuckTile`, `ReviewTaskTile`, `DiagnosticSuggestionCard`, `CompleteSessionSheet`, `RegenerateSheet`(시간·컨디션 재입력).
 - **데이터**
 
 | 시점 | API |
 |---|---|
 | 진입, 탭 재선택, 화면 복귀(visibility) | `GET /today` (404 `TODAY_NOT_GENERATED` → 생성 전 레이아웃) |
 | 생성 전 레이아웃 표시 시 (S3) | `GET /diagnostics/suggestions` (실패해도 카드만 숨김) |
+| 진입 시, 기기에 진행 중 러버덕·READ_CODE 완료 기록이 있을 때 (S3) | `GET /rubber-duck/{sessionId}` (실패하면 해당 줄·버튼만 기본 상태) |
 | 진입 시, "시작" 직전 | `GET /learning-sessions?from={planDate}&to={planDate}` → `IN_PROGRESS` 세션(있으면 1개)과 그 `learningTaskId` 확인 |
 | "오늘 계획 만들기" / 재생성 | `POST /today/generate` `{availableMinutes, energyLevel, force}` |
 | "시작" | `PATCH /today/tasks/{taskId}` `{status: IN_PROGRESS, version}` → 진행 중 세션이 없거나 그 `learningTaskId`가 이 task가 아니면 `POST /learning-sessions` `{learningTaskId}`(서버가 기존 세션을 ABANDONED로 닫음) |
@@ -674,7 +835,9 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
   - main `IN_PROGRESS`에서 "변경"(재생성): 대화상자 `today.regenerate.startedDialog` → 확인 시 `force=true`.
   - main `COMPLETED`에서 "하나 더 하기": `RegenerateSheet` → `force=true`로 바로 요청(확인 대화상자 없음, 기존 완료는 유지됨을 시트에 표시).
   - 서버가 `409 TODAY_ALREADY_STARTED`/`TODAY_ALREADY_COMPLETED`를 주면(다른 기기에서 상태가 바뀐 경우) 같은 대화상자를 띄우고 확인 시 `force=true`.
-  - "시작" 후 이동: `CHALLENGE` → `/training/challenges/{challengeId}?taskId=`, `COACH_REVIEW` → `/coach/new?taskId=`, `REVIEW` main은 생기지 않는다. 그 외(`READING`, `EXPLAIN`, `PROJECT_TASK`, `RECALL`)는 Today에 머물며 description을 펼쳐 보여준다.
+  - "시작" 후 이동: `CHALLENGE` → `/training/challenges/{challengeId}?taskId=`, `COACH_REVIEW` → `/coach/new?taskId=`, **`READ_CODE` → `/today/read/{readingKey}?taskId=`**, `REVIEW` main은 생기지 않는다. 그 외(`READING`, `EXPLAIN`, `PROJECT_TASK`, `RECALL`)는 Today에 머물며 description을 펼쳐 보여준다.
+  - `READ_CODE`는 `aiStatus`가 `DISABLED`/`BALANCE_EXHAUSTED`이면 새로 제안되지 않는다(완료 조건인 러버덕이 AI에 의존, `06` §5.3). 이미 만들어진 `READ_CODE` task는 시작·읽기 안내까지 되고, 러버덕 버튼은 SCR-READ-CODE에서 이유와 함께 막힌다. Today에는 AI 배너를 두지 않는다(§6.5).
+  - `deadlineRisk`는 S2부터 값이 있다(기한 역산이 S2로 옮겨짐). `null`이면 배지를 숨긴다.
   - 복습 줄 "복습" → `/review/session?taskId={reviewTaskId}`.
   - `reviewTask = null`(due 없음, 또는 가능 시간이 짧아 `reviewMinutes = 0` — 예: 5분)이면 복습 줄을 숨긴다. due 카드가 있으면 Review 탭에서는 그대로 복습할 수 있다.
   - `PATCH`가 `409 CONCURRENT_MODIFICATION`이면 `GET /today`로 새 `version`을 받아 같은 요청을 1회 재시도한다. 상태가 이미 목표 상태면 성공으로 처리한다.
@@ -733,11 +896,19 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `today.diagnostic.solve` | 풀기 |
 | `today.diagnostic.skip` | 건너뛰기 |
 | `today.diagnostic.all` | 모두 보기 |
+| `today.diagnostic.bodyDiagnosticMode` | 아직 풀지 않은 진단이 {count}문제 있어요. 풀면 그 분야의 시작 수준이 정해져요. |
+| `today.readCode.local` | 코드는 내 컴퓨터에서 읽어요. |
+| `today.readCode.back` | 코드 읽기로 돌아가기 |
+| `today.readCode.needDuck` | 러버덕으로 설명을 마쳐야 완료할 수 있어요. |
+| `today.explainWithDuck` | 러버덕으로 설명하기 |
+| `today.duck.resume` | 설명하던 러버덕이 있어요. |
+| `today.duck.resumeButton` | 이어서 설명하기 |
 
 #### SCR-DIAGNOSTICS
 
-- **목적**: 진단 challenge 제안 전체를 보고 풀거나 건너뛴다(FR-15). **진입**: SCR-TODAY 진단 카드 "모두 보기". **Sprint**: S3.
-- **레이아웃**: 설명 1줄(`diagnostics.help`) + 카테고리별 카드 목록(카테고리 라벨, `selfAssessedLevel` 라벨, `skill.name`, challenge `title`, `L{difficulty}`, `estimatedMinutes`, "풀기", "건너뛰기"). 건너뛴 항목은 하단 "건너뛴 항목" 접힘 영역에 "다시 보기" 버튼과 함께 둔다.
+- **목적**: 진단 challenge 제안 전체를 보고 풀거나 건너뛴다(FR-15, FR-02 진단 모드). 온보딩에서 짧은 진단을 고른 사용자에게는 **시작 수준을 정하는 화면**이다. **진입**: SCR-ONBOARDING 5단계 "진단 시작", SCR-TODAY 진단 카드 "모두 보기". **Sprint**: S3.
+- **레이아웃**: 설명 1줄(진단 모드면 `diagnostics.helpDiagnosticMode`, 자기평가 모드면 `diagnostics.help`) + 카테고리별 카드 목록(카테고리 라벨, `selfAssessedLevel` 라벨 — 진단 모드는 `null`이라 이 줄을 숨긴다, `skill.name`, challenge `title`, `L{difficulty}`, `estimatedMinutes`, "풀기", "건너뛰기"). 최대 5개(`05` §4.2). 건너뛴 항목은 하단 "건너뛴 항목" 접힘 영역에 "다시 보기" 버튼과 함께 둔다.
+- **모드 판정**: 모든 제안의 `selfAssessedLevel`이 `null`이면 진단 모드다(`05` §4.2 `DiagnosticSuggestionView`).
 - **데이터**: 진입 시 `GET /diagnostics/suggestions`. "풀기" → `POST /challenges/{challengeId}/attempts` → `/training/attempts/{attemptId}`.
 - **건너뛰기 저장**: 서버 API가 없다. `localStorage` key `devpilot.diagnostics.skipped.<externalAuthId>`에 challengeId 목록을 저장한다(try/catch). SCR-TODAY 카드는 건너뛰지 않은 첫 제안 1개만 보여주고, 모두 건너뛰면 카드를 숨긴다.
 - **상태**: Loading — 카드 skeleton 2개. Empty — `diagnostics.empty` + "Today로" 버튼. Error — 공통. AI unavailable — 풀기는 가능하지만 카드 안에 `diagnostics.aiNote`(제출 평가에 AI가 필요함). Offline — 공통.
@@ -747,6 +918,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 |---|---|
 | `diagnostics.title` | 실력 확인 문제 |
 | `diagnostics.help` | '혼자 가능' 이상으로 고른 분야를 짧은 문제로 확인해요. 통과하면 기초 과제를 건너뛰어요. 풀지 않아도 괜찮아요. |
+| `diagnostics.helpDiagnosticMode` | 분야마다 짧은 문제 1개로 지금 수준을 확인해요. 풀지 않은 분야는 처음부터 시작해요. |
 | `diagnostics.claimed` | 내가 고른 수준: {level} |
 | `diagnostics.solve` | 풀기 |
 | `diagnostics.skip` | 건너뛰기 |
@@ -883,6 +1055,8 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
   - `evaluatedOutcome != NOT_EVALUATED`면 첫 줄 앞에 `AI 채점: {라벨}`을 붙인다. `evaluationSkippedReason`이 있으면 `review.adjust.evaluationSkipped`를 추가한다.
 
 - **레이아웃 ④ 끝**: `{n}장 복습했어요` + 최종 등급별 개수(다시/어려움/알맞음/쉬움, 텍스트 라벨) + primary "완료 기록"(이 화면이 세션을 시작했을 때) 또는 "Today로".
+  - (S3, `rubber_duck` flag) 최종 등급이 `AGAIN`·`HARD`인 카드가 있으면 그 아래에 `review.summary.explainTitle` 목록(출제 순서로 최대 3장, 문항 1줄 말줄임)을 두고 행마다 "설명해 보기"(보조 `OutlinedButton`) → `/rubber-duck/new?targetType=REVIEW_ITEM&targetId={reviewItemId}`. 헷갈린 카드를 말로 풀어 보게 하는 진입점이다(U-9). AI 불가이면 목록을 숨긴다.
+  - 카드 순서는 서버가 교차 학습(RV-INTERLEAVE, `06` §6.5)으로 정한 `GET /reviews/due` 순서 그대로다. 클라이언트가 다시 정렬하지 않는다.
 
 - **컴포넌트**: `ReviewProgressHeader`, `ReviewCardView`, `AnswerField`, `HintRevealLink`, `RevealedAnswer`, `RatingButtonRow`, `EvaluateSwitch`, `AdjustmentToast`, `ReviewSummary`, `CompleteSessionSheet`(Today와 공유).
 - **데이터**
@@ -942,14 +1116,16 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `review.adjust.leech` | 여러 번 헷갈린 카드라 잠시 쉬게 했어요. 관련 학습 과제로 먼저 다뤄요. |
 | `review.session.cardChanged` | 이 카드는 상태가 바뀌어 건너뛰었어요. |
 | `review.session.next` | 다음 카드 |
+| `review.summary.explainTitle` | 헷갈린 카드, 말로 설명해 볼까요? |
+| `review.summary.explain` | 설명해 보기 |
 
 #### SCR-REVIEW-ITEMS
 
 - **목적**: 복습 카드를 찾아 일시중지·다시 사용·보관·수정한다(FR-11). **진입**: SCR-REVIEW-HOME "카드 관리", SCR-SKILL-DETAIL "복습 카드". **Sprint**: S2.
 - **레이아웃**: 상단 상태 `SegmentedButton`(사용 중·일시중지·보관, 기본 사용 중) + skill 필터 칩(탭 → `SkillPicker`) + "추가" 아이콘 버튼. 목록 행: 문항 2줄 말줄임, `skill 이름 · 유형 라벨 · 출처 라벨`, `다음 복습 {date}` 또는 상태, 마지막 결과 라벨. 행 오른쪽 `⋮` 메뉴.
-- **출처 라벨**: `SEED_CARD` 기본 카드 · `MANUAL` 직접 만듦 · `CHALLENGE_ATTEMPT` 문제 풀이 · `COACH_FINDING` 코드 리뷰 · `EVIDENCE` 증거.
+- **출처 라벨**: `SEED_CARD` 기본 카드 · `MANUAL` 직접 만듦 · `CHALLENGE_ATTEMPT` 문제 풀이 · `COACH_FINDING` 코드 리뷰 · `EVIDENCE` 증거 · `RUBBER_DUCK` 러버덕(설명하다 막힌 곳).
 - **데이터**: 진입·필터 변경 시 `GET /review-items?skillId=&status=&cursor=`. 목록 끝 80% 스크롤 시 `nextCursor`로 다음 페이지. `⋮` 메뉴 → `PATCH /review-items/{reviewItemId}` `{status, version}`.
-- **메뉴 항목**: ACTIVE → "일시중지", "보관", "수정" / SUSPENDED → "다시 사용", "보관", "수정" / ARCHIVED → 메뉴 없음(보관은 되돌리지 않는다, `04` §4.5).
+- **메뉴 항목**: ACTIVE → "일시중지", "보관", "수정", "러버덕으로 설명하기" / SUSPENDED → "다시 사용", "보관", "수정", "러버덕으로 설명하기" / ARCHIVED → 메뉴 없음(보관은 되돌리지 않는다, `04` §4.5). "러버덕으로 설명하기"(S3, `rubber_duck` flag, AI 가능할 때만) → `/rubber-duck/new?targetType=REVIEW_ITEM&targetId={reviewItemId}`.
 - **상태**: Loading — 행 skeleton 6개. Empty — 필터별 `review.items.empty.{status}` + "카드 직접 추가"(ACTIVE일 때만). Error·Offline — 공통. 페이지 추가 로드 실패 — 목록 끝에 "다시 불러오기" 행.
 - **행동·검증**: "보관"은 확인 대화상자(`review.items.archive.confirm`). "다시 사용"은 즉시 실행 후 토스트 `review.items.resumed`(다음 plan-day부터 출제). `409 CONCURRENT_MODIFICATION`이면 목록을 다시 불러오고 토스트.
 - **문구**
@@ -962,6 +1138,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `review.items.resume` | 다시 사용 |
 | `review.items.archive` | 보관 |
 | `review.items.edit` | 수정 |
+| `review.items.explain` | 러버덕으로 설명하기 |
 | `review.items.archive.confirm` | 보관한 카드는 다시 출제되지 않고 되돌릴 수 없어요. 보관할까요? |
 | `review.items.resumed` | 내일부터 다시 출제돼요. |
 | `review.items.empty.ACTIVE` | 사용 중인 카드가 없어요. |
@@ -1029,7 +1206,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 #### SCR-TRAINING-LIST
 
-- **목적**: 풀 수 있는 연습 문제를 찾고, 필요하면 AI로 새 문제를 만든다(FR-09). **진입**: rail Training, More > 문제 풀이, SCR-SKILL-DETAIL "문제 풀기"(`?skillId=`). **Sprint**: S3.
+- **목적**: 풀 수 있는 연습 문제를 찾고, 필요하면 AI로 새 문제를 만든다(FR-09). **진입**: rail Training, More > 문제 풀이, SCR-SKILL-DETAIL "문제 풀기"(`?skillId=`). **Sprint**: S3 (AI 문제 만들기 S5 — `challenge_generate` flag가 꺼진 빌드는 "AI로 문제 만들기" 버튼·시트를 숨기고, Empty 상태 버튼은 "Today로"만 둔다).
 - **레이아웃**
 
 ```text
@@ -1235,6 +1412,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 │ └────────────────────────────┘ │
 │ Today로 돌아가 완료하기            │  taskId 있을 때
 │ 증거로 남기기                      │  S6, 해결 outcome일 때
+│ 러버덕으로 설명하기                  │  S3, rubber_duck flag
 │ ▸ 이전 제출 (0)                   │
 └────────────────────────────────┘
 ```
@@ -1271,8 +1449,10 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
   - 입력 보관: 답안·코드는 `localStorage` `devpilot.attempt.draft.<attemptId>`에 1초 debounce로 저장(try/catch), 제출 성공 시 삭제.
   - 결과의 복습 안내(ⓘ)는 `AttemptView.reviewScheduled`가 비어 있지 않을 때 그 `dueDate`로 표시한다(`06` §8.3).
   - "Today로 돌아가 완료하기" → `/today?complete={taskId}`.
+  - "러버덕으로 설명하기"(결과가 나온 뒤, AI 가능할 때) → `/rubber-duck/new?targetType=CHALLENGE&targetId={attemptId}&taskId={taskId}`. 제출한 풀이를 말로 설명해 빈틈을 찾는다(FR-25). self-explanation(①)은 한 번 쓰는 일방향 기록이고, 러버덕은 되묻는 대화다.
+  - 러버덕에서 `suggestHint=true`로 돌아오면(`/training/attempts/{attemptId}#hints`) 힌트 섹션으로 스크롤하고 다음 단계 버튼에 포커스를 둔다(RD-3). 서버는 러버덕 턴을 자기설명으로 보지만(`06` §9.5), 화면의 사다리 잠금은 이 attempt의 self-explanation 기록으로 판단한다 — 러버덕 진입점을 결과 화면에 두는 이유다.
   - "그만두기"(메뉴, 평가 중에는 비활성): 확인 대화상자 → abandon → `taskId`가 있으면 `/today?complete={taskId}`, 없으면 `/training`.
-  - 코드 입력칸은 한국어 IME 조합·붙여넣기(탭·공백 유지)를 지원해야 한다(SP-1).
+  - 코드 입력칸은 한국어 IME 조합·붙여넣기(탭·공백 유지)를 지원해야 한다(스파이크 SP-1).
 - **문구**
 
 | key | 문구 |
@@ -1318,6 +1498,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `training.eval.resubmit` | 수정해서 다시 제출 ({next}/5) |
 | `training.eval.toToday` | Today로 돌아가 완료하기 |
 | `training.eval.toEvidence` | 증거로 남기기 |
+| `training.eval.explainWithDuck` | 러버덕으로 설명하기 |
 | `training.eval.history` | 이전 제출 ({count}) |
 | `training.attempt.menu.abandon` | 그만두기 |
 | `training.attempt.abandon.confirm` | 이 풀이를 그만둘까요? 지금까지의 설명과 힌트 기록은 남아요. |
@@ -1361,6 +1542,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 │ 무엇을 붙여넣나요?                │
 │ [코드✓] [Diff] [로그]             │
 │ 언어 [Java ▾] 프로젝트 [Spring Boot▾]│
+│ 사이드 프로젝트 (선택) [주문 시스템 ▾]│  ACTIVE 프로젝트가 있을 때
 │ 주제 (선택) [HTTP client        ] │
 │ 파일 이름 (선택)                  │
 │ [ConfigLoader.java             ] │
@@ -1395,12 +1577,12 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 ```
 
 - **데스크톱**: 왼쪽 열(55%) 유형·언어·파일 이름·코드 입력, 오른쪽 열(45%) 우려점·관련 기술·동의·버튼.
-- **컴포넌트**: `ContentTypeSegmented`, `LanguageDropdown`(`CodeLanguage`), `ProjectTypeDropdown`(필수: `SPRING_BOOT` Spring Boot · `JAVA_LIBRARY` Java 라이브러리 · `ANDROID` Android · `FLUTTER` Flutter · `OTHER` 기타. 기본 = 마지막 선택, 없으면 `SPRING_BOOT`), `TopicField`(선택, ≤ 100자), `CodeField`, `ContentSizeMeter`, `SelfReviewField`, `SkillMultiPicker`(최대 10), `ConsentCheckbox`, `ProviderNotice`(`coach.new.providerNotice`, 동의 체크박스 바로 아래 `bodySmall` + `info` 아이콘 — ADR-013, `07` §8), `AiUnavailableBanner`, `BudgetWarningNote`.
-- **데이터**: "분석 요청" → `POST /coach/reviews` `{contentType, language, content, confidentialConsent: true, userSelfReview, context: {projectType, topic, skillCodes, fileName}}` → `202 AsyncStatusView {id, maskedSecretCount}` → `/coach/{id}`(`taskId` 유지) + `maskedSecretCount > 0`이면 토스트 `coach.new.masked`.
+- **컴포넌트**: `ContentTypeSegmented`, `LanguageDropdown`(`CodeLanguage`), `ProjectTypeDropdown`(필수: `SPRING_BOOT` Spring Boot · `JAVA_LIBRARY` Java 라이브러리 · `ANDROID` Android · `FLUTTER` Flutter · `OTHER` 기타. 기본 = 마지막 선택, 없으면 `SPRING_BOOT`), `SideProjectDropdown`(선택, FR-26: `ACTIVE` 사이드 프로젝트 목록 + "선택 안 함". 기본 = 목록 첫 항목(가장 최근에 고친 `ACTIVE` 프로젝트, SP-3과 같은 기준). `ACTIVE` 프로젝트가 없으면 드롭다운을 숨기고 `sideProjectId`를 보내지 않는다), `TopicField`(선택, ≤ 100자), `CodeField`, `ContentSizeMeter`, `SelfReviewField`, `SkillMultiPicker`(최대 10), `ConsentCheckbox`, `ProviderNotice`(`coach.new.providerNotice`, 동의 체크박스 바로 아래 `bodySmall` + `info` 아이콘 — ADR-013, `07` §8), `AiUnavailableBanner`, `BudgetWarningNote`.
+- **데이터**: 진입 시 `GET /side-projects?status=ACTIVE`(실패하면 드롭다운만 숨김). "분석 요청" → `POST /coach/reviews` `{contentType, language, content, confidentialConsent: true, userSelfReview, sideProjectId(선택), context: {projectType, topic, skillCodes, fileName}}` → `202 AsyncStatusView {id, maskedSecretCount}` → `/coach/{id}`(`taskId` 유지) + `maskedSecretCount > 0`이면 토스트 `coach.new.masked`.
 - **상태**
   - Loading: 없음(폼). 관련 기술 목록은 펼칠 때 `GET /skills/tree?role=JAVA_BACKEND`.
   - 전송 중: 버튼 로딩, 모든 입력 읽기 전용.
-  - Error: `422 SECRET_DETECTED_BLOCKED` → 코드 입력칸 아래 인라인 오류 `coach.new.validation.privateKey`, `413 CONTENT_TOO_LARGE` → 인라인 `coach.new.validation.tooLarge`, 그 외 §5.
+  - Error: `422 SECRET_DETECTED_BLOCKED` → 코드 입력칸 아래 인라인 오류 `coach.new.validation.privateKey`, `413 CONTENT_TOO_LARGE` → 인라인 `coach.new.validation.tooLarge`, `400 VALIDATION_FAILED`의 field `sideProjectId`(`REFERENCE_NOT_FOUND` — 그사이 프로젝트가 삭제됨) → 드롭다운 아래 인라인 `coach.new.projectGone` + 목록 재조회, 그 외 §5.
   - AI unavailable: 상단 배너, "분석 요청" 비활성 + `coach.new.aiDisabled`. 입력 내용은 유지.
   - Budget warning: 상단 안내(레이아웃 참고), 동작은 허용.
   - Offline: 공통.
@@ -1430,6 +1612,9 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `coach.new.selfReview.label` | 이 코드에서 걱정되는 점은? |
 | `coach.new.selfReview.hint` | 예: 스트림을 닫는지 모르겠다, 예외를 너무 넓게 잡은 것 같다 |
 | `coach.new.topic` | 주제 (선택) |
+| `coach.new.sideProject` | 사이드 프로젝트 (선택) |
+| `coach.new.sideProject.none` | 선택 안 함 |
+| `coach.new.projectGone` | 이 프로젝트를 찾을 수 없어요. 다시 골라 주세요. |
 | `coach.new.skills` | 관련 기술 (선택) |
 | `coach.new.consent` | 회사 코드나 비밀정보가 아닌 개인 프로젝트 코드예요 |
 | `coach.new.providerNotice` | 코드는 AI 공급자 DeepSeek(중국)으로 전송돼요. 입력을 학습에 쓰지 않는다는 약정은 없어요. |
@@ -1668,7 +1853,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 #### SCR-PLAN
 
-- **목적**: 활성 계획의 milestone 타임라인과 마감 위험을 보고, 진행 상태·메모·순서를 바로 고친다(FR-04, FR-05). **진입**: 하단 탭·rail Plan, 온보딩 4단계 "계획 자세히". **Sprint**: S1 (budget 카드 S5).
+- **목적**: 활성 계획의 milestone 타임라인과 마감 위험을 보고, 진행 상태·메모·순서를 바로 고친다(FR-04, FR-05). **진입**: 하단 탭·rail Plan, 온보딩 5단계 "계획 자세히". **Sprint**: S1 (budget 카드 S2).
 - **레이아웃**
 
 ```text
@@ -1682,7 +1867,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 │ │   계획을 다시 맞춰 보세요.      │ │
 │ │                  [계획 조정]  │ │
 │ └────────────────────────────┘ │
-│ ┌────────────────────────────┐ │  S5
+│ ┌────────────────────────────┐ │  S2
 │ │ 마감 위험 [빠듯함]              │ │
 │ │ 1월 5일까지 가능  약 82시간     │ │
 │ │ 필수 목표에 필요  약 98시간     │ │
@@ -1706,19 +1891,20 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 │ │       계획 구조 바꾸기          │ │
 │ └────────────────────────────┘ │
 │ 진행 현황 보기 >                  │
+│ 사이드 프로젝트 보기 >             │
 ├────────────────────────────────┤
 │  Today   Review   Plan   More  │
 └────────────────────────────────┘
 ```
 
 - **타임라인**: 모바일은 milestone 카드 목록에 "오늘" 구분선을 날짜 위치에 끼워 넣는다. Tablet·Desktop은 목록 위에 가로 막대 타임라인(월 눈금, milestone 구간 막대 + 제목 라벨, 오늘 세로선, 목표일·지원일 표시)을 추가한다. 막대의 priority는 막대 안 텍스트 라벨(`필수`/`권장`/`나중`)로 표시한다.
-- **budget 카드 표시 규칙(S5)**: 분은 시간 단위로 반올림(`약 {h}시간`). `ratioBp=null`이면 "필요 ÷ 가능" 줄 대신 `plan.budget.noTime`. 완료율 줄은 `completionRateBp`를 쓴다. risk ≤ MEDIUM이면 "계획 조정" 링크를 보조 텍스트 버튼으로만 둔다.
+- **budget 카드 표시 규칙(S2)**: 분은 시간 단위로 반올림(`약 {h}시간`). `ratioBp=null`이면 "필요 ÷ 가능" 줄 대신 `plan.budget.noTime`. 완료율 줄은 `completionRateBp`를 쓴다. 기준일은 사용자가 등록한 지원 시작일(오늘 이후일 때) 또는 이직 완료 목표일이다(`horizonDate`). risk ≥ HIGH면 카드 아래 `plan.budget.tight` + "계획 조정"(보조 버튼), risk = LOW면 `plan.budget.roomy` + "계획 조정"(보조 텍스트 버튼), MEDIUM이면 "계획 조정" 텍스트 버튼만 둔다. 문구는 안내일 뿐이고, 실제 제안 여부는 SCR-REPLAN 미리보기가 정한다(`06` §4.4).
 - **컴포넌트**: `PlanHeader`, `ReplanRecommendedBanner`, `BudgetRiskCard`, `PlanTimelineBar`(≥ 600), `MilestoneCard`(`MilestoneStatusDropdown`, `SortButtons`, `DescriptionEditor`), `TodayDivider`.
 - **데이터**
 
 | 시점 | API |
 |---|---|
-| 진입·탭 재선택 | `GET /plans/active` (+ S5 `GET /plans/active/budget`, 병렬) |
+| 진입·탭 재선택 | `GET /plans/active` (+ S2 `GET /plans/active/budget`, 병렬) |
 | 상태 변경 | `PATCH /plans/{planId}/milestones/{milestoneId}` `{status, version}` |
 | 순서 ↑↓ | 인접 두 milestone에 `PATCH … {sortOrder, version}` 2회(순차). 두 번째 실패 시 재조회 |
 | 메모 저장 | `PATCH … {description, version}` |
@@ -1743,18 +1929,21 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `plan.budget.ratio` | 필요 ÷ 가능 {percent}% |
 | `plan.budget.completionRate` | 최근 실제 완료율 {percent}% 반영 |
 | `plan.budget.noTime` | 목표일까지 남은 학습 가능 시간이 없어요. 목표일이나 학습 시간을 확인해 주세요. |
+| `plan.budget.tight` | 빠듯해요. 필수 위주로 줄이는 안을 볼 수 있어요. |
+| `plan.budget.roomy` | 여유가 있어요. 더 깊이 공부하는 안을 볼 수 있어요. |
 | `plan.today` | 오늘 {date} |
 | `plan.milestone.status` | 상태 |
 | `plan.milestone.memo` | 메모 |
 | `plan.restructure` | 계획 구조 바꾸기 |
 | `plan.dashboardLink` | 진행 현황 보기 |
+| `plan.projectsLink` | 사이드 프로젝트 보기 |
 | `plan.empty` | 활성 계획이 없어요. 템플릿으로 새 계획을 만들어요. |
 | `plan.create` | 계획 만들기 |
 | `plan.reloaded` | 다른 곳에서 계획이 바뀌어 최신 내용으로 다시 불러왔어요. |
 
 #### SCR-REPLAN
 
-- **목적**: milestone 추가·삭제·기간·우선순위·기술 구성을 바꿔 새 계획 버전을 만든다. S5부터는 저장 전에 마감 위험과 defer·축소 제안을 미리 보고 적용할 제안을 고른다(FR-04, FR-05, AC-03). **진입**: SCR-PLAN "계획 구조 바꾸기"·"계획 조정", SCR-CAREER-GOAL 저장 후(`?from=goal`). **Sprint**: S1(편집 → 저장), S5(편집 → 미리보기 → 저장).
+- **목적**: milestone 추가·삭제·기간·우선순위·기술 구성을 바꿔 새 계획 버전을 만든다. S2부터는 저장 전에 마감 위험과 제안을 미리 보고 적용할 제안을 고른다 — 사용자가 등록한 이직 시점까지 **빠듯하면 필수 위주로 줄이는 안**(defer·목표 낮춤), **여유가 있으면 깊이를 더하는 안**(미뤄 둔 항목 복원·목표 올림)이다. 두 종류는 동시에 나오지 않는다(FR-04, FR-05, AC-03, AC-30). **진입**: SCR-PLAN "계획 구조 바꾸기"·"계획 조정", SCR-CAREER-GOAL 저장 후(`?from=goal`). **Sprint**: S1(편집 → 저장), S2(편집 → 미리보기 → 저장).
 - **레이아웃 ① 편집**
 
 ```text
@@ -1784,7 +1973,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 └────────────────────────────────┘
 ```
 
-- **레이아웃 ② 미리보기 (S5, 같은 라우트의 2단계 화면)**
+- **레이아웃 ② 미리보기 — 빠듯할 때: 축소 제안 (S2, 같은 라우트의 2단계 화면, risk ≥ HIGH)**
 
 ```text
 ┌────────────────────────────────┐
@@ -1793,6 +1982,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 │ 마감 위험 [빠듯함]  (지금 [보통])  │
 │ 가능 약 82시간 · 필수에 필요 약 98시간│
 │ ─────────────────────────────  │
+│ 빠듯해요 — 필수 위주로 줄이는 안   │
 │ 미룰 수 있는 권장 항목             │
 │ [✓] 시스템 설계 · 캐시             │
 │     약 8시간 줄어요                 │
@@ -1810,21 +2000,58 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 └────────────────────────────────┘
 ```
 
-  - risk ≤ MEDIUM이면 제안 영역 대신 `replan.preview.noSuggestions`.
+- **레이아웃 ③ 미리보기 — 여유 있을 때: 확장 제안 (S2, risk = LOW이고 필요 ÷ 가능 ≤ 70%)**
+
+```text
+┌────────────────────────────────┐
+│ ← 미리보기                       │
+│ 이대로 저장하면                   │
+│ 마감 위험 [여유]  (지금 [여유])    │
+│ 가능 약 120시간 · 필수에 필요 약 80시간│
+│ 필요 ÷ 가능 66%                    │
+│ ─────────────────────────────  │
+│ 여유가 있어요 — 더 깊이 하는 안     │
+│ 미뤄 둔 항목 다시 넣기              │
+│ [ ] 시스템 설계 · 캐시 [권장]       │
+│     약 10시간 늘어요                │
+│ 필수 목표 올리기                    │
+│ [ ] Spring Transaction · 설명 3 → 4 │
+│     약 8시간 늘어요                 │
+│ 모두 받아들여도 마감 위험 [여유]     │
+│ ⓘ 고른 것만 적용돼요. 다음 Today   │
+│   계획부터 반영돼요.                │
+│ ┌────────────────────────────┐ │
+│ │     새 버전(v4)으로 저장        │ │
+│ └────────────────────────────┘ │
+│ 편집으로 돌아가기                   │
+└────────────────────────────────┘
+```
+
+- **제안 영역 규칙** (`06` §4.4, `05` §7.7): 응답의 세 목록 중 무엇이 비어 있지 않은지로 영역을 고른다. 클라이언트는 risk·비율 임계값을 계산하지 않는다.
+
+| 응답 | 보여줄 영역 |
+|---|---|
+| `mustTargetReductionSuggestions` 또는 `deferSuggestions`가 비어 있지 않음 | 레이아웃 ② 축소 제안 |
+| `expansionSuggestions`가 비어 있지 않음 | 레이아웃 ③ 확장 제안 (`kind=RESTORE_DEFERRED` → "미뤄 둔 항목 다시 넣기", `RAISE_TARGET` → "필수 목표 올리기") |
+| 셋 다 `[]` | `replan.preview.noSuggestions` |
+
+  - 두 영역이 함께 나오는 경우는 없다(서버 보장). 함께 오면 축소 영역만 보여주고 오류 로그를 남긴다.
+  - 확장 제안의 "늘어요" 시간은 `addedMinutes`(앞선 제안을 적용한 상태 기준)를 시간 단위로 반올림한다. "모두 받아들여도 {risk}"는 `riskAfterSuggestions`다 — 미뤄 둔 권장·나중 항목을 다시 넣어도 필수 기준의 마감 위험은 바뀌지 않고, 목표 올리기만 반영된다.
   - 첫 미리보기는 빈 선택 목록으로 호출해 제안 목록을 받고 화면에 고정한다. 체크를 바꾸면 "선택 반영해 다시 계산"으로 같은 편집안 + 선택 목록을 다시 preview해 `replan.preview.afterSelected`(서버가 선택을 적용해 계산, `05-api-spec.md` §7.7)를 보여준다. `riskAfterSuggestions`(모든 제안 적용 시)도 함께 보여준다. 클라이언트는 risk를 계산하지 않는다.
-  - "미뤄 둔 기술"(S5): `PlanView.skillTargets` 중 `deferred=true` 목록을 체크박스로 보여주고, 체크한 skill은 `restoredDeferrals`로 보낸다(`06` §11.2). defer 제안과 같은 skill을 동시에 체크할 수 없다.
+  - "미뤄 둔 기술"(S2): `PlanView.skillTargets` 중 `deferred=true` 목록을 체크박스로 보여주고, 체크한 skill은 `restoredDeferrals`로 보낸다(`06` §11.2). defer 제안과 같은 skill을 동시에 체크할 수 없다. 확장 제안(`RESTORE_DEFERRED`)에 나온 skill은 이 목록에서 빼고 확장 영역에만 한 번 보여준다(어느 쪽에서 체크해도 같은 `restoredDeferrals`다).
+  - 확장 제안 `RAISE_TARGET`을 체크하면 `acceptedTargetRaises[]`에 `{skillCode, axis, newTarget}`(제안의 `newTarget`)로 넣는다. `RESTORE_DEFERRED`를 체크하면 `restoredDeferrals[]`에 `skill.code`를 넣는다.
 - **컴포넌트**: `ReasonField`, `MilestoneEditorCard`(`DateRangeFields`, `PriorityChips`, `SkillMultiPicker`), `AddMilestoneButton`, `PreviewSummary`, `SuggestionCheckList`, `RiskBadge`.
 - **데이터**
 
 | 시점 | API |
 |---|---|
-| 진입 | `GET /plans/active` (편집 초기값, `version`), S5 `GET /plans/active/budget`(현재 risk), 기술 목록 `GET /skills/tree?role=JAVA_BACKEND` |
-| "변경 미리보기"·"선택 반영해 다시 계산" (S5) | `POST /plans/{planId}/replan/preview` `{reason, version, milestones, acceptedDeferrals, acceptedTargetReductions, restoredDeferrals}` — `Idempotency-Key` 보내지 않음 |
-| "새 버전으로 저장" | `POST /plans/{planId}/replan` `{version, reason, milestones, acceptedDeferrals, acceptedTargetReductions, restoredDeferrals}` |
+| 진입 | `GET /plans/active` (편집 초기값, `version`), S2 `GET /plans/active/budget`(현재 risk), 기술 목록 `GET /skills/tree?role=JAVA_BACKEND` |
+| "변경 미리보기"·"선택 반영해 다시 계산" (S2) | `POST /plans/{planId}/replan/preview` `{reason, version, milestones, acceptedDeferrals, acceptedTargetReductions, restoredDeferrals, acceptedTargetRaises}` — `Idempotency-Key` 보내지 않음 |
+| "새 버전으로 저장" | `POST /plans/{planId}/replan` `{version, reason, milestones, acceptedDeferrals, acceptedTargetReductions, restoredDeferrals, acceptedTargetRaises}` |
 
   - `milestones[]` 항목: 기존 milestone은 `id` 포함, 새 항목은 `id: null`. `title`, `description`, `startDate`, `endDate`, `priority`, `status`(새 항목은 `PLANNED`), `sortOrder`(= 배열 index), `skillCodes`(≤ 30).
-  - `acceptedTargetReductions[]` 항목: `{skillCode, axis, newTarget}`(제안의 `newTarget`). S1은 세 목록 모두 `[]`.
-- **상태**: Loading — 편집 카드 skeleton. 미리보기 계산 중 — 버튼 로딩(편집 잠금). 저장 중 — 버튼 로딩. Error — `VALIDATION_FAILED`는 해당 카드 필드 아래, `CONCURRENT_MODIFICATION`·`PLAN_NOT_ACTIVE`는 대화상자 `replan.conflict`(확인 → 편집 내용을 버리고 `GET /plans/active` 재조회). Offline — 공통. AI — 해당 없음.
+  - `acceptedTargetReductions[]`·`acceptedTargetRaises[]` 항목: `{skillCode, axis, newTarget}`(제안의 `newTarget`). S1은 네 목록 모두 `[]`.
+- **상태**: Loading — 편집 카드 skeleton. 미리보기 계산 중 — 버튼 로딩(편집 잠금). 저장 중 — 버튼 로딩. Error — `VALIDATION_FAILED`는 해당 카드 필드 아래(제안 목록 필드 `acceptedTargetRaises[i]`·`restoredDeferrals[i]` 등의 `TARGET_NOT_RAISED`·`TARGET_NOT_REDUCED`·`MUTUALLY_EXCLUSIVE`는 그 제안 행 아래 인라인 + 미리보기를 다시 호출해 최신 제안으로 바꾼다), `CONCURRENT_MODIFICATION`·`PLAN_NOT_ACTIVE`는 대화상자 `replan.conflict`(확인 → 편집 내용을 버리고 `GET /plans/active` 재조회). Offline — 공통. AI — 해당 없음.
 - **행동·검증**: §3.2(제목 1~200, 메모 ≤ 2000, 날짜 오늘−1년~+3년, `startDate ≤ endDate`, 1~24개, 기술 ≤ 30개, 저장 시 이유 1~1000자 필수). 기간 겹침은 허용한다. 삭제는 확인 없이 카드 제거 + 토스트 "되돌리기". 미리보기 후 편집으로 돌아가 내용을 바꾸면 선택한 제안을 초기화한다. 저장 성공 → `/plan` + 토스트 `replan.saved`. 입력 중 이탈 → §6.8.
 - **문구**
 
@@ -1859,6 +2086,14 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `replan.deferred.title` | 미뤄 둔 기술 |
 | `replan.deferred.restore` | 다시 포함 |
 | `replan.preview.noSuggestions` | 이대로도 기한 안에 가능해 보여요. 제안할 변경이 없어요. |
+| `replan.preview.tight` | 빠듯해요 — 필수 위주로 줄이는 안 |
+| `replan.preview.roomy` | 여유가 있어요 — 더 깊이 하는 안 |
+| `replan.preview.restore` | 미뤄 둔 항목 다시 넣기 |
+| `replan.preview.raise` | 필수 목표 올리기 |
+| `replan.preview.raiseItem` | {skill} · {axis} {from} → {to} |
+| `replan.preview.added` | 약 {hours}시간 늘어요 |
+| `replan.preview.expandAfterAll` | 모두 받아들여도 마감 위험 {risk} |
+| `replan.preview.expandNote` | 고른 것만 적용돼요. 다음 Today 계획부터 반영돼요. |
 | `replan.save` | 새 버전(v{version})으로 저장 |
 | `replan.backToEdit` | 편집으로 돌아가기 |
 | `replan.saved` | 계획 v{version}을 저장했어요. |
@@ -1868,7 +2103,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 #### SCR-CAREER-GOAL
 
-- **목적**: 목표 날짜와 집중 기술을 고친다(FR-03). **진입**: SCR-PLAN "목표 수정", SCR-SETTINGS "목표". **Sprint**: S1.
+- **목적**: 이직 시점(이직 완료 목표일·지원 시작일)과 집중 기술을 등록·수정한다(FR-03). **이직 시점은 사용자가 여기서 직접 정하는 값**이고, DevPilot은 이 날짜로 남은 시간을 역산해 빠듯하면 필수 위주로, 여유 있으면 깊이 있게 안내한다(FR-05). **진입**: SCR-SETTINGS "목표"(주 진입점), SCR-PLAN "목표 수정". **Sprint**: S1.
 - **레이아웃**: 목표 직무(읽기 전용 "Java 백엔드") → 이직 완료 목표일(필수, 날짜 선택기) → 지원 시작일(선택, "없음" 스위치) → 집중 기술(칩 목록 + "기술 선택", 최대 10) → 안내 `goal.help` → primary "저장".
 - **데이터**: 진입 `GET /career-goal`. 저장 `PUT /career-goal` `{targetRole, applicationStartDate, targetCompletionDate, focusSkillCodes, version}`.
 - **상태**: Loading — 폼 skeleton. Error — `404 CAREER_GOAL_NOT_FOUND`는 `ErrorView`(온보딩 이후 정상 흐름에서는 발생하지 않고, PUT은 목표를 새로 만들지 않는다). `409 CONCURRENT_MODIFICATION`은 최신 목표로 폼을 다시 채운다. 그 외 공통·§5. Offline — 공통.
@@ -1879,7 +2114,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 |---|---|
 | `goal.title` | 목표 |
 | `goal.focus` | 집중 기술 (최대 10개) |
-| `goal.help` | 날짜를 바꿔도 계획은 자동으로 바뀌지 않아요. 저장 후 계획 조정을 권해 드려요. |
+| `goal.help` | 이 날짜로 남은 시간을 거꾸로 계산해요. 빠듯하면 필수 위주로, 여유가 있으면 더 깊이 안내해요. 날짜를 바꿔도 계획은 자동으로 바뀌지 않아요. 저장 후 계획 조정을 권해 드려요. |
 | `goal.save` | 저장 |
 | `goal.saved` | 목표를 저장했어요. |
 | `goal.saved.datesChanged.title` | 목표 날짜가 바뀌었어요 |
@@ -1937,7 +2172,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 #### SCR-SKILL-DETAIL
 
 - **목적**: 한 기술의 축별 레벨이 왜 그 값인지 근거 이력과 함께 보고, 관련 학습으로 이동한다(FR-06, AC-09). **진입**: SCR-SKILL-TREE 행, SCR-JOB-DETAIL 요구사항. **Sprint**: S1(레벨), S3(이력).
-- **레이아웃**: 헤더(기술 이름, 카테고리, priority, 설명) → 축 표(`축 | 증거 레벨 | 계획용 레벨 | 목표`, 레벨은 숫자 + `SkillLevel` 라벨) → 자기평가 줄(`self_assessed_level`, `self_assessment_active=false`면 `skill.detail.selfInactive`) → 버튼 행 "복습 카드"(`/review/items?skillId=`), "문제 풀기"(`/training?skillId=`, S3) → "레벨 변경 기록"(S3) 목록: `{날짜} · {축} {from} → {to}` + 규칙 문구 + `근거 기록 {n}개`(펼치면 `evidenceEvents`의 유형·날짜 목록. S6부터 `CHALLENGE_EVALUATED`·`COACH_FINDING_CLOSED`·`COACH_REVIEW_COMPLETED` 행에 "증거 초안 만들기" → `POST /evidence/drafts` `{sourceLearningEventId}` → `/evidence/{id}`).
+- **레이아웃**: 헤더(기술 이름, 카테고리, priority, 설명) → 축 표(`축 | 증거 레벨 | 계획용 레벨 | 목표`, 레벨은 숫자 + `SkillLevel` 라벨) → 자기평가 줄(`self_assessed_level`, `self_assessment_active=false`면 `skill.detail.selfInactive`) → 버튼 행 "복습 카드"(`/review/items?skillId=`), "문제 풀기"(`/training?skillId=`, S3), "개념 설명하기"(S3, `rubber_duck` flag, AI 가능할 때 — `/rubber-duck/new?targetType=CONCEPT&conceptKey={skill.code}&skillCode={skill.code}`, 러버덕 `CONCEPT` 대상) → "레벨 변경 기록"(S3) 목록: `{날짜} · {축} {from} → {to}` + 규칙 문구 + `근거 기록 {n}개`(펼치면 `evidenceEvents`의 유형·날짜 목록. S6부터 `CHALLENGE_EVALUATED`·`COACH_FINDING_CLOSED`·`COACH_REVIEW_COMPLETED` 행에 "증거 초안 만들기" → `POST /evidence/drafts` `{sourceLearningEventId}` → `/evidence/{id}`).
 - **데이터**: `GET /skills/tree?role=JAVA_BACKEND`·`GET /skills/me`(캐시 재사용), S3 `GET /skills/{skillId}/history?cursor=` + 페이지네이션.
 - **상태**: Loading — 표 skeleton. 이력 Empty — `skill.detail.historyEmpty`. Error·Offline — 공통(이력만 실패하면 이력 영역만 인라인 오류).
 - **규칙 문구** (`skill.rule.<rule_code>`, `06` §7.2~7.4)
@@ -1970,7 +2205,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `DIAG_PASSED` | 실력 확인 문제를 통과했어요 |
 | (그 외) | 규칙 {code} |
 
-- **문구**: `skill.detail.axis` = "축", `skill.detail.evidence` = "증거 레벨", `skill.detail.planning` = "계획용 레벨", `skill.detail.target` = "목표", `skill.detail.self` = "자기평가 {level}", `skill.detail.selfInactive` = "최근 기록을 반영해 자기평가는 더 이상 쓰지 않아요", `skill.detail.reviewCards` = "복습 카드", `skill.detail.practice` = "문제 풀기", `skill.detail.history` = "레벨 변경 기록", `skill.detail.historyItem` = "{axis} {from} → {to}", `skill.detail.evidenceCount` = "근거 기록 {count}개", `skill.detail.historyEmpty` = "아직 레벨 변경 기록이 없어요. 복습과 문제 풀이를 하면 여기에 쌓여요.", `skill.detail.makeDraft` = "증거 초안 만들기"
+- **문구**: `skill.detail.axis` = "축", `skill.detail.evidence` = "증거 레벨", `skill.detail.planning` = "계획용 레벨", `skill.detail.target` = "목표", `skill.detail.self` = "자기평가 {level}", `skill.detail.selfInactive` = "최근 기록을 반영해 자기평가는 더 이상 쓰지 않아요", `skill.detail.reviewCards` = "복습 카드", `skill.detail.practice` = "문제 풀기", `skill.detail.explain` = "개념 설명하기", `skill.detail.history` = "레벨 변경 기록", `skill.detail.historyItem` = "{axis} {from} → {to}", `skill.detail.evidenceCount` = "근거 기록 {count}개", `skill.detail.historyEmpty` = "아직 레벨 변경 기록이 없어요. 복습과 문제 풀이를 하면 여기에 쌓여요.", `skill.detail.makeDraft` = "증거 초안 만들기"
 
 ### 3.11 Dashboard · Weekly
 
@@ -2103,7 +2338,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 #### SCR-SETTINGS
 
-- **목적**: 프로필·학습 시간·하루 경계를 고치고, AI 사용량을 확인하고, 캘린더 구독·앱 설치·데이터 내려받기·계정 삭제·로그아웃을 한다(FR-20, FR-22, FR-23, FR-24). **진입**: rail Settings, More > 설정. **Sprint**: S1(프로필·시간), S2(캘린더·설치 안내), S3(AI 사용량), S6(데이터·삭제).
+- **목적**: 프로필·**이직 시점**·학습 시간·하루 경계를 고치고, AI 사용량을 확인하고, 캘린더 구독·앱 설치·데이터 내려받기·계정 삭제·로그아웃을 한다(FR-03, FR-20, FR-22, FR-23, FR-24). 이직 시점은 사용자가 여기("이직 목표" → SCR-CAREER-GOAL)에서 직접 등록하고 바꾼다. **진입**: rail Settings, More > 설정. **Sprint**: S1(프로필·이직 목표·시간), S2(설치 안내), S3(AI 사용량), S5(캘린더), S6(데이터·삭제).
 - **레이아웃**
 
 ```text
@@ -2111,7 +2346,8 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 │ 설정                             │
 │ 프로필                            │
 │ 표시 이름 [mt                   ] │
-│ 목표                           >  │
+│ 이직 목표                       >  │
+│ 완료 2027년 4월 1일 · 지원 1월 5일  │  사용자가 등록한 값 (예시)
 │ 학습 시간                          │
 │ 평일 [45분 ▾]    주말 [240분 ▾]    │
 │ 하루 시작 시각 [새벽 4시 ▾]         │
@@ -2171,7 +2407,8 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 | 시점 | API |
 |---|---|
-| 진입 | `GET /me` (프로필, `version`, `aiStatus`, `aiUsage`) |
+| 진입 | `GET /me` (프로필, `version`, `aiStatus`, `aiUsage`), `GET /career-goal`(이직 목표 요약 줄, 실패하면 요약 줄만 숨김) |
+| "이직 목표" | → `/plan/goal` (SCR-CAREER-GOAL) |
 | 프로필·시간 "저장" | `PATCH /me` `{displayName, timezone, dayStartHour, weekdayStudyMinutes, weekendStudyMinutes, version}` |
 | "구독 링크 만들기" / "새 링크 만들기" | `POST /me/calendar-token` → `201 {feedUrl, issuedAt}` → 시트 표시 → `meProvider` 갱신 |
 | "내 데이터 내려받기" | `GET /me/export` → 파일 저장 `devpilot-export-{yyyyMMdd}.json` |
@@ -2193,7 +2430,9 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | `settings.title` | 설정 |
 | `settings.profile` | 프로필 |
 | `settings.displayName` | 표시 이름 |
-| `settings.goal` | 목표 |
+| `settings.goal` | 이직 목표 |
+| `settings.goal.summary` | 완료 {completion} · 지원 {application} |
+| `settings.goal.summaryNoApplication` | 완료 {completion} |
 | `settings.study` | 학습 시간 |
 | `settings.weekday` | 평일 |
 | `settings.weekend` | 주말 |
@@ -2278,15 +2517,485 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 #### SCR-MORE
 
 - **목적**: 모바일에서 하단 탭에 없는 목적지로 이동한다. **진입**: 하단 탭 More(폭 < 600만). **Sprint**: S2.
-- **레이아웃**: `ListTile` 목록(아이콘 + 라벨 + `>`), flag가 켜진 항목만: 문제 풀이(`/training`), 코드 리뷰(`/coach`), 기술(`/skills`), 진행 현황(`/dashboard`), 주간 리뷰(`/weekly`), 증거(`/evidence`), 채용 공고(`/jobs`), 설정(`/settings`). AI 상태가 `DISABLED`/`BALANCE_EXHAUSTED`/`BUDGET_WARNING`이면 목록 위에 §6.5 배너.
+- **레이아웃**: `ListTile` 목록(아이콘 + 라벨 + `>`), flag가 켜진 항목만: 사이드 프로젝트(`/projects`), 문제 풀이(`/training`), 코드 리뷰(`/coach`), 기술(`/skills`), 진행 현황(`/dashboard`), 주간 리뷰(`/weekly`), 증거(`/evidence`), 채용 공고(`/jobs`), 설정(`/settings`). AI 상태가 `DISABLED`/`BALANCE_EXHAUSTED`/`BUDGET_WARNING`이면 목록 위에 §6.5 배너.
 - **데이터**: `meProvider`(캐시). **상태**: 없음.
-- **문구**: `more.title` = "더보기", `more.training` = "문제 풀이", `more.coach` = "코드 리뷰", `more.skills` = "기술", `more.dashboard` = "진행 현황", `more.weekly` = "주간 리뷰", `more.evidence` = "증거", `more.jobs` = "채용 공고", `more.settings` = "설정"
+- **문구**: `more.title` = "더보기", `more.projects` = "사이드 프로젝트", `more.training` = "문제 풀이", `more.coach` = "코드 리뷰", `more.skills` = "기술", `more.dashboard` = "진행 현황", `more.weekly` = "주간 리뷰", `more.evidence` = "증거", `more.jobs` = "채용 공고", `more.settings` = "설정"
 
 #### SCR-NOT-FOUND
 
 - **목적**: 없는 경로·없는 리소스(`404 RESOURCE_NOT_FOUND` 전체 화면 처리)를 알린다. **진입**: 알 수 없는 라우트, 상세 화면 404. **Sprint**: S0.
 - **레이아웃**: 아이콘(`search_off`) + `notFound.title` + `notFound.body` + primary "Today로"(S1은 "Plan으로").
 - **문구**: `notFound.title` = "페이지를 찾을 수 없어요", `notFound.body` = "주소가 바뀌었거나 삭제된 항목이에요.", `notFound.home` = "Today로"
+
+### 3.16 러버덕 · 코드 읽기 · 사이드 프로젝트 (v3)
+
+핵심 루프(`01` §5)의 "설명한다"·"읽는다"·"만든다"를 맡는 화면이다. 러버덕(SCR-RUBBER-DUCK)이 중심이고, 코드 읽기와 사이드 프로젝트는 러버덕으로 이어진다.
+
+#### SCR-RUBBER-DUCK
+
+- **목적**: 사용자가 대상을 자기 말로 설명하고, AI가 **답 대신 질문 하나로 되묻는** 대화를 몇 턴 이어 간 뒤, 정리에서 막힌 곳(gaps)을 복습 카드로 남긴다(FR-25 ★ 중심 기능, RD-1~RD-7, AC-26). 한 번 쓰고 끝나는 self-explanation과 달리 대화다. **진입**: SCR-READ-CODE "읽었으면 설명하기"(`CODE_READING`), SCR-TRAINING-ATTEMPT 결과 "러버덕으로 설명하기"(`CHALLENGE`), SCR-REVIEW-SESSION 끝 화면·SCR-REVIEW-ITEMS 메뉴(`REVIEW_ITEM`), SCR-SKILL-DETAIL "개념 설명하기"·SCR-TODAY `EXPLAIN`/`READING` 카드(`CONCEPT`), SCR-TODAY `PROJECT_TASK` 카드·SCR-PROJECTS "이 프로젝트 작업 설명하기"(`PROJECT_WORK`), SCR-TODAY "이어서 설명하기". **Sprint**: S3.
+- **화면 구성**: 하단 탭·rail을 숨기는 집중 화면이다. 앱 바 `✕`(나가기) + 제목 + `⋮`(그만두기). 상태는 넷이다 — ① 시작 전(`/rubber-duck/new`) ② 대화 중 ③ 정리 중 ④ 정리 결과. 데스크톱(≥ 1024)은 왼쪽 열(35%)에 대상 카드를 고정하고 오른쪽 열(65%)에 대화를 둔다.
+
+- **레이아웃 ① 시작 전** (`/rubber-duck/new?targetType=CODE_READING&targetId={taskId}&skillCode=SPRING.MVC_REST&taskId={taskId}`)
+
+```text
+┌────────────────────────────────┐
+│ ✕  러버덕                        │
+│ ┌────────────────────────────┐ │
+│ │ [읽은 코드] Spring MVC REST API│ │
+│ │ Spring PetClinic ·            │ │
+│ │ OwnerController.java 48~122줄 │ │
+│ │ 이 컨트롤러는 Repository를 직접 │ │
+│ │ 주입받고 Service 계층이 없습니다.│ │
+│ │ 이렇게 두어도 괜찮은 경우와      │ │
+│ │ 곤란해지는 경우를 나눠서 설명해  │ │
+│ │ 보세요.                        │ │
+│ └────────────────────────────┘ │
+│ 내 말로 설명해 보세요. AI는 답을   │
+│ 알려주지 않고 질문으로 되물어요.   │
+│ 최대 5번 주고받은 뒤 막힌 곳을     │
+│ 정리해 복습 카드로 만들어요.       │
+│ 설명                              │
+│ ┌────────────────────────────┐ │
+│ │ 무엇을 하는 코드인지, 왜 그렇게 │ │
+│ │ 했는지 내 말로 적어 보세요.     │ │
+│ └────────────────────────────┘ │
+│ 비밀값은 저장 전에 가려요. 0 / 2000│
+│ ┌────────────────────────────┐ │
+│ │          설명 보내기           │ │
+│ └────────────────────────────┘ │
+└────────────────────────────────┘
+```
+
+  - 대상 카드: 시작 전에는 서버 세션이 없으므로 진입 화면이 go_router `extra`로 넘긴 제목·요약을 쓴다(`CODE_READING`이면 SCR-READ-CODE의 저장소 이름·파일·줄 범위·`question`). `extra`가 없으면(새로고침) 대상 유형 라벨만 보이고, 첫 전송 뒤 `RubberDuckSessionView.targetTitle`로 바뀐다.
+  - **세션은 첫 "설명 보내기"에서 만든다**: `POST /rubber-duck` → 201 → 같은 설명으로 곧바로 `POST /rubber-duck/{sessionId}/turns`. 성공하면 라우트를 `/rubber-duck/{sessionId}?taskId=`로 replace하고 기기에 진행 중 세션을 기록한다(§3.5 `ActiveRubberDuckTile`). 설명을 쓰기 전에는 세션을 만들지 않는다 — 빈 세션이 남지 않고, 다른 진행 중 세션을 괜히 끝내지 않는다. 시작은 성공했는데 첫 턴이 실패하면 라우트만 replace하고 설명은 입력칸에 남긴다(턴 0개 세션, ② 상태에서 다시 보내기).
+  - 시작 응답의 `abandonedSessionId`가 있으면(다른 러버덕이 진행 중이었음) 토스트 `rubberDuck.previousAbandoned`.
+  - `skillCode`는 진입 화면이 알면 넘기고(Today task의 `skillCode`, reading의 첫 skill 등), 모르면 생략해 서버가 대상에서 유도하게 한다(`05` §9.5). 유도하지 못하면 skill 없는 세션이 되고 정리 화면에 `rubberDuck.summary.noSkill`이 보인다(RD-7).
+
+- **레이아웃 ② 대화 중** (`/rubber-duck/:sessionId`)
+
+```text
+┌────────────────────────────────┐
+│ ✕  러버덕             턴 2 / 5  ⋮│
+│ ▸ [읽은 코드] OwnerController.java│  대상 카드(접힘)
+│ ─────────────────────────────  │
+│              ┌───────────────┐ │
+│              │ 나             │ │
+│              │ OwnerController│ │
+│              │ 가 Repository를 │ │
+│              │ 직접 주입받는   │ │
+│              │ 이유는 조회만   │ │
+│              │ 하고 규칙이 없기│ │
+│              │ 때문입니다.     │ │
+│              └───────────────┘ │
+│ ┌────────────────────┐         │
+│ │ 질문            [AI] │         │
+│ │ 조회만 한다고 하셨는데,│        │
+│ │ 폼 제출을 처리하는    │         │
+│ │ 메서드는 어디에 규칙을 │         │
+│ │ 두고 있나요?          │         │
+│ └────────────────────┘         │
+│ ─────────────────────────────  │
+│ 내 답                             │
+│ ┌────────────────────────────┐ │
+│ │ 모르면 모른다고 적어도 괜찮아요.│ │
+│ └────────────────────────────┘ │
+│ 3번 더 답할 수 있어요.   0 / 2000 │
+│ [정리하고 끝내기]      [ 보내기 ] │
+└────────────────────────────────┘
+```
+
+  - 말풍선: 내 설명(오른쪽, 라벨 "나", `userText` = 서버 마스킹본이라 가린 부분은 가린 그대로 보인다)과 AI 질문(왼쪽, 라벨 "질문" + `AiBadge`). **AI 말풍선에는 정답·채점·✓/✗ 표시를 두지 않는다**(U-9, RD-1). 질문은 200자 이하라 접지 않는다.
+  - 남은 턴: 앱 바 `턴 {turnCount} / {maxTurns}`와 입력칸 아래 `rubberDuck.remaining`(= 응답의 `remainingTurns`). 압박 문구를 쓰지 않는다(§9).
+  - "보내기" → `POST …/turns` `{explanation}`(IK, 동기 ≤ 20초). 보내는 동안 내 말풍선을 먼저 붙이고 그 아래 `ThinkingIndicator` + `rubberDuck.thinking`. 성공하면 질문 말풍선을 붙이고 입력칸을 비운다. 실패하면 내 말풍선을 지우고 **입력칸에 설명을 그대로 둔다**(턴이 저장되지 않음, `05` §9.7) + 아래 상태 표의 처리.
+  - 입력 보관: 작성 중 설명은 `localStorage` `devpilot.rubberduck.draft.<sessionId>`에 1초 debounce로 저장(try/catch)하고 전송 성공 시 지운다.
+
+- **Hint Ladder로 넘어가는 안내** (응답 `suggestHint = true` — RD-3, 2턴 연속 "모르겠다"류)
+
+```text
+│ ┌────────────────────────────┐ │
+│ │ ⓘ 두 번 연속 막혔어요.        │ │
+│ │ 힌트를 한 단계 받아 볼까요?    │ │
+│ │ [계속 설명]    [힌트 사다리로] │ │  CHALLENGE 대상
+│ └────────────────────────────┘ │
+```
+
+  - 대상이 `CHALLENGE`: "힌트 사다리로" → `/training/attempts/{targetId}#hints`(SCR-TRAINING-ATTEMPT 힌트 섹션, 다음 단계 버튼에 포커스). 러버덕 세션은 `IN_PROGRESS`로 남고 돌아오면 이어서 설명할 수 있다(턴 상한은 그대로). 힌트 공개는 그 attempt 기록에 남고(`HINT_DISCLOSED`) 결과 판정에 반영된다(FR-10).
+  - 그 외 대상(`CODE_READING`, `REVIEW_ITEM`, `CONCEPT`, `PROJECT_WORK`): 힌트를 붙일 곳이 없으므로 둘째 줄을 `rubberDuck.stuck.summarize`로 바꾸고 버튼은 "계속 설명" / "정리하고 끝내기"다. 러버덕 전용 힌트는 없다(`05` §9.7).
+  - 안내는 대화 끝에 한 번 붙는다. 닫기 버튼은 없고, 다음 턴을 보내면 사라진다.
+
+- **턴 상한 도달** (`remainingTurns = 0`, 또는 조회한 `turnCount = maxTurns`): 입력칸을 숨기고 `rubberDuck.limitReached` + primary "정리하기"만 둔다(RD-4).
+
+- **레이아웃 ③ 정리 중**: "정리하고 끝내기"·"정리하기" → 턴이 1개 이상이면 확인 없이 `POST …/complete`(IK, body 없음, 동기 ≤ 30초). 대화 위에 진행 표시 + `rubberDuck.summarizing`, 모든 버튼 비활성. 턴이 0개면 대화상자 `rubberDuck.endEmpty.*` → 확인 시 같은 요청(서버가 AI 없이 `ABANDONED`로 끝낸다).
+
+- **레이아웃 ④ 정리 결과**
+
+```text
+┌────────────────────────────────┐
+│ ✕  러버덕 정리                   │
+│ Spring MVC REST API · 4턴        │
+│ 막힌 곳 1개                      │
+│ ┌────────────────────────────┐ │
+│ │ 무엇을 몰랐나                  │ │
+│ │ 읽기 전용 조회에도 트랜잭션    │ │
+│ │ 경계가 필요한 이유를 설명하지  │ │
+│ │ 못했다.                       │ │
+│ │ 왜 중요한가                    │ │
+│ │ 경계를 모르면 지연 로딩과      │ │
+│ │ 커넥션 반환 시점을 예측할 수   │ │
+│ │ 없다.                         │ │
+│ │ 복습 질문                      │ │
+│ │ 조회만 하는 메서드에 트랜잭션을 │ │
+│ │ 여는 이유를 설명해 보세요.      │ │
+│ │                 복습 카드 보기 > │ │
+│ └────────────────────────────┘ │
+│ 잘 설명한 것                      │
+│ • 컨트롤러에 규칙이 없다는 점을   │
+│   정확히 짚었다                   │
+│ 한 줄 정리                  [AI]  │
+│ 계층의 목적은 잡았고, 트랜잭션     │
+│ 경계가 다음 차례다.                │
+│ ⓘ 복습 카드 1장을 만들었어요.      │
+│   내일부터 복습에 나와요.          │
+│ ▸ 대화 다시 보기 (4턴)             │
+│ ┌────────────────────────────┐ │
+│ │    Today로 돌아가 완료하기      │ │  taskId 있을 때
+│ └────────────────────────────┘ │
+│ 복습하러 가기                      │
+└────────────────────────────────┘
+```
+
+  - gap 카드: "무엇을 몰랐나"(`whatWasMissed`) · "왜 중요한가"(`whyItMatters`) · "복습 질문"(`reviewQuestion`) · "복습 카드 보기"(`reviewItemId`가 있으면 → `/review/items?skillId={skill.id}`). gap이 0개면 카드 대신 `rubberDuck.summary.noGaps`. AI가 만든 문장이므로 영역 제목 옆에 `AiBadge`를 둔다(U-4).
+  - "잘 설명한 것"(`confirmed`)은 글머리표 목록이다. 채점 기호(✓)를 쓰지 않는다.
+  - 복습 카드 안내: `createdReviewItemCount > 0` → `rubberDuck.summary.cardsCreated`. `reviewItemId`가 있는 gap 수가 `createdReviewItemCount`보다 크면 그 차이만큼 `rubberDuck.summary.cardsPulled`(이미 있던 같은 개념 카드의 due를 당김, `05` §9.8).
+  - 증거 안내: gap 0개 + `turnCount ≥ 3` + skill 있음 → `rubberDuck.summary.evidence`(RD-5). skill이 `null`이면 → `rubberDuck.summary.noSkill`(RD-7).
+  - `summarySkippedReason`이 있으면(정리 AI 실패·차단): gap·잘한 것·한 줄 정리 영역 대신 `rubberDuck.summary.skipped` + 사유 한 줄 `asyncFailure.<CODE>`(§5.2). **다시 정리하는 버튼은 없다**(`05` §9.8). 대화는 "대화 다시 보기"로 남아 있다. `CODE_READING`이면 이 경우에도 세션이 `COMPLETED`라 과제 완료 조건(RC-1)을 만족한다.
+  - `status = ABANDONED`(턴 0개로 끝냄, 그만두기, 하루 이상 방치): 결과 대신 `rubberDuck.abandoned` + 대화 기록(있으면) 읽기 전용.
+  - 버튼(primary 하나): `taskId`가 있으면 "Today로 돌아가 완료하기"(→ `/today?complete={taskId}` — `CODE_READING`은 이 경로로 완료 기록에 들어간다), 없으면 "닫기"(→ 뒤로, 히스토리가 없으면 `/today`). gap이 있으면 보조 "복습하러 가기"(→ `/review`).
+  - 정리 응답을 받으면 기기의 진행 중 세션 기록을 지우고, `targetType = CODE_READING`이면 `devpilot.rubberduck.task.<taskId>` = `sessionId`를 저장한다(§3.5 `READ_CODE` 완료 확인).
+
+- **컴포넌트**: `RubberDuckTargetCard`(유형 라벨 + 제목 + 요약, 접기/펼치기), `ChatBubble`(나 / 질문 두 변형, 질문은 `AiBadge`), `ThinkingIndicator`, `ExplanationField`(여러 줄, 글자 수, private key 즉시 검사), `RemainingTurnsText`, `StuckHintCallout`, `RubberDuckSummaryView`(`GapCard`, `ConfirmedList`, `OverallNote`), `AiUnavailableBanner`, `BudgetWarningNote`, `RubberDuckMenu`(그만두기).
+- **데이터**
+
+| 시점 | API |
+|---|---|
+| ① 첫 "설명 보내기" | `POST /rubber-duck` `{targetType, targetId, conceptKey, skillCode}` (IK) → `201 {session, abandonedSessionId}` → `POST /rubber-duck/{sessionId}/turns` `{explanation}` (IK) |
+| ② 진입(`/rubber-duck/:sessionId`), 화면 복귀(visibility) | `GET /rubber-duck/{sessionId}` (턴 전체, `suggestHint`, `summary` 포함) |
+| "보내기" | `POST /rubber-duck/{sessionId}/turns` `{explanation}` (IK, 동기) → `201 {turnNo, question, suggestHint, remainingTurns, aiMeta, version}` |
+| "정리하고 끝내기"·"정리하기" | `POST /rubber-duck/{sessionId}/complete` (IK, body 없음, 동기) → `200 RubberDuckCompleteResponse` |
+| `⋮` "그만두기" | 대화상자 `rubberDuck.abandon.confirm` → `POST /rubber-duck/{sessionId}/abandon` (IK 없음) → 진입 화면으로 뒤로 |
+
+- **상태**
+  - Loading: 대상 카드 + 말풍선 skeleton 2개.
+  - Empty: 해당 없음(① 시작 전이 빈 상태 역할).
+  - Error (조회): `404 RESOURCE_NOT_FOUND`(다른 사용자의 세션도 같음) → SCR-NOT-FOUND. 그 외 공통.
+  - Error (시작): `400 VALIDATION_FAILED` field `targetId`·`conceptKey`(`REFERENCE_NOT_FOUND` 등 — 대상이 지워짐) → 대화상자 `rubberDuck.targetGone` + 뒤로.
+  - Error (턴 전송) — 입력은 항상 유지한다:
+
+| 응답 | 처리 |
+|---|---|
+| `413 CONTENT_TOO_LARGE` | 입력칸 아래 인라인 `validation.maxLength`(클라이언트가 2000자에서 막으므로 드묾) |
+| `422 SECRET_DETECTED_BLOCKED` | 입력칸 아래 인라인 `rubberDuck.validation.privateKey`. 턴 저장·AI 호출 없음 |
+| `409 INVALID_STATE_TRANSITION` | 세션이 이미 끝났거나(다른 기기에서 정리·그만두기, 하루 이상 방치로 `ABANDONED`) 턴 상한 — `GET`으로 다시 읽어 ④ 또는 턴 상한 상태로 바꾸고 토스트 `rubberDuck.sessionChanged`. 작성한 설명은 "복사" 버튼과 함께 잠시 남긴다 |
+| `409 CONCURRENT_MODIFICATION` | `GET` 후 같은 설명으로 다시 보낼 수 있게 둔다 |
+| `429 AI_*` | §5.1 처리 + `meProvider` 갱신 |
+| `502 AI_OUTPUT_INVALID`, `504 AI_TIMEOUT` | 토스트 `error.<CODE>` + "다시 보내기"(새 IK). AI 질문이 답을 담아 가드에 걸린 경우(NA-1~NA-3, `17` §6.8)도 여기로 온다 |
+| `502 AI_REFUSED` | 입력칸 아래 인라인 `error.AI_REFUSED` |
+| `503 AI_UNAVAILABLE` | 토스트 + `meProvider` 갱신 → 아래 AI 불가 상태 |
+| 네트워크 오류 | 같은 IK로 자동 재시도(§6.6), 실패하면 "다시 보내기" |
+
+  - Error (정리): `complete`는 AI 실패를 HTTP 오류로 주지 않는다 — `200` + `summarySkippedReason`으로 ④에 표시한다. `409 INVALID_STATE_TRANSITION`(이미 정리·중단됨)은 `GET`으로 다시 읽어 ④로 간다.
+  - **AI 불가** (`aiStatus ∈ {DISABLED, BALANCE_EXHAUSTED}` 또는 `503 AI_UNAVAILABLE`): 상단 `AiUnavailableBanner`. ① 시작 전이면 "설명 보내기" 비활성 + 버튼 아래 `ai.disabledReason`/`ai.balanceExhaustedReason`(§6.5)과 `rubberDuck.aiOff`. 진입 화면의 러버덕 버튼도 같은 조건으로 미리 막고 같은 사유를 보인다. ② 대화 중이면 "보내기" 비활성, **"정리하고 끝내기"는 그대로 둔다** — 서버가 AI 없이 정리 실패 경로로 세션을 끝내고 대화는 남는다(`05` §9.8 4단계). 지난 세션 조회는 언제나 된다(`17` §3.10).
+  - Budget warning: "보내기" 아래 `ai.budgetWarning.note`.
+  - Offline: 공통. 입력은 계속 가능, 보내기·정리 버튼 비활성.
+- **행동·검증**
+  - 설명: 공백 아닌 문자 1개 이상, 최대 2000자(§3.2, `devpilot.rubberduck.max-explanation-chars`). 1900자부터 글자 수를 경고 색 + `rubberDuck.nearLimit`. private key 정규식이 맞으면 즉시 인라인 오류 + 버튼 비활성(서버로 보내지 않는다). 입력칸 아래 상시 안내 `rubberDuck.maskingNote` — 저장 전 secret 마스킹(RD-6).
+  - 한 번에 하나만 보낸다. 전송 중에는 입력·보내기·정리 버튼 비활성.
+  - `Ctrl/Cmd+Enter` = 보내기(A-7). IME 조합 중에는 무시한다(A-13).
+  - "✕"(나가기): 세션은 `IN_PROGRESS`로 남고 Today에서 이어 열 수 있다. 작성 중 설명이 있으면 §6.8 이탈 확인. 나갈 때 토스트 `rubberDuck.leftOpen`.
+  - 스크린 리더: 새 AI 질문을 live region으로 읽는다. 말풍선은 "나: …" / "질문: …"으로 읽는다.
+- **문구**
+
+| key | 문구 |
+|---|---|
+| `rubberDuck.title` | 러버덕 |
+| `rubberDuck.summaryTitle` | 러버덕 정리 |
+| `rubberDuck.intro` | 내 말로 설명해 보세요. AI는 답을 알려주지 않고 질문으로 되물어요. 최대 {maxTurns}번 주고받은 뒤 막힌 곳을 정리해 복습 카드로 만들어요. |
+| `rubberDuck.input.first` | 설명 |
+| `rubberDuck.input.first.hint` | 무엇을 하는 코드인지, 왜 그렇게 했는지 내 말로 적어 보세요. |
+| `rubberDuck.input.answer` | 내 답 |
+| `rubberDuck.input.answer.hint` | 모르면 모른다고 적어도 괜찮아요. |
+| `rubberDuck.send.first` | 설명 보내기 |
+| `rubberDuck.send` | 보내기 |
+| `rubberDuck.maskingNote` | 비밀값으로 보이는 부분은 저장 전에 가려요. 개인 키는 보낼 수 없어요. |
+| `rubberDuck.nearLimit` | 2,000자에 가까워요 |
+| `rubberDuck.validation.privateKey` | 개인 키(private key)가 포함되어 있어 보낼 수 없어요. 해당 부분을 지워 주세요. |
+| `rubberDuck.me` | 나 |
+| `rubberDuck.question` | 질문 |
+| `rubberDuck.thinking` | AI가 질문을 고르고 있어요 (최대 20초) |
+| `rubberDuck.turns` | 턴 {turnCount} / {maxTurns} |
+| `rubberDuck.remaining` | {count}번 더 답할 수 있어요. |
+| `rubberDuck.resend` | 다시 보내기 |
+| `rubberDuck.stuck.title` | 두 번 연속 막혔어요. |
+| `rubberDuck.stuck.hint` | 힌트를 한 단계 받아 볼까요? |
+| `rubberDuck.stuck.toHint` | 힌트 사다리로 |
+| `rubberDuck.stuck.summarize` | 여기서 정리하면 막힌 곳이 복습 카드가 돼요. |
+| `rubberDuck.stuck.continue` | 계속 설명 |
+| `rubberDuck.limitReached` | 설명을 모두 들었어요. 정리해 볼까요? |
+| `rubberDuck.finish` | 정리하고 끝내기 |
+| `rubberDuck.summarize` | 정리하기 |
+| `rubberDuck.summarizing` | AI가 대화를 정리하고 있어요 (최대 30초) |
+| `rubberDuck.endEmpty.title` | 설명 없이 끝낼까요? |
+| `rubberDuck.endEmpty.body` | 보낸 설명이 없어 정리할 내용이 없어요. 기록은 남지 않아요. |
+| `rubberDuck.endEmpty.confirm` | 끝내기 |
+| `rubberDuck.summary.gaps` | 막힌 곳 {count}개 |
+| `rubberDuck.summary.missed` | 무엇을 몰랐나 |
+| `rubberDuck.summary.why` | 왜 중요한가 |
+| `rubberDuck.summary.reviewQuestion` | 복습 질문 |
+| `rubberDuck.summary.viewCard` | 복습 카드 보기 |
+| `rubberDuck.summary.noGaps` | 막힌 곳 없이 설명했어요. |
+| `rubberDuck.summary.confirmed` | 잘 설명한 것 |
+| `rubberDuck.summary.note` | 한 줄 정리 |
+| `rubberDuck.summary.cardsCreated` | 복습 카드 {count}장을 만들었어요. 내일부터 복습에 나와요. |
+| `rubberDuck.summary.cardsPulled` | 이미 있던 카드 {count}장은 복습을 앞당겼어요. |
+| `rubberDuck.summary.evidence` | 막힌 곳 없이 3번 이상 설명했어요. 설명 능력 기록으로 남아요. |
+| `rubberDuck.summary.noSkill` | 기술이 정해지지 않은 대화라 레벨 기록에는 들어가지 않아요. |
+| `rubberDuck.summary.skipped` | 대화는 저장했어요. AI가 정리하지 못해 복습 카드는 만들지 않았어요. |
+| `rubberDuck.summary.history` | 대화 다시 보기 ({count}턴) |
+| `rubberDuck.toToday` | Today로 돌아가 완료하기 |
+| `rubberDuck.toReview` | 복습하러 가기 |
+| `rubberDuck.close` | 닫기 |
+| `rubberDuck.abandoned` | 정리하지 않고 끝난 대화예요. |
+| `rubberDuck.menu.abandon` | 그만두기 |
+| `rubberDuck.abandon.confirm` | 정리하지 않고 끝낼까요? 대화는 남지만 복습 카드는 만들지 않아요. |
+| `rubberDuck.previousAbandoned` | 하던 다른 러버덕은 끝내고 새로 시작했어요. |
+| `rubberDuck.sessionChanged` | 이 대화는 이미 끝났어요. 최신 상태를 불러왔어요. |
+| `rubberDuck.leftOpen` | 대화는 저장돼 있어요. Today에서 이어서 할 수 있어요. 하루가 지나면 자동으로 끝나요. |
+| `rubberDuck.targetGone` | 설명할 대상을 찾을 수 없어요. 삭제됐을 수 있어요. |
+| `rubberDuck.aiOff` | 러버덕은 AI가 되물어야 해서 지금은 시작할 수 없어요. 지난 대화는 볼 수 있어요. |
+
+#### SCR-READ-CODE
+
+- **목적**: 검증된 오픈소스의 파일 1개·줄 범위 1개를 **내 컴퓨터의 IDE에서** 읽도록 무엇을·왜·어디서·무엇을 보며 읽는지 안내하고, 읽은 뒤 러버덕으로 설명하게 한다(FR-27, RC-1~RC-4, AC-28). **코드 본문은 화면에 없다** — 서버는 저장소를 가져오지 않고 응답에도 코드가 없다(`05` §19.7). **진입**: SCR-TODAY `READ_CODE` 카드 "시작"·"코드 읽기로 돌아가기"(`/today/read/{readingKey}?taskId=`). **Sprint**: S3.
+- **레이아웃** (예: `READ.PETCLINIC.CONTROLLER_SLICE.001`)
+
+```text
+┌────────────────────────────────┐
+│ ← 코드 읽기                       │
+│ Spring PetClinic                  │
+│ Spring Boot 4.1, Java 17,         │
+│ Spring Data JPA · Apache-2.0       │
+│ 왜 이 저장소?                      │
+│ Spring 공식 샘플. 계층 구조와 테스트 │
+│ 작성법의 정석이고, 테스트 코드가     │
+│ main보다 많다.                     │
+│ 저장소 열기 ↗                       │
+│ ─────────────────────────────  │
+│ ① 내 컴퓨터로 가져오기               │
+│ ┌────────────────────────────┐ │
+│ │ git clone https://github.com/ │ │  monospace, 줄바꿈 없이
+│ │ spring-projects/spring-petcli…│ │  가로 스크롤
+│ └─────────────────────── [복사] ┘ │
+│ 기준 커밋 818c413  [전체 복사]      │
+│ 줄 번호는 이 커밋 기준이에요. 이미   │
+│ 받아 두었다면 같은 커밋인지 확인하세요.│
+│ ─────────────────────────────  │
+│ ② 이 파일을 여세요                   │
+│ src/main/java/org/springframework/  │
+│ samples/petclinic/owner/            │
+│ OwnerController.java    [경로 복사]  │
+│ 48~122줄 · 약 15분                   │
+│ ─────────────────────────────  │
+│ ③ 읽으면서 생각할 질문                │
+│ 이 컨트롤러는 Repository를 직접      │
+│ 주입받고 Service 계층이 없습니다.    │
+│ 이렇게 두어도 괜찮은 경우와 곤란해진 │
+│ 경우를 나눠서 설명해 보세요.         │
+│ 볼 지점                              │
+│ • 계층을 나누는 목적                   │
+│ • 트랜잭션 경계가 어디에 생기는가       │
+│ • 지금 내 프로젝트는 어느 쪽에 가까운가 │
+│ ─────────────────────────────  │
+│ ┌────────────────────────────┐ │
+│ │       읽었으면 설명하기          │ │  → SCR-RUBBER-DUCK
+│ └────────────────────────────┘ │
+│ 러버덕으로 설명을 마치면 완료예요.    │
+│ 여기까지 기록                         │
+└────────────────────────────────┘
+```
+
+- **라이선스가 명시되지 않은 저장소** (`repo.license = UNSPECIFIED`, 현재 `restbucks`, `19` §3.8): 저장소 이름 아래 `StatusBadge` warning `readCode.readOnly.badge`("읽기만 · 복사 금지") + 한 줄 `readCode.readOnly.note`. 콘텐츠에 `licenseNote`가 있으면 그 문장을 보여준다. 라이선스가 있는 저장소는 `license` 값을 그대로 텍스트로 보인다.
+- **코드가 없다는 안내**: ① 제목 바로 아래에 `readCode.noCodeNote`를 둔다. 줄 범위 미리보기·코드 발췌·검색 같은 표시는 만들지 않는다(서버에 코드가 없다).
+- **하위 경로**: `repo.subPath`가 비어 있지 않으면(예: restbucks `server`, modulith 예제 폴더) ② 경로 위에 `readCode.subPathNote`를 둔다 — 파일 경로는 그 폴더 기준이고 `cloneHint`가 그 폴더로 이동한다(`19` §3.8).
+- **컴포넌트**: `RepoHeader`(이름, 스택, 라이선스 또는 읽기 전용 배지, `why`, 외부 링크), `CloneHintBox`(monospace 한 줄, 가로 스크롤, 복사 버튼), `PinnedCommitRow`(앞 7자 + 전체 복사), `FilePathRow`(경로 + 복사, 줄 범위, 예상 시간), `ReadingQuestionCard`(`question`, `lookFor` 목록), `AiUnavailableBanner`.
+- **데이터**
+
+| 시점 | API / 동작 |
+|---|---|
+| 진입 | `GET /readings/{readingKey}` → `CuratedReadingView` (저장소·경로·줄 범위·질문·볼 지점·skill. **코드 본문 없음**) |
+| "복사" | 클립보드에 `cloneHint` / `pinnedCommit` 전체 / `path`. 토스트 `common.error.copied` |
+| "저장소 열기 ↗" | 브라우저 새 탭으로 `repo.url`을 연다(사용자의 브라우저가 여는 것이고 서버는 요청하지 않는다) |
+| "읽었으면 설명하기" | `/rubber-duck/new?targetType=CODE_READING&targetId={taskId}&skillCode={skills[0].code}&taskId={taskId}` + `extra`(저장소 이름, 파일 이름, 줄 범위, `question`) |
+| "여기까지 기록" | Today와 같은 `CompleteSessionSheet`(`today.partial.title`) → 세션 complete(0분이면 abandon) → `PATCH /today/tasks/{taskId}` `{status: DEFERRED, version}`. RC-1 조건이 없는 전이다 |
+
+  - 과제 완료는 이 화면에서 하지 않는다. 러버덕 정리 화면의 "Today로 돌아가 완료하기"로 간다(RC-1 — 읽었다는 체크만으로는 완료가 아니다).
+- **상태**
+  - Loading: 헤더·단계 블록 skeleton.
+  - Empty: 해당 없음.
+  - Error: `404 RESOURCE_NOT_FOUND`(콘텐츠에서 은퇴한 reading) → 전체 영역 `readCode.retired` + "Today로"(과제는 "여기까지 기록" 또는 Today에서 건너뛰기로 정리). `400 VALIDATION_FAILED`(key 형식) → SCR-NOT-FOUND. 그 외 공통.
+  - `taskId`가 없거나 UUID가 아님: 읽기 안내는 그대로 보이고 "읽었으면 설명하기"·"여기까지 기록"을 숨긴 뒤 `readCode.noTask`.
+  - **AI 불가**: 읽기 안내(①~③)는 모두 동작한다(`17` §3.10). 상단 `AiUnavailableBanner`, "읽었으면 설명하기" 비활성 + 버튼 아래 `ai.disabledReason`/`ai.balanceExhaustedReason`과 `readCode.aiOff`.
+  - Budget warning: 버튼 아래 `ai.budgetWarning.note`.
+  - Offline: 공통. 이미 받은 안내는 읽기 전용으로 보이고(복사는 동작) 버튼은 비활성.
+- **행동·검증**: 입력이 없다. `CloneHintBox`는 가로 스크롤을 허용하는 유일한 영역이다(A-11). 긴 경로는 `/`에서 줄을 바꾼다. 스크린 리더는 ①②③을 제목으로 읽는다.
+- **문구**
+
+| key | 문구 |
+|---|---|
+| `readCode.title` | 코드 읽기 |
+| `readCode.why` | 왜 이 저장소? |
+| `readCode.openRepo` | 저장소 열기 |
+| `readCode.step.clone` | 내 컴퓨터로 가져오기 |
+| `readCode.step.open` | 이 파일을 여세요 |
+| `readCode.step.think` | 읽으면서 생각할 질문 |
+| `readCode.copy` | 복사 |
+| `readCode.copyPath` | 경로 복사 |
+| `readCode.pinnedCommit` | 기준 커밋 {shortSha} |
+| `readCode.pinnedCommit.copy` | 전체 복사 |
+| `readCode.pinnedCommit.note` | 줄 번호는 이 커밋 기준이에요. 이미 받아 두었다면 같은 커밋인지 확인하세요. |
+| `readCode.subPathNote` | 경로는 저장소 안 `{subPath}` 폴더 기준이에요. 위 명령이 그 폴더로 이동해요. |
+| `readCode.range` | {start}~{end}줄 · 약 {minutes} |
+| `readCode.lookFor` | 볼 지점 |
+| `readCode.explain` | 읽었으면 설명하기 |
+| `readCode.explain.note` | 러버덕으로 설명을 마치면 완료예요. |
+| `readCode.partial` | 여기까지 기록 |
+| `readCode.readOnly.badge` | 읽기만 · 복사 금지 |
+| `readCode.readOnly.note` | 라이선스가 명시되지 않은 저장소예요. 읽기만 하고 코드를 가져다 쓰지 마세요. |
+| `readCode.noCodeNote` | 코드는 DevPilot이 아니라 내 컴퓨터에서 봐요. |
+| `readCode.retired` | 더 이상 제공하지 않는 읽기 과제예요. Today에서 과제를 정리해 주세요. |
+| `readCode.noTask` | Today의 코드 읽기 과제에서 열면 설명하고 완료할 수 있어요. |
+| `readCode.aiOff` | 설명(러버덕)은 AI가 필요해 지금은 할 수 없어요. 읽기는 계속할 수 있어요. |
+
+#### SCR-PROJECTS
+
+- **목적**: 배운 것을 적용할 사이드 프로젝트를 한 화면에서 보고·등록·수정·삭제한다(FR-26, SP-1~SP-3, AC-27). Today의 `PROJECT_TASK`와 코드 리뷰, 러버덕 `PROJECT_WORK`의 대상이다. **진입**: More > 사이드 프로젝트, rail Projects, SCR-PLAN "사이드 프로젝트 보기". **Sprint**: S1 (러버덕 버튼 S3).
+- **레이아웃 (목록)**
+
+```text
+┌────────────────────────────────┐
+│ 사이드 프로젝트                    │
+│ 배운 것을 적용하는 내 프로젝트예요.  │
+│ Today 프로젝트 과제는 가장 최근에    │
+│ 고친 '진행 중' 프로젝트로 나와요.    │
+│ ┌────────────────────────────┐ │
+│ │ 주문 시스템          [진행 중] │ │
+│ │ Today 과제 대상                │ │
+│ │ 회원가입 · 상품 · 주문 · 취소까지 │
+│ │ 직접 만드는 학습용 백엔드        │ │
+│ │ Spring Boot, PostgreSQL         │ │
+│ │ github.com/example/order-service↗│
+│ │ 9월 30일 수정                 ⋮ │ │
+│ │ [이 프로젝트 작업 설명하기]      │ │
+│ └────────────────────────────┘ │
+│ ┌────────────────────────────┐ │
+│ │ 게시판 API        [잠시 멈춤]  │ │
+│ │ 9월 12일 수정                 ⋮ │ │
+│ └────────────────────────────┘ │
+│ ┌────────────────────────────┐ │
+│ │          프로젝트 추가           │ │
+│ └────────────────────────────┘ │
+├────────────────────────────────┤
+│  Today   Review   Plan   More  │
+└────────────────────────────────┘
+```
+
+- **레이아웃 (등록·수정 시트)** — 같은 화면 위의 `ProjectEditSheet`(폭 < 600 bottom sheet, ≥ 600 대화상자, §6.7)
+
+```text
+┌────────────────────────────────┐
+│ 프로젝트 수정                      │
+│ 이름 *                            │
+│ [주문 시스템                    ] │
+│ 설명 (선택)                 34/1000│
+│ [회원가입 · 상품 · 주문 · 취소까지 ]│
+│ 저장소 주소 (선택)                  │
+│ [https://github.com/example/…   ] │
+│ 주소는 기록용이에요. DevPilot은     │
+│ 저장소 내용을 가져오지 않아요.       │
+│ 스택 (선택)                        │
+│ [Spring Boot, PostgreSQL        ] │
+│ 상태                               │  수정 때만
+│ [진행 중✓][잠시 멈춤][완료]          │
+│ ┌────────────────────────────┐ │
+│ │              저장               │ │
+│ └────────────────────────────┘ │
+└────────────────────────────────┘
+```
+
+- **목록 규칙**: 서버 정렬(`updatedAt` DESC, `id` DESC)을 그대로 쓴다. 목록에서 첫 번째 `ACTIVE` 프로젝트에 `projects.todayTarget` 라벨을 붙인다(SP-3 — planner가 쓰는 프로젝트. `ACTIVE`가 여러 개여도 하나만 쓴다). `ACTIVE`가 하나도 없으면 목록 위에 `projects.noActive`(프로젝트 과제가 제안되지 않음)를 둔다. 상태 라벨은 §3.1 `SideProjectStatus`.
+- **`repoUrl`**: 링크 텍스트는 scheme을 뺀 주소, 탭하면 새 탭으로 연다(사용자 브라우저가 여는 것, 서버는 요청하지 않는다). 입력 시트에는 `projects.repoUrl.note`를 항상 둔다(FR-26, `07` §5.5).
+- **컴포넌트**: `ProjectCard`(이름, 상태 배지, Today 대상 라벨, 설명 2줄 말줄임, 스택, 저장소 링크, 수정일, `⋮` 메뉴, 러버덕 버튼), `ProjectEditSheet`, `StatusSegmented`, `DeleteProjectDialog`, `EmptyState`.
+- **데이터**
+
+| 시점 | API |
+|---|---|
+| 진입·화면 복귀 | `GET /side-projects?cursor=` (status 필터 없이 전체, 스크롤 페이지네이션) |
+| "프로젝트 추가" → "저장" | `POST /side-projects` `{name, description, repoUrl, stack}` (IK) → `201 SideProjectView` → 목록 맨 위에 추가 |
+| `⋮` "수정" → "저장" | `PATCH /side-projects/{sideProjectId}` — 바뀐 필드만 + `version`. 지운 선택 필드는 빈 문자열 `""`로 보낸다(서버가 `null`로 저장). `name`은 지울 수 없다 |
+| `⋮` "잠시 멈춤"·"진행 중으로"·"완료로" | `PATCH /side-projects/{sideProjectId}` `{status, version}` |
+| `⋮` "삭제" | 대화상자 → `DELETE /side-projects/{sideProjectId}` → `204` → 목록에서 제거 |
+| "이 프로젝트 작업 설명하기" (S3) | `/rubber-duck/new?targetType=PROJECT_WORK&targetId={sideProjectId}` + `extra`(이름, 설명) |
+
+- **상태**
+  - Loading: 카드 skeleton 2개.
+  - Empty: `projects.empty` + primary "주문 시스템으로 시작"(시트를 이름 `onboarding.project.defaultName`·설명 `onboarding.project.defaultDescription`으로 채워 연다). 온보딩에서 건너뛴 사용자가 여기서 만든다(SP-1).
+  - Error (조회): 공통. 페이지 추가 로드 실패 → 목록 끝 "다시 불러오기" 행.
+  - Error (저장): `400 VALIDATION_FAILED` field `repoUrl`(`URL`) → 그 필드 아래 인라인 `validation.url`, `NOT_BLANK_IF_PRESENT`(이름을 비움) → 이름 아래 `validation.required`. `422 SECRET_DETECTED_BLOCKED` → 시트 하단 인라인 `projects.secretBlocked`(이름·설명·스택 중 개인 키). `409 CONCURRENT_MODIFICATION` → 최신 값을 다시 읽어 시트를 채우고 토스트 `projects.reloaded`. `404 RESOURCE_NOT_FOUND`(다른 곳에서 삭제) → 시트 닫고 토스트 + 목록 재조회. 입력은 유지한다.
+  - AI unavailable: 목록·등록·수정·삭제는 영향 없다. "이 프로젝트 작업 설명하기"만 비활성 + `ai.disabledReason`(§6.5). 이 화면에는 AI 배너를 두지 않는다.
+  - Offline: 공통.
+- **행동·검증**
+  - §3.2: 이름 1~100, 설명 ≤ 1000, 저장소 주소 http(s)·≤ 500, 스택 ≤ 300. "저장"은 필수 입력 충족 + 변경이 있을 때만 활성. 입력 중 이탈 → §6.8.
+  - 삭제 확인 대화상자 `projects.delete.*`: 이 프로젝트로 만든 Today 과제·코드 리뷰는 **남고 연결만 끊긴다**는 것, 지난 러버덕 대화도 남는다는 것, 되돌릴 수 없다는 것을 알린다. 지우는 것이 마지막 `ACTIVE` 프로젝트면 `projects.delete.lastActive`를 덧붙인다.
+  - 상태를 `DONE`·`PAUSED`로 바꾸면 토스트 `projects.statusChanged`(다음 Today 계획부터 이 프로젝트로 과제를 만들지 않음). 이미 만든 과제는 그대로다.
+  - 수정은 `updatedAt`을 바꾸므로 "Today 과제 대상"이 이 프로젝트로 옮겨 갈 수 있다. 저장 후 목록을 다시 읽어 라벨을 갱신한다.
+- **문구**
+
+| key | 문구 |
+|---|---|
+| `projects.title` | 사이드 프로젝트 |
+| `projects.subtitle` | 배운 것을 적용하는 내 프로젝트예요. Today 프로젝트 과제는 가장 최근에 고친 '진행 중' 프로젝트로 나와요. |
+| `projects.todayTarget` | Today 과제 대상 |
+| `projects.noActive` | 진행 중인 프로젝트가 없어서 Today가 프로젝트 과제를 제안하지 않아요. |
+| `projects.updatedAt` | {date} 수정 |
+| `projects.add` | 프로젝트 추가 |
+| `projects.explain` | 이 프로젝트 작업 설명하기 |
+| `projects.menu.edit` | 수정 |
+| `projects.menu.pause` | 잠시 멈춤 |
+| `projects.menu.activate` | 진행 중으로 |
+| `projects.menu.done` | 완료로 |
+| `projects.menu.delete` | 삭제 |
+| `projects.edit.titleNew` | 프로젝트 추가 |
+| `projects.edit.title` | 프로젝트 수정 |
+| `projects.field.name` | 이름 |
+| `projects.field.description` | 설명 (선택) |
+| `projects.field.repoUrl` | 저장소 주소 (선택) |
+| `projects.repoUrl.note` | 주소는 기록용이에요. DevPilot은 저장소 내용을 가져오지 않아요. |
+| `projects.field.stack` | 스택 (선택) |
+| `projects.field.stack.hint` | 예: Spring Boot, PostgreSQL |
+| `projects.field.status` | 상태 |
+| `projects.save` | 저장 |
+| `projects.saved` | 저장했어요. |
+| `projects.created` | 프로젝트를 추가했어요. |
+| `projects.statusChanged` | 다음 Today 계획부터 반영돼요. 이미 만든 과제는 그대로예요. |
+| `projects.delete.title` | 이 프로젝트를 삭제할까요? |
+| `projects.delete.body` | 이 프로젝트로 만든 Today 과제와 코드 리뷰는 남고 연결만 끊겨요. 지난 러버덕 대화도 남아요. 삭제는 되돌릴 수 없어요. |
+| `projects.delete.lastActive` | 진행 중인 프로젝트가 없으면 Today가 프로젝트 과제를 제안하지 않아요. |
+| `projects.delete.confirm` | 삭제 |
+| `projects.deleted` | 프로젝트를 삭제했어요. |
+| `projects.empty` | 사이드 프로젝트가 없어요. 프로젝트가 있어야 Today가 배운 것을 적용하는 과제를 제안해요. |
+| `projects.empty.start` | 주문 시스템으로 시작 |
+| `projects.secretBlocked` | 개인 키(private key)로 보이는 내용이 있어 저장할 수 없어요. 해당 부분을 지워 주세요. |
+| `projects.reloaded` | 다른 곳에서 바뀌어 최신 내용으로 다시 불러왔어요. |
 
 ---
 
@@ -2302,15 +3011,22 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | 2 | 이메일 입력 → "로그인" | SCR-LOGIN | `POST /api/v1/dev/token {email}` | allowlist 확인 → 서명 토큰 발급 (`supabase` 모드면 GitHub OAuth) |
 | 3 | — | SCR-AUTH-CALLBACK | `GET /me` | JIT: allowlist 통과 → `app_user` INSERT(기본값). 실패 시 403 → SCR-NOT-ALLOWED |
 | 4 | — | → `/onboarding/goal` | `onboardingCompleted=false` | — |
-| 5 | 목표 입력 → 다음 | 1단계 | draft 저장 | — |
+| 5 | 목표(이직 완료 목표일·지원 시작일) 입력 → 다음 | 1단계 | draft 저장 | — |
 | 6 | 시간 입력 → 다음 | 2단계 | draft 저장 | — |
-| 7 | 수준 선택 → "계획 만들기" | 3단계 | `POST /onboarding` (IK) | 한 트랜잭션: career_goal, self_assessed_level 전파, plan v1(ACTIVE)·milestone·plan_skill_target, seed review_item 복사(하루 5장 분산), `onboarding_completed_at`, 오늘 snapshot |
-| 8 | — | 4단계 | `meProvider` 갱신, `GET /plans/active`로 milestone 표시, draft 삭제 | — |
-| 9 | "그대로 시작" | SCR-TODAY | `GET /today` → `404 TODAY_NOT_GENERATED` → 생성 전 레이아웃. (S3) `GET /diagnostics/suggestions` | — |
-| 10 | 시간·컨디션 확인 → "오늘 계획 만들기" | SCR-TODAY | `POST /today/generate` `{availableMinutes, energyLevel, force:false}` (IK) | `daily_plan` + main task(PLANNED) + REVIEW task(due 있으면). 첫날은 seed 카드 5장이 due |
-| 11 | — | 생성 후 레이아웃 | 응답 표시 | — |
+| 7 | "짧은 진단으로 시작"(기본) 그대로 → 다음 | 3단계 | draft 저장(`runDiagnostic=true`) | — |
+| 8 | 이름 "주문 시스템" 그대로 → "계획 만들기" | 4단계 | `POST /onboarding` (IK) `{…, runDiagnostic: true, selfAssessments: [], sideProject: {name: "주문 시스템", description}}` | 한 트랜잭션: career_goal, `user_skill_state`(진단 모드 — `self_assessed_level` 모두 null), plan v1(ACTIVE, 9개 milestone)·plan_skill_target, seed review_item 복사(하루 5장 분산), `side_project`(ACTIVE), `onboarding_completed_at`, 오늘 snapshot → 커밋 후 `suggestedDiagnostics`(카테고리당 1개, 최대 5개) |
+| 9 | — | 5단계 | `meProvider` 갱신, `GET /plans/active`로 milestone 표시, draft 삭제. 진단 카드 "짧은 진단 {n}문제" | — |
+| 10 | "진단 시작" | SCR-DIAGNOSTICS | 제안 목록 표시 → "풀기" → §4.6 | — |
+| 11 | 진단을 풀었거나 "나중에 하고 시작" | SCR-TODAY | `GET /today` → `404 TODAY_NOT_GENERATED` → 생성 전 레이아웃. `GET /diagnostics/suggestions`(남은 진단이 있으면 카드) | — |
+| 12 | 시간·컨디션 확인 → "오늘 계획 만들기" | SCR-TODAY | `POST /today/generate` `{availableMinutes, energyLevel, force:false}` (IK) | `daily_plan` + main task(PLANNED) + REVIEW task(due 있으면). 첫날은 seed 카드 5장이 due. `deadline_risk`는 S2부터 계산 |
+| 13 | — | 생성 후 레이아웃 | 응답 표시 | — |
 
-실패 분기: 7에서 `VALIDATION_FAILED` → 오류 필드가 있는 단계로 이동. 네트워크 오류 → 같은 IK로 재시도(§6.6). `ONBOARDING_ALREADY_COMPLETED`(다른 탭에서 완료) → `meProvider` 갱신 → `/today`.
+분기:
+- 3단계에서 "진단 건너뛰고 직접 고르기": 7에서 13개 카테고리 수준을 고르고 8에 `runDiagnostic: false, selfAssessments: [13개]`를 보낸다([서버] 카테고리 값을 `self_assessed_level`에 전파). 5단계에는 진단 카드가 없고 primary는 "그대로 시작"이다. 자기평가 3 이상인 분야는 Today에서 진단 카드로 제안된다(§4.6).
+- 4단계에서 "건너뛰기" → 대화상자 "건너뛰고 계획 만들기" → 8을 `sideProject: null`로 보낸다([서버] `side_project` 없음 → planner가 `PROJECT_TASK`를 제안하지 않음, SP-1). 5단계에 `onboarding.plan.noProject`.
+- `diagnostics` flag가 꺼진 빌드(S1~S2): 3단계는 자기평가만 있다(위 첫 분기와 같음).
+
+실패 분기: 8에서 `VALIDATION_FAILED` → 오류 필드가 있는 단계로 이동(`sideProject.*` → 4단계, `selfAssessments` → 3단계, `careerGoal.*` → 1단계). 네트워크 오류 → 같은 IK로 재시도(§6.6). `ONBOARDING_ALREADY_COMPLETED`(다른 탭에서 완료) → `meProvider` 갱신 → `/today`.
 
 ### 4.2 Today → 세션 시작 → 완료
 
@@ -2321,6 +3037,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | 3a | (READING·EXPLAIN·PROJECT_TASK·RECALL) Today에서 공부 | 카드에 "진행 중 · n분째" | — |
 | 3b | (CHALLENGE) 문제 화면으로 이동 | `/training/challenges/{challengeId}?taskId=` → §4.5 | — |
 | 3c | (COACH_REVIEW) 코드 리뷰 요청으로 이동 | `/coach/new?taskId=` → §4.7 | — |
+| 3d | (READ_CODE) 코드 읽기 화면으로 이동 | `/today/read/{readingKey}?taskId=` → §4.15 | — |
 | 4 | "완료" 또는 Training/Coach의 "Today로 돌아가 완료하기" | `CompleteSessionSheet` 열기(기본 = 경과 분) | — |
 | 5 | 시간·회고 확인 → "완료 기록" | `POST /learning-sessions/{sessionId}/complete` `{actualMinutes, selfReflection}` (IK) | session `COMPLETED`, `SESSION_COMPLETED` 이벤트 |
 | 6 | — | `PATCH /today/tasks/{mainId}` `{status: COMPLETED, version}` | task `COMPLETED`, `completed_at` |
@@ -2328,6 +3045,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 - 5 성공 후 6이 실패하면: `GET /today` → 새 `version`으로 6을 1회 재시도 → 그래도 실패하면 토스트 `common.error.retry` 버튼으로 6만 다시 시도한다(세션 완료는 반복하지 않는다).
 - "여기까지 기록": 5와 같되(0분이면 `…/abandon`) 6의 status는 `DEFERRED`.
+- `READ_CODE`의 6이 `409 INVALID_STATE_TRANSITION`이면(RC-1 — 이 task의 러버덕이 `COMPLETED`가 아님) 재시도하지 않고 토스트 `today.readCode.needDuck` + SCR-READ-CODE로 안내한다. task는 `IN_PROGRESS`로 남고, 러버덕을 마친 뒤 Today "완료"는 진행 중 세션이 없으면 5를 건너뛰고 6만 보낸다. 클라이언트는 러버덕 `COMPLETED`를 확인했을 때만 "완료"를 보이므로(§3.5) 드문 경우다.
 - "오늘은 건너뛰기"(PLANNED): `PATCH … {status: SKIPPED}` → 토스트 "되돌리기"(→ `PLANNED`).
 - `mainTask = null`(후보 없음): 1~7 대신 복습 줄과 "계획 조정"만 보인다(§3.5).
 - 재생성(§3.5 SCR-TODAY 행동 규칙): main `IN_PROGRESS`에서 `force=true`면 [서버] 기존 main `DEFERRED` → 새 main INSERT. 클라이언트는 진행 중 세션을 직접 닫지 않는다. 새 main의 "시작"에서 세션의 `learningTaskId`가 다르므로 새 세션을 시작하고, 서버가 기존 세션을 ABANDONED로 닫는다(I-05).
@@ -2384,10 +3102,23 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 ### 4.6 진단 challenge
 
+**A. 온보딩 짧은 진단(기본, FR-02 진단 모드)**
+
 | # | 사용자 | API | [서버] |
 |---|---|---|---|
-| 1 | 온보딩 3단계에서 Java "혼자 가능"(3) 선택 | `POST /onboarding` | Java skill들의 self_assessed_level=3 |
-| 2 | Today(생성 전) 진입 | `GET /diagnostics/suggestions` | 자기평가 ≥ 3 카테고리마다 DIAGNOSTIC challenge 1개 |
+| 1 | 온보딩 3단계 "짧은 진단으로 시작" → 4단계 → "계획 만들기" | `POST /onboarding` `{runDiagnostic: true, selfAssessments: []}` | `self_assessed_level` 모두 null → 커밋 후 `suggestedDiagnostics`: 자기평가가 활성인 행이 있는 category를 선언 순서로, category당 1개, 최대 5개(`05` §4.2) |
+| 2 | 5단계 "진단 시작" | SCR-DIAGNOSTICS (`GET /diagnostics/suggestions`) | 같은 규칙으로 다시 계산(이미 attempt가 있는 category 제외) |
+| 3 | "풀기" | `POST /challenges/{challengeId}/attempts` (IK) | attempt STARTED (purpose=DIAGNOSTIC) |
+| 4 | §4.5의 3~8과 같음 | — | — |
+| 5 | 결과 확인 → SCR-DIAGNOSTICS로 돌아와 다음 문제 | 결과 카드 + 진단 결과 줄 | `DIAGNOSTIC_PASSED` / `DIAGNOSTIC_FAILED`(`06` §7.4) — 이 분야의 시작 수준이 정해진다 |
+| 6 | 남은 문제는 "건너뛰기" 또는 나중에 | `localStorage`에 기록. Today 진단 카드가 남은 문제를 계속 보여준다 | 풀지 않은 분야는 4축 0에서 시작 |
+
+**B. 자기평가 후 확인(FR-15)**
+
+| # | 사용자 | API | [서버] |
+|---|---|---|---|
+| 1 | 온보딩 3단계 "진단 건너뛰고 직접 고르기"에서 Java "혼자 가능"(3) 선택 | `POST /onboarding` `{runDiagnostic: false, selfAssessments: [...]}` | Java skill들의 self_assessed_level=3 |
+| 2 | Today(생성 전) 진입 | `GET /diagnostics/suggestions` | 자기평가 ≥ 3 카테고리마다 DIAGNOSTIC challenge 1개(최대 5개) |
 | 3 | 진단 카드 "풀기" | `POST /challenges/{challengeId}/attempts` (IK) | attempt STARTED (purpose=DIAGNOSTIC) |
 | 4 | §4.5의 3~8과 같음 | — | — |
 | 5 | 결과 확인 | 결과 카드 + 진단 결과 줄 | CORRECT & max ≤ QUESTION_ONLY → `DIAGNOSTIC_PASSED` → K·I = max(현재, min(3, 3)) / 그 외 → `DIAGNOSTIC_FAILED` → self_assessment_active=false |
@@ -2395,6 +3126,7 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 
 - 결과 줄 문구: 통과 `diagnostics.result.passed` = "확인됐어요. 이 분야는 기초 과제를 건너뛰어요.", 미통과 `diagnostics.result.failed` = "이 분야는 기록을 쌓으며 다시 올려 가요. 괜찮아요." (미통과를 "실패"라고 쓰지 않는다)
 - skill 레벨은 SCR-SKILL-DETAIL 이력에 `DIAG_PASSED`로 남는다.
+- 진단 답안 평가는 AI가 필요하다. AI 불가이면 문제 보기·설명은 되지만 제출이 막힌다(SCR-DIAGNOSTICS `diagnostics.aiNote`).
 
 ### 4.7 Project Coach (self-review 먼저 → 분석 polling → 응답 → 힌트 → 정리 → 마치기 → discoveredBy)
 
@@ -2424,13 +3156,14 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 |---|---|---|---|
 | 1 | Plan → "계획 구조 바꾸기" | `GET /plans/active`, `GET /plans/active/budget` | — |
 | 2 | milestone 기간 연장, 권장 milestone 하나 삭제, 이유 입력 | 클라이언트 검증 | — |
-| 3 | "변경 미리보기" | `POST /plans/{planId}/replan/preview` `{reason, version, milestones, acceptedDeferrals: [], acceptedTargetReductions: [], restoredDeferrals: []}` (IK 없음) | budget·risk 계산(`06` §3~4), risk ≥ HIGH면 제안(`06` §4.4). 저장 없음 |
+| 3 | "변경 미리보기" | `POST /plans/{planId}/replan/preview` `{reason, version, milestones, acceptedDeferrals: [], acceptedTargetReductions: [], restoredDeferrals: [], acceptedTargetRaises: []}` (IK 없음) | budget·risk 계산(`06` §3~4). risk ≥ HIGH면 축소 제안, risk LOW이고 필요 ÷ 가능 ≤ 70%면 확장 제안(`06` §4.4, 둘은 배타). 저장 없음 |
 | 4 | 결과: 위험 [빠듯함], defer 제안 2개·축소 제안 1개. defer 1개만 체크 → "선택 반영해 다시 계산" | 같은 preview + `acceptedDeferrals: [선택]` | 선택 적용 후 risk 계산(저장 없음) |
-| 5 | "새 버전(v4)으로 저장" | `POST /plans/{planId}/replan` `{version, reason, milestones, acceptedDeferrals:[…], acceptedTargetReductions:[], restoredDeferrals:[]}` (IK) | 한 트랜잭션: v3 SUPERSEDED → flush → v4 ACTIVE, milestones(새 UUID), plan_skill_target 복사 + defer 적용, `PLAN_REPLANNED`, snapshot upsert |
+| 5 | "새 버전(v4)으로 저장" | `POST /plans/{planId}/replan` `{version, reason, milestones, acceptedDeferrals:[…], acceptedTargetReductions:[], restoredDeferrals:[], acceptedTargetRaises:[]}` (IK) | 한 트랜잭션: v3 SUPERSEDED → flush → v4 ACTIVE, milestones(새 UUID), plan_skill_target 복사 + defer 적용, `PLAN_REPLANNED`, snapshot upsert |
 | 6 | — | `/plan` + 토스트, `GET /plans/active`(v4, 새 risk) | — |
 
 - 5에서 `409 CONCURRENT_MODIFICATION`/`PLAN_NOT_ACTIVE`(다른 탭이 먼저 저장, AC-24) → 대화상자 `replan.conflict` → 최신 계획 재조회 후 편집 다시 시작.
-- S1: 3·4 없이 2 → 5("새 버전으로 저장", 세 목록 빈 배열, 이유 필수).
+- S1: 3·4 없이 2 → 5("새 버전으로 저장", 네 목록 빈 배열, 이유 필수). 미리보기·제안은 S2부터다.
+- 여유가 있어 확장 제안이 나오는 흐름과, 목표일을 당겨 축소 제안이 나오는 흐름은 §4.17에 있다.
 - 목표 날짜 변경에서 시작: SCR-CAREER-GOAL `PUT /career-goal` → [서버] `replan_recommended=true` → "지금 조정" → 1로(`?from=goal`).
 
 ### 4.9 Weekly review
@@ -2508,6 +3241,70 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 - 복귀 배너는 닫기 버튼이 없고 한 줄이다. 다른 화면(Dashboard 등)에는 복귀 관련 표시가 없다.
 - 밀린 due 카드는 상한 안에서 overdue 순으로 나온다(`06` §6.5). "밀린 카드 N장" 같은 합계는 어디에도 표시하지 않는다.
 
+### 4.15 코드 읽기 → 러버덕 → 완료 (READ_CODE, RC-1)
+
+| # | 사용자 | 화면 | API / 클라이언트 | [서버] |
+|---|---|---|---|---|
+| 1 | Today `READ_CODE` 카드 "시작" | SCR-TODAY | `PATCH /today/tasks/{taskId}` `{status: IN_PROGRESS}` → `POST /learning-sessions` `{learningTaskId}` (IK) | task `IN_PROGRESS`, session `IN_PROGRESS`, `SESSION_STARTED` |
+| 2 | — | SCR-READ-CODE | `GET /readings/{readingKey}` | `CuratedReadingRegistry`에서 조회. 저장소 fetch 없음, AI 없음 |
+| 3 | `cloneHint` 복사 → 터미널에서 clone·checkout → IDE로 파일 열어 줄 범위 읽기, 볼 지점 확인 | (내 컴퓨터) | 클립보드만 | 없음 — 서버는 코드를 보지 않는다 |
+| 4 | "읽었으면 설명하기" | SCR-RUBBER-DUCK ① | `extra`로 저장소·파일·줄 범위·질문 전달 | — |
+| 5 | 설명 작성 → "설명 보내기" | ① → ② | `POST /rubber-duck` `{targetType: CODE_READING, targetId: taskId, skillCode}` (IK) → `POST /rubber-duck/{id}/turns` `{explanation}` (IK) | 세션 `IN_PROGRESS`(`learning_session_id` = 1의 세션) → `SecretMasker` → 예산 확인 → `RUBBER_DUCK`(가드 CodeLeak·Language·NoAnswer) → turn 1 저장 |
+| 6 | 질문에 답 → "보내기" (2~4번) | ② | `POST …/turns` (IK) | turn n 저장. 2턴 연속 "모르겠다"면 `suggestHint=true` → 이 대상은 정리로 안내 |
+| 7 | "정리하고 끝내기"(또는 5턴 도달 → "정리하기") | ③ | `POST /rubber-duck/{id}/complete` (IK) | `RUBBER_DUCK_SUMMARY` → `summary_json`, `COMPLETED`. gap마다 복습 카드(`source_type = RUBBER_DUCK`, `EXPLAIN`, 첫 due 다음 plan-day — 같은 개념 카드가 있으면 due만 당김). skill이 있으면 `RUBBER_DUCK_COMPLETED` |
+| 8 | 정리 확인 | ④ | 서버가 `READ_CODE` 과제를 `COMPLETED`로 바꾼다(`05` §9.8) | Today로 돌아오면 과제가 "완료" |
+| 9 | "Today로 돌아가 완료하기" → 시간·회고 → "완료 기록" | SCR-TODAY 완료 시트 | `POST /learning-sessions/{id}/complete` (IK) → `PATCH /today/tasks/{taskId}` `{status: COMPLETED}` | RC-1 확인: 이 task를 대상으로 한 `COMPLETED` 러버덕 있음 → task `COMPLETED` |
+
+분기:
+- AI 불가(`DISABLED`·`BALANCE_EXHAUSTED`): planner가 새 `READ_CODE`를 내지 않는다. 이미 있는 task는 1~3까지 되고 4의 버튼이 막힌다 → "여기까지 기록"(`DEFERRED`) 또는 Today "오늘은 건너뛰기".
+- 7에서 정리 AI 실패: 200 + `summarySkippedReason` → ④에 "대화는 저장했어요" 안내. 세션은 `COMPLETED`이므로 9로 갈 수 있다. 복습 카드는 생기지 않는다.
+- 5·6에서 `422 SECRET_DETECTED_BLOCKED`: 개인 키가 든 설명은 저장·AI 전송 없이 거절된다. 지우고 다시 보낸다.
+- 9를 거치지 않고 Today로 돌아온 경우: Today가 8의 기록으로 러버덕 `COMPLETED`를 확인해 "완료"를 보인다(§3.5). 기록이 없는 기기에서는 "코드 읽기로 돌아가기"만 보인다.
+- 이 흐름에서 "완료"를 누르는 것은 **읽었다는 체크가 아니다**. 설명(러버덕 1회)이 완료 조건이다(RC-1).
+
+### 4.16 v3 핵심 루프 하루 — 읽는다 → 설명한다 → 만든다 → 반복한다
+
+전제(예시): 사용자는 온보딩에서 이직 완료 목표일을 등록했고(예: 2027-04-01), 사이드 프로젝트 "주문 시스템"을 만들었다. 짧은 진단으로 Spring MVC REST API의 planning KNOWLEDGE가 3이 됐고 이 기술을 집중 기술로 골랐다(`projectNeed`). 현재 milestone은 "기반 다지기"이고 petclinic은 아직 받아 두지 않았다. 과제 유형은 planner가 정한다(`06` §5.3) — 아래는 그 규칙대로 나온 하루의 예다.
+
+| 시점 | 사용자 | 화면 | DevPilot이 하는 일 |
+|---|---|---|---|
+| 아침 ① (2분) | Today 열기 → 45분·보통 → "오늘 계획 만들기" | SCR-TODAY | Spring MVC REST API가 1순위. 풀 challenge가 없고 KNOWLEDGE ≥ 1이며 reading이 있어 **`READ_CODE`**: "Spring PetClinic 읽기 — OwnerController.java 48~122줄", 약 15분. 이유 "Spring PetClinic에서 같은 문제를 어떻게 풀었는지 먼저 봅니다", "기반 다지기 milestone 핵심 항목". 복습 6장 줄 |
+| 아침 ② 읽는다 (15분) | "시작" → `cloneHint` 복사 → 터미널에서 clone·checkout → 로컬 IDE에서 petclinic `OwnerController.java` 48~122줄을 읽으며 볼 지점 3개 확인 | SCR-READ-CODE, 내 IDE | 무엇을·왜·어디를 읽는지만 안내한다. 코드는 사용자 컴퓨터에만 있다 |
+| 아침 ③ 설명한다 (10분) | "읽었으면 설명하기" → "이 컨트롤러는 조회만 해서 Service가 필요 없다"고 설명 → AI "조회만 한다고 하셨는데, 폼 제출을 처리하는 메서드는 어디에 규칙을 두고 있나요?" → 답 → AI "그 저장이 실패하면 어디까지 되돌려지나요?" → "잘 모르겠어요" → … 4턴 → "정리하고 끝내기" | SCR-RUBBER-DUCK | AI는 정답·"맞아요"를 말하지 않고 되묻기만 한다(RD-1). 정리: 막힌 곳 1개(조회·저장의 트랜잭션 경계) → **복습 카드 1장**(내일 due), 잘 설명한 것 1개 |
+| 아침 ④ | "Today로 돌아가 완료하기" → 25분 기록 | SCR-TODAY | 설명을 마쳤으므로 `READ_CODE` 완료(RC-1) |
+| 출근길 (5분) | 복습 6장 | SCR-REVIEW-SESSION | 교차 학습 순서로 출제 — 같은 기술 카드가 3장 연속 나오지 않는다(RV-INTERLEAVE) |
+| 저녁 ① 만든다 | "하나 더 하기" → 40분·보통 | SCR-TODAY | 아침에 완료한 reading은 후보에서 빠지고(`06` §5.3), KNOWLEDGE ≥ 2 + `projectNeed` + 컨디션 보통 + `ACTIVE` 프로젝트가 있어 **`PROJECT_TASK`**: "주문 시스템에 Spring MVC REST API 적용하기"(SP-2) |
+| 저녁 ② (30분) | "시작" → 내 IDE에서 주문 시스템에 petclinic과 같은 계층 구조로 상품 조회 API를 만든다 | 내 IDE | — |
+| 저녁 ③ 설명한다 (10분, 권장) | "러버덕으로 설명하기"(`PROJECT_WORK`) → "왜 여기에는 Service를 두었는지" 3턴 설명 → 정리 → "Today로 돌아가 완료하기" | SCR-RUBBER-DUCK, SCR-TODAY | 막힌 곳 0개·3턴이면 설명 능력 증거로 남는다(RD-5). `PROJECT_TASK`의 완료 조건은 아니다 |
+| 다음 날 아침 반복한다 (5분) | 복습 | SCR-REVIEW-SESSION | 어제 러버덕에서 막힌 "조회만 하는 메서드에 트랜잭션을 여는 이유를 설명해 보세요" 카드가 다른 기술 카드 사이에 섞여 나온다(교차 학습). "다시"를 누르면 더 짧은 간격으로 또 나온다 |
+| 주말 (선택) | 주문 시스템 코드를 붙여넣고 코드 리뷰 요청(사이드 프로젝트 "주문 시스템" 선택) | SCR-COACH-NEW | (S4 이후) 먼저 스스로 우려점을 쓰고 질문을 받는다(FR-12) |
+
+- 이 하루가 쌓인 결과물은 **주문 시스템**이고, 러버덕에서 설명해 본 기록과 복습 카드가 면접에서 설명할 소재가 된다(`01` §5 "증거가 된다").
+- AI가 멈춘 날에는 `READ_CODE`가 제안되지 않고, 복습·계획·Today(READING·EXPLAIN·PROJECT_TASK)는 그대로 돈다.
+
+### 4.17 기한 역산 — 촉박할 때와 여유 있을 때
+
+**A. 촉박할 때 — 중요한 것 위주로 줄인다**
+
+| # | 사용자 | 화면 | API | [서버] |
+|---|---|---|---|---|
+| 1 | 설정 > 이직 목표에서 이직 완료 목표일을 3개월 앞당김 → 저장 → "지금 조정" | SCR-SETTINGS → SCR-CAREER-GOAL | `PUT /career-goal` | goal 저장, `replan_recommended = true`(자동 replan 없음) |
+| 2 | 권장 milestone(템플릿 7~9: 구조 정리·배포와 운영·면접 준비) 기간을 줄이고 이유 입력 → "변경 미리보기" | SCR-REPLAN ①→② | `POST …/replan/preview` (IK 없음) | risk **HIGH** → 축소 제안: MUST 목표 1단계 낮춤(3 미만으로는 제안 안 함) → SHOULD 기술 defer(중요도 낮은 것부터). 제안은 skill 목표 단위다(`06` §4.4) |
+| 3 | 제안 몇 개 체크 → "선택 반영해 다시 계산" → "새 버전으로 저장" | SCR-REPLAN ② | preview → `POST …/replan` `{acceptedDeferrals, acceptedTargetReductions}` (IK) | 새 plan version, snapshot |
+| 4 | 다음 날 Today | SCR-TODAY | `POST /today/generate` | risk ≥ HIGH면 MUST 가중·LATER 제외, 이유 "마감 위험이 높아 필수 항목 우선" |
+
+**B. 여유 있을 때 — 깊이를 더한다**
+
+| # | 사용자 | 화면 | API | [서버] |
+|---|---|---|---|---|
+| 1 | 평일 학습 시간을 늘렸고 몇 주 꾸준히 해서 Plan에 "여유가 있어요" | SCR-PLAN | `GET /plans/active/budget` | risk **LOW**, 필요 ÷ 가능 66% |
+| 2 | "계획 조정" → 이유 입력 → "변경 미리보기" | SCR-REPLAN ③ | `POST …/replan/preview` | 확장 제안: 미뤄 둔 권장 항목 복원(`RESTORE_DEFERRED`) → MUST 목표 +1(`RAISE_TARGET`, 예: Spring Transaction 설명 3 → 4). 확장 후 비율이 90%를 넘지 않는 데까지만 |
+| 3 | "시스템 설계 · 캐시 다시 넣기", "Spring Transaction 설명 3 → 4" 체크 → "선택 반영해 다시 계산" → "새 버전으로 저장" | SCR-REPLAN ③ | `POST …/replan` `{restoredDeferrals: ["SYSTEM_DESIGN.CACHE"], acceptedTargetRaises: [{skillCode: "SPRING.TRANSACTION", axis: "EXPLANATION", newTarget: 4}]}` (IK) | 복원 skill `deferred = false`, 목표 올린 축 `adjustment = USER_EDITED`, 새 version |
+| 4 | 다음 Today부터 | SCR-TODAY | — | 목표와 현재 수준의 차이가 커진 기술이 더 자주, 한 단계 어려운 과제로 나온다(`06` §5.3·§5.4). 복원한 기술도 다시 후보가 된다 |
+
+- 제안은 저장하지 않고 자동 적용하지 않는다. 사용자가 체크한 것만 저장된다(FR-05).
+- 필요 ÷ 가능이 70%~80%이거나 위험이 보통이면 어느 쪽 제안도 없다(`replan.preview.noSuggestions`).
+
 ---
 
 ## 5. 오류 코드 → UI 처리
@@ -2557,16 +3354,16 @@ private key 정규식(서버와 동일): `-----BEGIN ((RSA|EC|DSA|OPENSSH|ENCRYP
 | 429 | `AI_MONTHLY_BUDGET_EXCEEDED` | 이번 달 AI 예산을 모두 썼어요. 다음 달에 다시 쓸 수 있어요. | 대화상자 + `meProvider` 갱신(→ `DISABLED` 배너) | 확인 |
 | 429 | `AI_CONCURRENCY_LIMIT` | 진행 중인 AI 작업이 끝난 뒤 다시 시도해 주세요. | 토스트 | 잠시 후 "다시 시도" |
 | 429 | `RATE_LIMITED` | 요청이 많아요. 잠시 후 다시 시도해 주세요. | 인증 API 전체에 적용(사용자당 120 req/min). 토스트 + API 계층이 `Retry-After` 초 동안 해당 요청 재시도와 모든 polling을 멈춘 뒤 재개한다. 입력 유지 | 잠시 후 다시 시도 |
-| 502 | `AI_OUTPUT_INVALID` | AI 응답을 처리하지 못했어요. 다시 시도해 주세요. | 토스트(hint 요청에서만 발생). 입력 유지 | "다시 시도"(새 키) |
+| 502 | `AI_OUTPUT_INVALID` | AI 응답을 처리하지 못했어요. 다시 시도해 주세요. | 토스트(hint 요청·러버덕 턴에서 발생 — 러버덕은 AI 질문이 답을 담아 가드에 걸린 경우 포함). 입력 유지 | "다시 시도"(새 키) |
 | 502 | `AI_REFUSED` | 이 요청은 AI가 처리할 수 없어요. 내용을 바꿔 다시 시도해 주세요. | 인라인(요청한 섹션) | 입력 수정 |
 | 503 | `AI_UNAVAILABLE` | AI 기능을 지금 쓸 수 없어요. 복습·계획·Today는 그대로 쓸 수 있어요. | 토스트 + `meProvider` 갱신 + 해당 화면 AI 배너 | 나중에 다시 시도 |
-| 504 | `AI_TIMEOUT` | AI 응답이 늦어요. 잠시 후 다시 시도해 주세요. | 토스트(hint 요청에서만 발생). 입력 유지 | "다시 시도"(새 키) |
+| 504 | `AI_TIMEOUT` | AI 응답이 늦어요. 잠시 후 다시 시도해 주세요. | 토스트(hint 요청·러버덕 턴에서 발생). 입력 유지 | "다시 시도"(새 키) |
 | 500 | `INTERNAL_ERROR` | 문제가 생겼어요. 잠시 후 다시 시도해 주세요. | 조회: 전체 화면 `ErrorView` / 행동: 대화상자 + 신고 정보 | "다시 시도" |
 | — | (클라이언트) `NETWORK_ERROR` | 연결이 불안정해요. 다시 시도해 주세요. | API 계층 자동 재시도(§6.6) 후 토스트 + 오프라인이면 배너 | "다시 시도"(같은 키) |
 
 ### 5.2 비동기 작업 `failureCode` (`AsyncFailureCode`)
 
-challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `FAILED` 상태에 표시한다. 문구 key `asyncFailure.<CODE>`.
+challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `FAILED` 상태와 러버덕 정리 실패(`summarySkippedReason`, SCR-RUBBER-DUCK ④)에 표시한다. 문구 key `asyncFailure.<CODE>`.
 
 | failureCode | 문구 | 재시도 버튼 |
 |---|---|---|
@@ -2580,7 +3377,7 @@ challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `F
 | `INTERRUPTED` | 서버가 다시 시작되어 작업이 중단됐어요. | 표시 |
 | `INTERNAL_ERROR` | 문제가 생겨 완료하지 못했어요. | 표시 |
 
-재시도 API: 제출 평가 `POST …/submissions/{submissionNo}/retry`, coach `POST /coach/reviews/{reviewId}/retry`. challenge 생성·evidence 초안·job 분석은 retry API가 없으므로 "다시 만들기/다시 요청"(새 요청)으로 처리한다. 재시도 버튼은 리소스의 `retryable=true`일 때만 보인다.
+재시도 API: 제출 평가 `POST …/submissions/{submissionNo}/retry`, coach `POST /coach/reviews/{reviewId}/retry`. 러버덕 정리는 재시도가 없어 재시도 버튼을 숨긴다(대화는 남는다). challenge 생성·evidence 초안·job 분석은 retry API가 없으므로 "다시 만들기/다시 요청"(새 요청)으로 처리한다. 재시도 버튼은 리소스의 `retryable=true`일 때만 보인다.
 
 ---
 
@@ -2618,6 +3415,8 @@ challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `F
 | | `SOLVED_INDEPENDENTLY` / `SOLVED_WITH_HINTS` / `PARTIAL` / `FAILED` / `ABANDONED` | 스스로 해결 / 힌트로 해결 / 일부 해결 / 다시 도전 / 그만둠 | success / info / info / neutral / neutral | — |
 | `AiBadge` | AI 생성 콘텐츠 | AI | neutral | `smart_toy` |
 | `JobFitBadge` | `READY` / `STRETCH` / `LATER` / null | 준비됨 / 도전 / 나중에 / 분류 불가 | success / info / neutral / neutral | — |
+| `SideProjectStatusBadge` | `ACTIVE` / `PAUSED` / `DONE` | 진행 중 / 잠시 멈춤 / 완료 | primary / neutral / success | — |
+| `ReadOnlyLicenseBadge` | 저장소 `license = UNSPECIFIED` | 읽기만 · 복사 금지 | warning | `lock` |
 
 - `MISSED`, `INCORRECT`, `FAILED`에는 danger 톤을 쓰지 않는다(U-3). danger는 `BUG`와 `CRITICAL`, 파괴적 버튼에만 쓴다.
 - 확신도 점(●○)은 장식이다. Semantics에서는 제외한다.
@@ -2683,7 +3482,7 @@ challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `F
 | `BudgetWarningNote` | `aiStatus == BUDGET_WARNING` | AI 실행 버튼 바로 아래 한 줄, 아이콘 `info` + `color.warning` 텍스트 | `ai.budgetWarning.note` = "이번 달 AI 사용량이 예산의 80%를 넘었어요." |
 | AI 버튼 비활성 사유 | `aiAvailable == false` | 버튼 아래 `bodySmall` | `DISABLED` → `ai.disabledReason` = "AI를 쓸 수 없어 잠시 막아 두었어요." / `BALANCE_EXHAUSTED` → `ai.balanceExhaustedReason` = "AI 잔액이 떨어져 잠시 막아 두었어요." |
 
-- 배너 표시 화면: SCR-TRAINING-LIST, SCR-CHALLENGE-DETAIL, SCR-TRAINING-ATTEMPT, SCR-COACH-LIST, SCR-COACH-NEW, SCR-COACH-DETAIL(마치기 전), SCR-EVIDENCE-DETAIL(초안 생성 중·실패), SCR-JOBS-LIST, SCR-JOB-NEW, SCR-MORE. **SCR-TODAY, SCR-REVIEW-\*, SCR-PLAN에는 표시하지 않는다**(AI 없이 동작하는 화면).
+- 배너 표시 화면: SCR-RUBBER-DUCK, SCR-READ-CODE, SCR-TRAINING-LIST, SCR-CHALLENGE-DETAIL, SCR-TRAINING-ATTEMPT, SCR-COACH-LIST, SCR-COACH-NEW, SCR-COACH-DETAIL(마치기 전), SCR-EVIDENCE-DETAIL(초안 생성 중·실패), SCR-JOBS-LIST, SCR-JOB-NEW, SCR-MORE. **SCR-TODAY, SCR-REVIEW-\*, SCR-PLAN, SCR-PROJECTS에는 표시하지 않는다**(AI 없이 동작하는 화면). 러버덕 진입 버튼만 있는 화면(SCR-TODAY, SCR-REVIEW-SESSION, SCR-REVIEW-ITEMS, SCR-SKILL-DETAIL, SCR-PROJECTS)은 배너 없이 그 버튼만 막고 버튼 아래 사유 1줄(`ai.disabledReason`/`ai.balanceExhaustedReason`)을 보인다.
 - `aiStatus`는 `meProvider` 갱신 시점(§2.4)에 바뀐다. AI 관련 429/503 응답을 받으면 즉시 갱신한다.
 
 ### 6.6 API 계층 (`lib/core/api/`)
@@ -2695,7 +3494,7 @@ challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `F
 | Idempotency-Key | **POST repository 메서드는 `IdempotencyKey key`를 필수 인자로 받는다**(타입으로 강제). 키는 사용자 행동 1회(버튼 탭)마다 UUID v4로 만들고, 그 행동의 notifier state에 `(key, bodyHash)`로 보관한다. 같은 행동을 같은 body로 재시도하면 같은 키, body가 바뀌면 새 키. 성공하면 폐기한다. 예외: `POST /plans/{planId}/replan/preview`는 키를 보내지 않는다 |
 | 중복 탭 방지 | 요청 중 버튼 비활성(`isSubmitting`) |
 | 재시도 | 응답이 없는 연결 오류·타임아웃만 자동 재시도: 최대 2회, 1초·3초 후. GET은 502/503/504도 같은 규칙으로 재시도. POST는 같은 키로만 재시도하고 5xx 응답은 재시도하지 않는다. `IDEMPOTENCY_IN_PROGRESS`는 1초 간격 최대 5회. `429 RATE_LIMITED`는 자동 재시도하지 않고 `Retry-After`까지 전역 `rateLimitedUntil`을 설정해 `AsyncPoller`를 일시정지한다 |
-| 타임아웃 | connect 10초, receive 기본 15초. 동기 AI 요청(`…/hints`, `POST /reviews/{id}/answer`(evaluate=true), `…/responses`)은 receive 30초 |
+| 타임아웃 | connect 10초, receive 기본 15초. 동기 AI 요청(`…/hints`, `POST /reviews/{id}/answer`(evaluate=true), `…/responses`, `POST /rubber-duck/{id}/turns`)은 receive 30초, `POST /rubber-duck/{id}/complete`(서버 30초)는 receive 45초 |
 | 오류 파싱 | `application/problem+json` → `ApiException(status, code, detail, traceId, fieldErrors)`. `traceId`는 body 또는 `X-Trace-Id` 헤더. 파싱 불가 응답은 `code = INTERNAL_ERROR` |
 | 모델 | freezed 수기 모델(DEC-12). 모든 enum에 `unknown` 값 + `@JsonKey(unknownEnumValue: …unknown)`. null 필드 허용 |
 | 재생 응답 | `Idempotent-Replayed: true` 응답 body는 최초 처리 시점 스냅샷이다. 202 재생이면 곧바로 `pollPath`를 GET해 최신 상태를 읽는다. 캘린더 토큰 재생은 `feedUrl=null`(§3.14) |
@@ -2710,7 +3509,7 @@ challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `F
 
 ### 6.8 이탈 확인 (`UnsavedChangesGuard`)
 
-- 대상: SCR-ONBOARDING ①~③, SCR-REVIEW-ITEM-EDIT, SCR-TRAINING-ATTEMPT(작성 중 설명·답안), SCR-COACH-NEW, SCR-COACH-DETAIL(작성 중 답변), SCR-REPLAN, SCR-CAREER-GOAL, SCR-WEEKLY-DETAIL(회고), SCR-EVIDENCE-DETAIL, SCR-JOB-NEW, SCR-SETTINGS.
+- 대상: SCR-ONBOARDING ①~④, SCR-RUBBER-DUCK(작성 중 설명), SCR-PROJECTS(편집 시트), SCR-REVIEW-ITEM-EDIT, SCR-TRAINING-ATTEMPT(작성 중 설명·답안), SCR-COACH-NEW, SCR-COACH-DETAIL(작성 중 답변), SCR-REPLAN, SCR-CAREER-GOAL, SCR-WEEKLY-DETAIL(회고), SCR-EVIDENCE-DETAIL, SCR-JOB-NEW, SCR-SETTINGS.
 - 앱 안 이동(go_router `onExit`, `PopScope`): 대화상자 `common.unsaved.title` = "저장하지 않은 내용이 있어요", `common.unsaved.body` = "나가면 입력한 내용이 사라져요.", 버튼 "계속 작성" / "나가기".
 - 브라우저 탭 닫기·새로고침: dirty 상태일 때 `beforeunload` 기본 확인을 켠다.
 
@@ -2730,9 +3529,9 @@ challenge 생성, 제출 평가, coach 분석, evidence 초안, job 분석의 `F
 | A-8 | 복습 단축키(데스크톱) | 텍스트 입력 포커스가 없을 때 `Space` 답 확인, `H` 힌트, `1` 다시 · `2` 어려움 · `3` 알맞음 · `4` 쉬움, `E` AI 채점 스위치. 평가 버튼에 숫자를 표시한다(§3.6) | widget test(키 이벤트) |
 | A-9 | 코드 입력 | `Tab`은 공백 4칸 입력. `Esc`를 누른 다음 `Tab`은 포커스 이동(포커스 갇힘 방지). 입력칸 아래 안내 `common.codeField.tabHint` = "Esc 후 Tab으로 다음 항목으로 이동" | 수동 |
 | A-10 | 글자 크기 | 브라우저·OS 글자 크기 200%에서 잘림·겹침 없음. `textScaler > 1.3` 또는 폭 < 360이면 복습 평가 버튼을 2×2 격자로 바꾼다 | golden test(textScale 2.0) |
-| A-11 | 폭 | 360px에서 모든 SCR 가로 스크롤 없음. 코드 뷰어만 내부 가로 스크롤 허용 | golden test(360×640) |
+| A-11 | 폭 | 360px에서 모든 SCR 가로 스크롤 없음. 코드 뷰어와 SCR-READ-CODE의 `cloneHint` 상자만 내부 가로 스크롤 허용 | golden test(360×640) |
 | A-12 | 움직임 | `MediaQuery.disableAnimations`면 skeleton shimmer·페이지 전환 애니메이션 끔 | 수동 |
-| A-13 | 한국어 입력 | 조합 중 Backspace·커서 이동·붙여넣기, 코드 붙여넣기 시 탭·공백 유지(SP-1). IME 조합 중에는 Enter 제출·단축키를 무시한다(`TextEditingValue.composing` 확인) | SP-1 체크리스트 |
+| A-13 | 한국어 입력 | 조합 중 Backspace·커서 이동·붙여넣기, 코드 붙여넣기 시 탭·공백 유지(스파이크 SP-1, `11` §4). IME 조합 중에는 Enter 제출·단축키를 무시한다(`TextEditingValue.composing` 확인) | 스파이크 SP-1 체크리스트 |
 | A-14 | 문서 언어 | `web/index.html`에 `<html lang="ko">` | 빌드 확인 |
 
 ---

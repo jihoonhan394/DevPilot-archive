@@ -1,6 +1,6 @@
 # 14. Architecture Decision Records
 
-> Status: Accepted (v2) · Last updated: 2026-09-18 · Related: `20-decisions-and-risks.md`, `03-system-architecture.md`, `11-development-roadmap.md` §4
+> Status: Accepted (v3) · Last updated: 2026-09-18 · Related: `20-decisions-and-risks.md`, `03-system-architecture.md`, `11-development-roadmap.md` §4
 >
 > 되돌리기 비용이 큰 결정과 그 이유를 기록한다. 결정을 바꿀 때는 기존 ADR을 고치지 않고 `Superseded by ADR-xxx`로 표시한 뒤 새 ADR을 추가한다. 적용된 기본값(DEC)은 `20-decisions-and-risks.md` §1, 확인할 외부 사실은 같은 문서 §3이 기준이다.
 
@@ -10,7 +10,7 @@
 
 | 항목 | 규칙 |
 |---|---|
-| 새 ADR | 다음 번호(ADR-036~)로 추가. 필드: Status, Date, Context, Decision, Alternatives considered, Consequences, Related DEC |
+| 새 ADR | 다음 번호(ADR-038~)로 추가. 필드: Status, Date, Context, Decision, Alternatives considered, Consequences, Related DEC |
 | Status 값 | `Proposed`(에이전트 초안, 사용자 승인 전) · `Accepted` · `Superseded by ADR-xxx` |
 | 에이전트 | 문서 모순·미정 결정을 발견하면 구현을 멈추고 `Proposed` ADR 초안을 PR로 올린다(`11-development-roadmap.md` §7). `Accepted`로 바꾸는 것은 사용자만 한다 |
 | Spike 결과 | SP-1~SP-5 결과는 해당 ADR의 Consequences에 "SP-n 결과 (날짜)" 줄로 추가한다 |
@@ -55,6 +55,8 @@
 | ADR-033 | 개발 토큰(devtoken) 인증 — **비공개 배포 전용** | Accepted (조건부) | DEC-01, DEC-08 |
 | ADR-034 | 배포는 수동 트리거, Actions는 이미지 빌드까지 | Accepted | DEC-13 |
 | ADR-035 | AI 지출 상한은 선불 잔액 + 앱 예산 (외부 하드 캡 없음) | Accepted | DEC-06 |
+| ADR-036 | 학습 루프: 읽는다 → 만든다 → 러버덕으로 설명한다 → 반복한다 | Accepted | DEC-24, DEC-26 |
+| ADR-037 | 날짜 없는 단계(M1/M2) | Accepted | DEC-25 |
 
 ---
 
@@ -245,7 +247,7 @@
 | zero-retention(무보존) 옵션 | **없음** |
 | 데이터 처리 위치 | **중국** |
 
-**결정(사용자, 2026-09-18)** — 학습용 개인 프로젝트이므로 위 세 항목을 수용하고 그대로 진행한다. 대신 (1) coach 제출 화면과 초대 안내에 이 사실을 명시한 동의 문구를 넣고(`02` SCR-COACH, `07` §8), (2) 회사 코드 금지·secret 마스킹·원문 30일 보존은 그대로 유지한다. 회사 코드나 고객 데이터를 다루게 되면 이 ADR을 다시 연다.
+**결정(사용자, 2026-09-18)** — 학습용 개인 프로젝트이므로 위 세 항목을 수용하고 그대로 진행한다. 대신 (1) coach 제출 화면과 초대 안내에 이 사실을 명시한 동의 문구를 넣고(`02` SCR-COACH-NEW, `07` §8), (2) 회사 코드 금지·secret 마스킹·원문 30일 보존은 그대로 유지한다. 회사 코드나 고객 데이터를 다루게 되면 이 ADR을 다시 연다.
 
 **Consequences** — 30일 후에는 coach 재분석이 불가능하고 finding만 남는다. 복습 문항에 코드를 넣지 않는다(`06` §9.4). 공급자를 바꾸면 이 표를 다시 채우고 동의 문구를 갱신한다.
 
@@ -397,7 +399,7 @@
 
 - **Status**: Accepted · **Date**: 2026-09-17 · **Related DEC**: DEC-18
 
-**Context** — 모바일 5분 복습(AC-10)은 2026-10-26 실사용 시작에 필요하다. 스토어 배포는 서명 키·심사·업데이트 운영을 늘린다.
+**Context** — 모바일 5분 복습(AC-10)은 실사용 시작(M1 완료, ADR-037)에 필요하다. 스토어 배포는 서명 키·심사·업데이트 운영을 늘린다.
 
 **Decision** — S2에 Flutter Web을 PWA(manifest, 아이콘, 홈 화면 추가 안내)로 제공한다. Android 앱 빌드·배포는 Later(`BL-CLI-30`). Web Push는 쓰지 않고, 학습 시작 알림은 캘린더 구독(ICS)으로 대신한다.
 
@@ -496,9 +498,9 @@
 
 - **Status**: Accepted (**임시** — 공개 전환 시 ADR-006 또는 후속 ADR로 교체) · **Date**: 2026-09-18 · **Related DEC**: DEC-07, DEC-13, DEC-19
 
-**Context** — **지금 당장 필요한 것은 개발용 DB와 초기 실사용(2026-10-26) 환경이다.** 사용자는 Rocky Linux 9(x86_64, Proxmox VM, Docker 29.6.1, Tailscale 1.98.8)와 그 위의 PostgreSQL 16을 이미 운영 중이고 tailnet이 있어, 계정 생성·도메인 구매 없이 오늘 바로 쓸 수 있다. 최종 목표는 공개 배포이지만(사용자 확인, 2026-09-18) 그건 나중 일이다.
+**Context** — **지금 당장 필요한 것은 개발용 DB와 초기 실사용 환경이다.** 사용자는 Rocky Linux 9(x86_64, Proxmox VM, Docker 29.6.1, Tailscale 1.98.8)와 그 위의 PostgreSQL 16을 이미 운영 중이고 tailnet이 있어, 계정 생성·도메인 구매 없이 오늘 바로 쓸 수 있다. 최종 목표는 공개 배포이지만(사용자 확인, 2026-09-18) 그건 나중 일이다.
 
-**Decision** — **S0~S2(~2026-10-26)의 임시 배포**로 기존 자체 서버에서 Docker Compose(api + Caddy)를 돌린다. 이 기간에는 공개 인터넷에 노출하지 않고 **Tailscale로만** 접근한다. TLS는 호스트에서 `tailscale serve --bg --https=443 http://127.0.0.1:18080`이 종단하고, Caddy는 `127.0.0.1:18080`에만 바인딩해 보안 헤더·정적 파일·`/api` 프록시만 한다. 도메인·ACME·공개 80/443을 쓰지 않는다. 이미지는 **`linux/amd64,linux/arm64` 멀티아치**로 빌드한다(현재 서버는 x86_64, OCI Always Free의 Ampere A1은 arm64 — 어느 쪽으로 가든 같은 태그를 쓴다). 서버 준비는 `prepare-server.sh`가 `deploy` 사용자·`/opt/devpilot`·systemd 유닛만 만들고 **OS 설정(dockerd, firewalld, sshd, podman)은 건드리지 않는다**(공용 서버). 백업은 서버에서 매일 `pg_dump -Fc`(7일 보관) + 로컬 PC가 주 1회 pull(8주 보관).
+**Decision** — **공개 전환 게이트(`11` §3.10) 전까지의 임시 배포**로 기존 자체 서버에서 Docker Compose(api + Caddy)를 돌린다. 이 기간에는 공개 인터넷에 노출하지 않고 **Tailscale로만** 접근한다. TLS는 호스트에서 `tailscale serve --bg --https=443 http://127.0.0.1:18080`이 종단하고, Caddy는 `127.0.0.1:18080`에만 바인딩해 보안 헤더·정적 파일·`/api` 프록시만 한다. 도메인·ACME·공개 80/443을 쓰지 않는다. 이미지는 **`linux/amd64,linux/arm64` 멀티아치**로 빌드한다(현재 서버는 x86_64, OCI Always Free의 Ampere A1은 arm64 — 어느 쪽으로 가든 같은 태그를 쓴다). 서버 준비는 `prepare-server.sh`가 `deploy` 사용자·`/opt/devpilot`·systemd 유닛만 만들고 **OS 설정(dockerd, firewalld, sshd, podman)은 건드리지 않는다**(공용 서버). 백업은 서버에서 매일 `pg_dump -Fc`(7일 보관) + 로컬 PC가 주 1회 pull(8주 보관).
 
 **Alternatives considered** — 처음부터 OCI + 구매 도메인으로 공개 배포(계정·도메인·인증 작업이 S0에 들어와 2주 이상 밀린다 — ADR-006으로 보존, 공개 전환 시 채택 후보) · Cloudflare Tunnel(공개 노출이 생겨 devtoken을 못 씀) · Caddy가 `tailscale cert`로 직접 발급(tailscaled 소켓 마운트 필요, `tailscale serve`가 더 단순).
 
@@ -534,11 +536,11 @@
 
 - **Status**: Accepted (**조건부** — 비공개 네트워크 배포에서만. 공개 전환 시 ADR-023의 Supabase Auth로 되돌아간다) · **Date**: 2026-09-18 · **Related DEC**: DEC-01, DEC-08
 
-**Context** — Supabase 도입을 연기하면서(ADR-030) Supabase Auth도 빠졌다. 그런데 S0부터 서버에 배포하고 2026-10-26부터 실사용하려면 인증 경로가 필요하다. 이 기간의 배포는 **tailnet 안에서만** 접근된다(ADR-031, 임시). 사용자는 1~3명이고 모두 소유자가 초대한다. **공개 배포는 나중에 하며, 그때는 이 방식을 쓸 수 없다**(사용자 확인, 2026-09-18).
+**Context** — Supabase 도입을 연기하면서(ADR-030) Supabase Auth도 빠졌다. 그런데 S0부터 서버에 배포하고 M1 완료부터 실사용하려면 인증 경로가 필요하다. 이 기간의 배포는 **tailnet 안에서만** 접근된다(ADR-031, 임시). 사용자는 1~3명이고 모두 소유자가 초대한다. **공개 배포는 나중에 하며, 그때는 이 방식을 쓸 수 없다**(사용자 확인, 2026-09-18).
 
 **Decision** — `devpilot.security.auth-mode = devtoken`을 **비공개 네트워크 배포의 기본값**으로 둔다. backend가 EC P-256 키(`DEVPILOT_DEV_JWT_KEY`, prod 필수)로 JWT를 서명하고 같은 키의 공개키로 검증한다. `POST /api/v1/dev/token {email}`은 allowlist에 있는 이메일에만 720시간 토큰을 발급하고, `GET /api/v1/dev/jwks.json`이 공개키를 제공한다. 검증·프로비저닝·allowlist·JIT 생성은 기존 경로(`03` §4.2~§4.3)를 그대로 쓴다. Flutter는 `AUTH_MODE=dev|supabase` dart-define으로 로그인 화면을 고른다. **Supabase Auth(GitHub OAuth)는 Later**이고, 그때 `auth-mode=supabase`로 바꾸면 이 endpoint는 등록되지 않는다.
 
-**Alternatives considered** — Supabase Auth를 10-26 전에 도입(S0가 2주 늘어남, 지금 필요 없는 외부 의존) · local profile 전용으로만 두고 운영은 Supabase(운영 인증이 없어 배포 자체가 불가) · Basic 인증(JWT 검증 경로를 두 벌 만들게 됨) · 인증 없음(allowlist·소유권 검사·감사 로그가 모두 무의미해짐).
+**Alternatives considered** — Supabase Auth를 실사용 전에 도입(S0가 2주 늘어남, 지금 필요 없는 외부 의존) · local profile 전용으로만 두고 운영은 Supabase(운영 인증이 없어 배포 자체가 불가) · Basic 인증(JWT 검증 경로를 두 벌 만들게 됨) · 인증 없음(allowlist·소유권 검사·감사 로그가 모두 무의미해짐).
 
 **Consequences** — **이 방식은 "tailnet 밖에서 endpoint에 닿을 수 없다"는 전제 위에서만 안전하다.** 공개 인터넷에 노출하는 순간 **허용 이메일만 알면 누구나 토큰을 받는다**(비밀번호도 OAuth도 없다).
 
@@ -576,3 +578,34 @@
 **Alternatives considered** — 피크 시각 규칙 구현(경계 버그 위험 대비 이득이 작다 — 과소 집계는 예산 가드를 무력화하지만 과대 집계는 안전하다) · eval 전용 계정·키 분리(계정 2개 관리, 잔액 2곳 충전) · 잔액 확인 없이 402만 처리(첫 402 전까지 사용자가 이유 없이 실패를 본다).
 
 **Consequences** — 실제 비용은 계산값의 절반 이하일 수 있다(항상 ×2). 잔액이 떨어지면 AI 기능 전체가 멈추므로(비-AI 기능은 정상, AC-12) 잔액 경고를 놓치지 않는 것이 운영 항목이다(`10` §11). eval 1회(≈ USD 0.28)가 월 예산의 10%다.
+
+## ADR-036 학습 루프: 읽는다 → 만든다 → 러버덕으로 설명한다 → 반복한다
+
+- **Status**: Accepted · **Date**: 2026-09-18 · **Related DEC**: DEC-24, DEC-26
+
+**Context** — 사용자 확인(2026-09-18): DevPilot은 **학습 도구**이고 목적은 개발 실력을 올리는 것이다. 실무에 쓰이는 것(회원가입·로그인·주문·CRUD·트랜잭션 같은 정석 프로젝트) 위주로 공부하고 반복하며, 그 결과물인 사이드 프로젝트가 이직 근거가 된다. 공부 방식의 중심은 **AI와 러버덕 코딩**이다. 교재 예제는 너무 간단해서 실무 방식과 다르다. 기존 설계의 루프(개념 → 연습문제 → 복습)는 "만든다"와 "설명한다"가 비어 있었고, 자기설명은 한 번 쓰고 채점받는 일방향이었다. 계획 템플릿도 과목 순서(Java 기초 → Spring → DB 심화 → 배포 → 포트폴리오 → 면접)라 한 달을 배워도 만들 것이 없었다.
+
+**Decision** —
+1. **러버덕**(독립 모듈 `rubberduck`의 `RubberDuckSession` — 학습 세션·복습·challenge·과제·프로젝트를 모두 대상으로 읽으므로 `learning`에 두면 순환이 생긴다)을 중심 기능으로 둔다. 사용자가 설명하고 AI는 **답을 주지 않고 질문만 되묻는다**(RD-1~7, `06` §9.5). 서버 가드 `NoAnswerGuard`(`17` §6.8)가 단정 표현·코드를 막는다. 막힌 지점(`gaps`)은 복습 카드가 되고, 빈틈 없이 3턴 이상 설명한 세션만 EXPLANATION 증거가 된다(coverage 고정 7000, `06` §7.2).
+2. **코드 읽기**(`TaskType.READ_CODE`): 검증된 오픈소스 3개(spring-modulith example, spring-petclinic, spring-restbucks — 모두 Boot 4.x)의 **파일 하나·줄 범위 하나**를 읽고 러버덕으로 설명한다. 저장소는 런타임에 AI가 찾지 않고 **콘텐츠로 큐레이션**한다(`content/curated-repos.yaml`, `pinnedCommit` 고정). **서버는 코드를 가져오지 않는다** — 사용자가 로컬에 clone한다(URL fetch 금지 `07` §5.5 유지, AI 비용 0).
+3. **사이드 프로젝트**(새 모듈 `project`, `side_project`): 온보딩 마지막에 하나 만든다(기본 이름 "주문 시스템", 건너뛰기 가능). `PROJECT_TASK`와 Coach 리뷰가 이 프로젝트를 가리킨다.
+4. 계획 템플릿을 **주문 시스템을 만드는 순서**로 바꾼다(9개 milestone, 1~6 MUST, 7~9 SHOULD — 기한이 촉박하면 7~9부터 잘린다).
+5. 기한 역산을 **양방향**으로 한다: 촉박하면 축소·defer(기존), 여유가 30% 이상이면 확장(복원·목표 +1, `06` §4.4 6단계, `acceptedTargetRaises`).
+6. 복습에 **교차 학습**(`RV-INTERLEAVE`, 결정적 재배치)을 넣고, `06` §6.0에 규칙별 학습 원리 근거(간격·인출·교차·생성·정교화·적정 난이도)를 적는다. 근거가 약하거나 반증된 이론(학습 유형론 등)은 쓰지 않는다.
+7. 온보딩 시작점은 **짧은 진단**을 우선한다(건너뛰면 자기평가).
+
+**Alternatives considered** — 러버덕을 기존 자기설명 확장으로만 두기(일방향이라 "막히는 지점"이 드러나지 않는다) · AI가 GitHub에서 저장소를 실시간 검색·요약(URL fetch 금지 위반, 별점 ≠ 품질 — 조사 결과 84k 별 저장소의 테스트가 162줄, 코드를 AI에 보내면 월 USD 3 예산 초과) · 사이드 프로젝트를 DevPilot 자체로 하기(사용자 부정: DevPilot은 학습 도구이지 사이드 프로젝트가 아니다) · 과목 순서 템플릿 유지(배운 것을 바로 구현할 수 없다).
+
+**Consequences** — AI operation 2개(`RUBBER_DUCK`, `RUBBER_DUCK_SUMMARY`), 테이블 3개(`side_project`, `rubber_duck_session`, `rubber_duck_turn`)와 컬럼 3개(`learning_task.side_project_id`·`reading_key`, `coach_review.side_project_id`, V9), endpoint 11개(`/rubber-duck*` 5, `/side-projects*` 5, `GET /readings/{key}`)가 늘었다. 러버덕 5턴 + 정리 1회 ≈ USD 0.008(피크 ×2). 러버덕·코드 읽기는 AI가 필요하므로 `aiStatus`가 불가면 제안하지 않는다 — 계획·복습·기록은 AI 없이 동작한다(ADR-008 유지). 큐레이션 저장소의 줄 번호는 `pinnedCommit`에 묶이므로 갱신은 콘텐츠 작업이다(`19` §8.4). `NoAnswerGuard`는 문자열 검사라 서술형 정답은 통과한다 — 명백한 위반을 잡는 안전망이고, prompt 품질은 eval로 확인한다(`BL-AIP-13`을 S3으로 당긴 이유).
+
+## ADR-037 날짜 없는 단계(M1/M2)
+
+- **Status**: Accepted · **Date**: 2026-09-18 · **Related DEC**: DEC-25
+
+**Context** — v2 로드맵은 2주 스프린트 8개를 날짜로 고정했고(S0 2026-09-17 ~ S7 2027-01-25), "2026-10-26 실사용 시작", "2027-01-05 지원 시작", "2026-11-09 stop-loss" 같은 날짜를 문서 곳곳에 썼다. 이 날짜들은 사용자가 정한 적이 없다. 사용자는 "최대한 빠르게 만들고 공부할 때 쓴다"고 했고, 이직 시점은 사용자가 설정창에 등록하는 값이다. 구현은 전부 에이전트가 하므로 "사람이 저녁에 짬 내서 만드는" 전제의 날짜 고정 스프린트가 맞지 않는다. 한편 S0~S7 ID는 문서 전체에 1,200곳 넘게 참조되어 있다.
+
+**Decision** — (1) **S0~S7 ID는 유지하되 의미를 "구현 순서 단계"로 바꾼다.** 기간·날짜가 없고 exit criteria를 통과하면 끝난다. (2) **M1 = S0~S3**(쓸 수 있는 최소, S3 완료 = 실사용 시작), **M2 = S4~S7**(M1을 쓰면서 필요한 순서로, 잠정). (3) budget·risk·replan 제안은 S5 → **S2**(기한 역산은 MUST이고 planner 입력이다), ICS 캘린더·AI 문제 생성은 S3 → S5, CSP 강제는 S3 → S4, evals v1은 S4 → S3. (4) stop-loss는 날짜 대신 "실사용 시작 + 14 plan-day"로 판정한다(`11` §6). (5) 문서의 지어낸 날짜를 지운다. 알고리즘 예시 입력 날짜(`19` §5.4, `05` JSON 예시 등)는 예시임이 분명하면 둔다. 기존 ADR 본문의 날짜 표현(ADR-024·031·033)은 결정 내용을 바꾸지 않고 단계 표현으로만 고쳤다.
+
+**Alternatives considered** — M1/M2로 ID 전면 교체(1,200곳 수정, 모순 위험이 이득보다 크다) · 날짜 유지·범위만 조정(사용자가 정하지 않은 날짜가 계속 판단 기준이 된다) · 단계 없이 BL 우선순위만(구현 순서·의존이 흐려지고 에이전트 작업 지시 단위가 사라진다).
+
+**Consequences** — `13` BL `Sprint` 열 값은 그대로(S0~S7/Later)이고 M1/M2는 `11` §3에서 묶는다. 실사용 시작일은 날짜가 아니라 사건이며, 통과한 날을 `20`에 기록해 stop-loss·성공 지표의 기준일로 쓴다. M1이 커졌다(S2에 기한 역산, S3에 러버덕·코드 읽기) — 대신 "매일 쓰기 시작"에 필요한 것이 M1 안에 모두 있다.

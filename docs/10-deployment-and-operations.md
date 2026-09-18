@@ -20,7 +20,7 @@
 
 - staging 환경은 두지 않는다. 사용자가 3명 이하이고, 배포는 불변 tag + health check + 롤백(§9)으로 보호한다.
 - **prod의 tailnet 전용 노출은 임시다**(§1.4). 공개 전환 전에 §1.5 체크리스트를 끝낸다.
-- local과 prod가 **같은 PostgreSQL 인스턴스의 같은 DB**를 쓴다. 실사용 시작(S2, 2026-10-26) 전까지는 문제가 없고, 시작 후에는 로컬 개발 DB를 `devpilot_dev`로 분리한다(§2.4, BL-OPS 신설 항목). Testcontainers는 서버 Docker에 임시 컨테이너를 띄우므로 운영 DB를 건드리지 않는다.
+- local과 prod가 **같은 PostgreSQL 인스턴스의 같은 DB**를 쓴다. 실사용 시작(M1 완료 = S3 완료) 전까지는 문제가 없고, 시작 전에 로컬 개발 DB를 `devpilot_dev`로 분리한다(§2.4, BL-OPS 신설 항목). S2 완료 후 Today·Review를 먼저 쓰기 시작한다면(선택, `11` §3) 그 전에 분리한다. Testcontainers는 서버 Docker에 임시 컨테이너를 띄우므로 운영 DB를 건드리지 않는다.
 - 서버 사실(2026-09-18 확인): Rocky Linux 9.8 (Proxmox VM), **x86_64**, 2 vCPU / 8 GB (가용 약 4.7 GB), 디스크 여유 32 GB, Docker 29.6.1, Tailscale 1.98.8, firewalld active(`tailscale0`은 `trusted` zone), SELinux disabled, 시간대 UTC. **다른 사용자의 컨테이너 6개와 공용 PostgreSQL 컨테이너가 같은 Docker에서 돈다.** 80/443은 비어 있고 8080~8084·8090·5432는 사용 중이다.
 
 ### 1.2 토폴로지
@@ -63,7 +63,7 @@ DevPilot은 서버의 방화벽·sshd·Docker daemon 설정을 **바꾸지 않�
 
 | 단계 | 노출 | 내용 |
 |---|---|---|
-| **현재 (S0~S2, ~2026-10-26)** | tailnet 전용 | 자체 서버 + `tailscale serve`(§2.3). 이 문서의 §2~§13은 이 단계를 기준으로 쓴다. **임시** |
+| **현재 (공개 전환 게이트 `11` §3.10 통과 전까지)** | tailnet 전용 | 자체 서버 + `tailscale serve`(§2.3). 이 문서의 §2~§13은 이 단계를 기준으로 쓴다. **임시** |
 | **공개 전환 (추후, 시점 미정)** | 공개 인터넷 | (a) 같은 자체 서버를 웹서버로 공개하거나 (b) **OCI Always Free**(Ampere A1 = **arm64**)에 배포한다. 어느 쪽인지는 전환 시점에 정한다. 절차 요지는 §13.8 |
 
 전환 비용을 줄이려고 지금부터 지키는 것:
@@ -168,7 +168,7 @@ sudo -u deploy docker compose -f /opt/devpilot/compose.prod.yml up -d
 - DB `devpilot`, role `devpilot`(소유자)은 2026-09-18에 만들었다(`DevPilot-ops/02-database.md`). 접속값은 서버 `/opt/devpilot/api.env`와 로컬 `.env`에만 둔다.
 - api 컨테이너 → DB: `DATABASE_URL=jdbc:postgresql://host.docker.internal:5432/devpilot`. compose가 `extra_hosts: ["host.docker.internal:host-gateway"]`를 넣는다(§5.2). 공용 PostgreSQL 컨테이너가 5432를 호스트에 publish하고 있어야 한다(`ss -ltn | grep 5432` → `*:5432` 또는 `0.0.0.0:5432`, 2026-09-18 확인). 아니면 서버 LAN IP를 쓴다.
 - TLS 없음(같은 호스트 안 연결). `sslmode`를 붙이지 않는다.
-- [ ] S2 실사용 시작 전: 로컬 개발용 DB `devpilot_dev`를 같은 role 소유로 추가하고 로컬 `.env`를 옮긴다(§1.1). 명령은 `DevPilot-ops/02-database.md`.
+- [ ] 실사용 시작(M1 완료 = S3 완료) 전, 백업 timer를 켜는 S2 안에서: 로컬 개발용 DB `devpilot_dev`를 같은 role 소유로 추가하고 로컬 `.env`를 옮긴다(§1.1). 명령은 `DevPilot-ops/02-database.md`.
 - 버전: 개발·운영 16, Testcontainers `postgres:16`. **17 전용 문법을 migration에 쓰지 않는다** (`04` §10, `18` §1.1).
 
 ### 2.5 GHCR
@@ -503,7 +503,7 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
 | 주기 | 매일 **19:00 UTC** (KST 04:00). 앱 스케줄 job이 끝난 뒤다 — `CoachContentPurgeJob` 18:20 UTC, `RetentionCleanupJob` 18:30 UTC(`03` §6). systemd timer, 무작위 지연 5분(`RandomizedDelaySec=300`), `Persistent=true` |
 | 배포 전 백업 | **opt-in이다.** `deploy.sh <tag> --backup-first`를 줄 때만 같은 backup.sh를 먼저 실행하고, 실패하면 아무것도 바꾸지 않고 중단한다(DB가 작아 수 초, §9.3). 플래그가 없으면 백업하지 않는다. **migration이 포함된 릴리스에는 반드시 붙인다**(§9.2) — 서버에 git 저장소가 없어 자동 감지를 할 수 없다 |
 | 감시 | healthchecks.io check `devpilot-backup` (§11.2) |
-| 적용 시점 | 스크립트는 S0 seed에 있다. **timer 활성화와 첫 pull은 실사용 시작(2026-10-26) 전 S2에 한다.** 복구 리허설 기록은 S6에 완성한다 |
+| 적용 시점 | 스크립트는 S0 seed에 있다. **timer 활성화와 첫 pull은 실사용 시작(M1 완료 = S3 완료) 전, S2 안에서 한다** — S2 완료 후 Today·Review를 먼저 쓰기 시작하는 경우(선택, `11` §3)에도 실데이터보다 백업이 먼저다. 복구 리허설 기록은 S6에 완성한다 |
 
 ### 8.2 `backup.sh` · `pull-backup.ps1`
 
@@ -566,7 +566,7 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
    ```
    (`.env`보다 프로세스 환경변수가 우선한다. 확인 후 터미널을 닫는다.)
 5. 정리: `docker rm -f devpilot-restore`, `Remove-Item restore.dump`.
-6. 기록: `docs/ops/restore-rehearsal-log.md`에 한 줄 추가한다.
+6. 기록: `docs/ops/restore-rehearsal-log.md`에 한 줄 추가한다(아래 행은 형식 예시다).
 
 | 날짜 | 백업 파일 | 백업 시각 (UTC) | pg_restore | flyway 최신 | app_user | learning_event / 최신 | 앱 기동 | 소요 | 결과·조치 |
 |---|---|---|---|---|---|---|---|---|---|
@@ -590,7 +590,7 @@ seed workflow의 `uses:` 줄은 major tag와 `# TODO(S0): pin to commit SHA` 주
 `CHANGELOG.md` 섹션 형식:
 
 ```markdown
-## [v0.2.0] - 2026-10-25
+## [v0.2.0] - <YYYY-MM-DD, tag를 만든 날>
 ### Added
 - Today 생성·task 상태 (FR-07)
 ### Changed
@@ -720,6 +720,7 @@ deploy.sh <tag> [--backup-first] [--no-pull]
 | 백업 | healthchecks.io `devpilot-backup` | 1일 (grace 2시간) | 이메일 |
 | 호스트 (디스크, 컨테이너 상태·재시작, health, tailscale serve·인증서, 백업 최신성) | `host-check.sh` → healthchecks.io `devpilot-host`. **systemd 유닛은 아직 없다 — S6에 추가한다**(§11.3). 그 전에는 월간 점검에서 수동 실행 | (S6 이후) 1시간 (grace 30분) | 이메일 |
 | 애플리케이션 일일 요약 | `RetentionCleanupJob` 끝의 INFO 1줄 (`03` §8) | 매일 | 없음 (주간 점검) |
+| 러버덕 방치 세션 정리 | 앱 `StaleRubberDuckJob`(rubberduck 모듈, `0 25 * * * *` = 매시 25분 UTC, `03` §6): `status = IN_PROGRESS`이고 `started_at < now − devpilot.rubberduck.stale-after`(24h)인 세션 → `ABANDONED`. AI를 부르지 않고 복습 카드·학습 이벤트도 만들지 않는다. 실행마다 INFO 1줄(처리 건수), 사용자 단위 실패는 `JOB_FAILED` WARN | 매시 | 없음 (주간 점검 §11.4) |
 | DeepSeek 잔액·비용 | 앱 `AiBalanceCheckJob`(매시 `GET /user/balance`) → `min-balance-usd` 이하이면 WARN 로그 + `aiStatus=BALANCE_EXHAUSTED`; 앱 예산 가드; `ai_call_log` 주간 합계 | 매시 / 주 1회 | 앱 `aiStatus`, 로그 |
 | Tailscale | 노드 상태(`tailscale status`), 인증서 만료(`host-check.sh`) | 매시 | 이메일(host-check) |
 
@@ -826,7 +827,11 @@ dc logs --since 168h api | grep -c '"log.level":"ERROR"'     # 주간 ERROR 수
 dc logs --since 168h api | grep -c '"log.level":"WARN"'
 dc logs --since 26h api | grep 'RetentionCleanupJob'          # 일일 요약 줄 (03 §8)
 dc logs --since 26h api | grep 'AiBalanceCheckJob'            # 잔액 (§11.6)
+dc logs --since 168h api | grep 'StaleRubberDuckJob'          # 러버덕 방치 세션 정리 건수 (03 §6)
+dc logs --since 168h api | grep 'JOB_FAILED'                  # job 실패 (07 §6.3)
 ```
+
+- `StaleRubberDuckJob`의 처리 건수가 매주 꾸준히 크면(예: 완료한 세션보다 많음) 사용자가 러버덕을 끝내지 못하고 떠난다는 뜻이다. 운영 문제가 아니라 제품 신호이므로 `docs/ops/ops-log.md`에 적고 기능 개선 이슈로 넘긴다.
 
 - prod 로그는 ECS JSON이다(`logging.structured.format.console=ecs`). 로그에는 이메일·토큰·본문이 없다(`03` §8).
 - Docker 로그 로테이션(컨테이너당 50 MB) 범위 안에서만 조회된다. 장기 로그 보관은 하지 않는다.
@@ -855,6 +860,7 @@ order by pg_total_relation_size(c.oid) desc limit 10;
 | 잔액 확인 | `AiBalanceCheckJob`(매시 15분): `GET /user/balance` → `min-balance-usd`(1.00) 이하이면 WARN + `BALANCE_EXHAUSTED`, 회복하면 해제. 402 수신 시 즉시 같은 상태 |
 | 주간 확인 | `select date_trunc('day', created_at) as day, count(*) as calls, round(sum(cost_micro_usd) / 1e6, 3) as usd from devpilot.ai_call_log where created_at > now() - interval '7 days' group by 1 order by 1;` |
 | 경보 기준 | 주간 합계가 **USD 0.9**(월 예산 USD 3의 30%)를 넘으면 원인(operation별 호출 수)을 확인한다 |
+| 러버덕 비용 (추정) | 세션 1회 = `RUBBER_DUCK` 턴 5회 + `RUBBER_DUCK_SUMMARY` 1회 ≈ **USD 0.008**(피크 ×2, `17` §3.11·§3.12 설정 기준). 사용자 1명이 하루 2세션이면 월 ≈ USD 0.5다. 러버덕은 매일 쓰는 기능(M1)이므로 주간 확인 때 operation별 합계도 본다: `select operation, count(*) as calls, round(sum(cost_micro_usd) / 1e6, 3) as usd from devpilot.ai_call_log where created_at > now() - interval '7 days' group by 1 order by 3 desc;` |
 | 충전 | 잔액 알림(로그) 또는 platform.deepseek.com에서 확인 후 소액 충전. eval도 같은 잔액을 쓴다(결정 E) |
 
 ### 11.7 호스트 자원 (공용 서버)
@@ -888,7 +894,7 @@ order by pg_total_relation_size(c.oid) desc limit 10;
 
 | 항목 | 월 비용 (USD) | 근거 |
 |---|---|---|
-| DeepSeek API (앱) | ≤ 3 | DEC-06, 앱 예산 가드 (Asia/Seoul 월 경계, 피크 ×2 보수 계산). 실측: coach review 1회 ≈ 0.004 |
+| DeepSeek API (앱) | ≤ 3 | DEC-06, 앱 예산 가드 (Asia/Seoul 월 경계, 피크 ×2 보수 계산). 실측: coach review 1회 ≈ 0.004. 추정: 러버덕 세션 1회(턴 5 + 정리 1) ≈ 0.008 (§11.6) |
 | DeepSeek API (eval) | ≤ 0.5/회, 수동 실행 | prod와 같은 선불 잔액 (결정 E) |
 | 서버 | 0 (기존 보유) | 전기·회선은 기존 비용 |
 | GitHub (public repo: Actions, GHCR, secret scanning, Dependabot) | 0 | DEC-04 |

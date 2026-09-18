@@ -1,6 +1,6 @@
 # 15. Glossary
 
-> Status: Accepted (v2) · Last updated: 2026-09-17 · Related: `04-domain-model-and-db.md` §3, `06-learning-engine-rules.md`, `08-coding-conventions.md`, ADR-010
+> Status: Accepted (v2) · Last updated: 2026-09-18 (v3: 러버덕 · 코드 읽기 · 사이드 프로젝트 · 교차 학습 · 확장 제안 · 단계) · Related: `04-domain-model-and-db.md` §3, `05-api-spec.md`, `06-learning-engine-rules.md`, `08-coding-conventions.md`, `11-development-roadmap.md`, ADR-010
 >
 > 용어 정의와 **한국어 → 영어 식별자 명명 사전**이다. 코드·DB·API·Dart의 이름은 §6을 따른다. 사전에 없는 도메인 용어가 필요하면 구현 전에 이 문서에 먼저 추가한다(`16-definition-of-ready-done.md` §1).
 
@@ -31,8 +31,17 @@
 | Job Radar | 채용 공고 본문을 붙여넣어 요구사항별 준비 상태(READY/STRETCH/LATER)를 보는 기능. 점수·확률 없음 |
 | Comeback mode (복귀 모드) | 최근 3 plan-day 학습이 없다가 돌아온 날 부담을 줄이는 planner 보정 |
 | Calendar feed (캘린더 구독) | 토큰 URL로 제공하는 ICS 일정. 학습 시작 알림을 캘린더 앱에 맡긴다 |
-| Onboarding (온보딩) | 목표·시간·카테고리 자기평가 13개·계획 템플릿을 한 번에 저장하는 첫 설정 |
-| Diagnostic challenge (진단 문제) | 자기평가 3 이상 카테고리의 실제 수준을 확인하는 문제 |
+| Onboarding (온보딩) | 목표·시간·시작 수준(짧은 진단 또는 카테고리 자기평가 13개, `runDiagnostic`)·계획 템플릿·사이드 프로젝트(`sideProject`, 건너뛰기 가능)를 한 번에 저장하는 첫 설정 |
+| Diagnostic challenge (진단 문제) | 시작 수준을 실제 풀이로 정하는 문제. 온보딩에서 진단을 고르면 카테고리당 1문제(최대 5), 자기평가를 고르면 자기평가 3 이상 카테고리를 확인한다(`05` §4.2) |
+| Rubber duck (러버덕) | 학습자가 설명하고 **AI는 답을 주지 않고 질문 1개만 되묻는** 대화(`RubberDuckSession`). 세션은 대상 1개·skill 1개를 다루고, 종료할 때 한 번 정리한다. 막힌 지점(gap)은 복습 카드가 된다(`06` §9.5 RD-1~RD-7) |
+| Turn (턴) | 러버덕에서 학습자 설명 1개 + AI 질문 1개의 한 왕복(`RubberDuckTurn`). 세션당 최대 5턴(`devpilot.rubberduck.max-turns`) |
+| Summary (러버덕 정리) | 세션 종료 시 AI가 한 번 만드는 `gaps[]`·`confirmed[]`·`overallNote`(`RUBBER_DUCK_SUMMARY`). 실패해도 세션은 `COMPLETED`이고 대화는 남는다 |
+| Gap (막힌 지점) | 정리에서 학습자가 설명하지 못한 개념 1개(`conceptKey`, `whatWasMissed`, `whyItMatters`, `reviewQuestion`). gap마다 복습 카드를 만든다 |
+| Code reading (코드 읽기) | 검증된 오픈소스의 **파일 1개·줄 범위 1개**를 읽고 러버덕으로 설명하는 과제(`TaskType.READ_CODE`). 서버는 코드를 가져오지 않고 사용자가 로컬에 clone해 읽는다. 완료 조건은 러버덕 세션 1개 완료(RC-1) |
+| Reading (읽기 범위) | 코드 읽기 과제 하나가 가리키는 콘텐츠 항목: 저장소·경로·줄 범위·질문·볼 지점(`content/curated-repos.yaml`의 `readings[]`, key `READ.<REPO>.<TOPIC>.NNN`) |
+| Curated repo (큐레이션 저장소) | 코드 읽기 대상으로 검증해 등록한 오픈소스 저장소(`repos[]`). 근거 ID인 curated source(§3)와 다르다 |
+| Pinned commit (기준 커밋) | reading의 줄 번호가 맞는 저장소 커밋 SHA(`pinnedCommit`, 40자 hex). 저장소가 바뀌어도 줄 번호가 틀어지지 않게 `cloneHint`가 이 커밋을 체크아웃한다(`19` §8.4) |
+| Side project (사이드 프로젝트) | 학습한 것을 적용해 **직접 만드는** 사용자 프로젝트(기본 예: "주문 시스템", `SideProject`). `PROJECT_TASK` 과제와 코치 리뷰·러버덕(`PROJECT_WORK`)의 대상이다. DevPilot 자체는 사이드 프로젝트가 아니다 |
 
 ## 2. 학습 엔진 용어
 
@@ -46,7 +55,10 @@
 | Effective budget | nominal × completion rate. 실제로 쓸 수 있을 것으로 보는 시간 |
 | Required minutes | skill 목표와 planning level 차이를 축 비용·level step 시간으로 환산한 필요 시간 |
 | Deadline risk | required MUST / effective 비율로 판정한 위험(`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`) |
-| Replan suggestion | risk가 HIGH 이상일 때 SHOULD defer·MUST 목표 축소를 제안하는 규칙. 자동 적용하지 않는다 |
+| Replan suggestion | 기한 역산 제안(`ReplanSuggestionPolicy`). risk가 HIGH 이상이면 **축소**(MUST 목표 축소·SHOULD defer), risk LOW이고 `ratioBp ≤ 7000`(여유 30% 이상)이면 **확장**. 두 방향은 배타이고 자동 적용하지 않는다(`06` §4.4) |
+| Expansion suggestion (확장 제안) | 여유가 있을 때 깊이를 더하는 제안(`expansionSuggestions[]`, `ExpansionKind`): 미뤘던 SHOULD/LATER 복원(`RESTORE_DEFERRED`)과 MUST 목표 레벨 +1(`RAISE_TARGET`). 받아들이면 replan의 `restoredDeferrals`·`acceptedTargetRaises`로 들어간다 |
+| Interleaving (교차 학습) | 같은 skill 복습 카드가 3장 연속 나오지 않게 출제 순서만 바꾸는 결정적 재배치(`RV-INTERLEAVE`, `06` §6.5). 무엇을 낼지(정렬·cap)는 바꾸지 않는다 |
+| Don't-know turn ("모르겠다" 턴) | 러버덕에서 학습자 답이 "모르겠다"류인 턴. **서버가 문구·길이 규칙으로 판정한다**(AI 판정 아님). 2턴 연속이면 `CHALLENGE` 대상은 Hint Ladder로 넘길 수 있다(RD-3, `learner_stuck`, `suggestHint`) |
 | Defer (미루기) | plan skill target을 계산·후보에서 제외(`deferred = true`) |
 | Priority | `MUST`(지원 전 필수) / `SHOULD`(가능하면) / `LATER`(지원 후) |
 | Career importance | 목표 직무에서 skill의 중요도(0~1, planner에서는 micro) |
@@ -73,17 +85,18 @@
 
 | 용어 | 정의 |
 |---|---|
-| AI operation | AI 호출 종류 9개(`AiOperation`). 동기 3개, 비동기 6개 |
+| AI operation | AI 호출 종류 11개(`AiOperation`). 동기 5개(러버덕 `RUBBER_DUCK`·`RUBBER_DUCK_SUMMARY` 포함), 비동기 6개 |
 | AI gateway | 도메인 모듈이 AI를 호출하는 유일한 진입점. 예산 → 호출 → 가드 → 기록 |
 | Fake provider | fixture 응답을 돌려주는 테스트·로컬용 provider |
-| Output guard (출력 가드) | AI 출력을 서버에서 검사·강등·거절하는 규칙 6종 |
+| Output guard (출력 가드) | AI 출력을 서버에서 검사·강등·거절하는 규칙 7종 |
+| No-answer guard | 러버덕 출력이 정답 단정·코드를 담지 않았는지 문자열로 검사하는 가드(`NoAnswerGuard`, NA-1~NA-4, `17` §6.8). 서술형 정답은 못 잡으므로 eval이 보완한다 |
 | Verification status | finding 근거의 신뢰 수준 `VERIFIED` / `SUPPORTED` / `AI_JUDGMENT` / `UNCERTAIN` |
 | `VERIFIED` | 서버가 실행한 도구 결과 또는 등록된 curated 근거가 있는 주장. AI 판단만으로는 불가 |
 | `SUPPORTED` | allowlist 호스트의 공식 문서·보안 가이드가 지지하는 주장 |
 | `AI_JUDGMENT` | 설계·가독성 등 AI 판단. 단일 정답이 아님 |
 | `UNCERTAIN` | 버전·환경·맥락 부족으로 판단 보류 |
 | Confidence | AI가 표시한 확신도 `HIGH`/`MEDIUM`/`LOW`. 검증 상태와 별개 |
-| Curated source | `content/curated-sources.yaml`에 등록되어 사람이 검수한 근거 ID |
+| Curated source | `content/curated-sources.yaml`에 등록되어 사람이 검수한 근거 ID. 코드 읽기 대상인 curated repo(§1)와 다르다 |
 | Source reference (근거 참조) | finding 근거의 URL 또는 curated ID. "evidence"와 다른 개념 |
 | Secret masking | 저장·전송 전 비밀값을 `[REDACTED:…]`로 바꾸는 처리. private key는 차단 |
 | Budget guard | 월 예산(서비스 전체)·일일 호출 수·동시 실행 수를 호출 전에 확인하는 가드 |
@@ -111,7 +124,11 @@
 | Modular monolith | 하나의 배포 단위 안에서 모듈 경계·의존 방향을 강제하는 구조(ADR-002) |
 | Aggregate root | 함께 일관성을 지키는 entity 묶음의 진입점. 다른 aggregate는 ID로만 참조 |
 | Walking skeleton | 모든 계층을 관통하는 최소 기능을 먼저 배포하는 방식 |
-| Spike | 기술 불확실성을 timebox 안에 확인하는 실험(SP-1~SP-5) |
+| Spike | 기술 불확실성을 timebox 안에 확인하는 실험(`11` §4의 SP-1~SP-5). 사이드 프로젝트 규칙 ID SP-1~SP-3(`05` §4.1·§19, `06` §5.3에서 참조)과 접두사가 같으므로 문서에서는 "spike SP-2", "사이드 프로젝트 규칙 SP-2"처럼 구분해 쓴다 |
+| 단계 (S0~S7) | **구현 순서를 나타내는 단계 ID.** 기간·날짜·일수가 없고 exit criteria를 통과하면 끝난다(`11` §3). BL의 `Sprint` 열 값(`S0`~`S7`, `Later`, `공개 배포 전`)도 이 단계 ID다. "Sprint"라는 열 이름은 남아 있지만 2주 주기를 뜻하지 않는다 |
+| M1 | 쓸 수 있는 최소 = S0·S1·S2·S3. **S3 완료 = 실사용 시작**(매일 쓰기 시작). S2가 끝나면 AI 없이 Today·Review만 먼저 쓸 수도 있다(선택) |
+| M2 | S4·S5·S6·S7. M1을 쓰면서 필요한 순서로 진행한다(단계 순서는 잠정) |
+| 실사용 시작 | M1 완료(= S3 완료) 시점. 날짜로 쓰지 않는다. 이직 시점은 사용자가 설정에 등록하는 값(`career_goal.application_start_date`)이다 |
 | Test vector | 규칙 입력과 기대 출력 표. `@ParameterizedTest`로 그대로 옮긴다 |
 | bp (basis point) | 비율 정수 표현. 1.0 = 10,000 |
 | micro | 점수·비용 정수 표현. 1.0 = 1,000,000 (`costMicroUsd`) |
@@ -174,6 +191,8 @@
 | 직무 중요도 | `careerImportance` | `career_importance` | `careerImportanceBp` | API는 bp 정수 |
 | 미루기 | `deferred`, `TargetAdjustment.DEFERRED` | `deferred` | `acceptedDeferrals`, `restoredDeferrals` | `postponed`, `skip` 금지 |
 | 목표 축소 | `TargetAdjustment.TARGET_REDUCED` | `adjustment` | `acceptedTargetReductions` | |
+| 확장 제안 | `ExpansionKind`(`RESTORE_DEFERRED`, `RAISE_TARGET`), `ExpansionSuggestionView` | — (저장 안 함) | `expansionSuggestions[]`, `kind` | 축소 제안(`mustTargetReductionSuggestions`, `deferSuggestions`)과 한 응답에 함께 비어 있지 않은 경우가 없다 |
+| 목표 상향 | `TargetRaiseInput`, `ExpansionKind.RAISE_TARGET` | `adjustment = USER_EDITED` | `acceptedTargetRaises`, 오류 `TARGET_NOT_RAISED` | `upgrade`, `boost` 금지. 목표 축소의 반대말로만 쓴다 |
 | 진행 스냅샷 | `PlanProgressSnapshot` | `plan_progress_snapshot` | `latestSnapshot` | |
 | 학습 예산 | `StudyBudgetCalculator` | — | `/plans/active/budget` | `timeBudget` 금지 |
 | 명목 예산 | `nominalBudgetMinutes` | `nominal_budget_minutes` | `nominalBudgetMinutes` | |
@@ -189,6 +208,13 @@
 | 학습 과제 | `LearningTask` | `learning_task` | `/today/tasks`, `tasks[]` | `Todo`, `Job` 금지 |
 | 핵심 과제 | `isMain` (`boolean main`) | `is_main` | `mainTask` | |
 | 과제 유형 | `TaskType taskType` | `task_type` | `taskType` | |
+| 코드 읽기 과제 | `TaskType.READ_CODE` | `task_type = 'READ_CODE'` | `taskType` | 개념 읽기 과제 `READING`과 다르다. 러버덕 대상 값은 `CODE_READING`이다(아래) — 두 이름을 섞지 않는다 |
+| 읽기 범위 (reading) | `CuratedReadingView`, `CuratedReadingRegistry`, `readingKey` | `reading_key` (FK 없음, CHECK `learning_task_reading_key_type`) | `/readings/{readingKey}`, `readingKey` | key 형식 `READ.<REPO>.<TOPIC>.NNN`. `Lesson`, `Snippet`, `CodeSample` 금지 |
+| 큐레이션 저장소 | `CuratedRepoView` (`repo.key`) | — (`content/curated-repos.yaml`의 `repos[]`) | `repo` | 근거 ID인 curated source(`curated-sources.yaml`)와 구분 |
+| 기준 커밋 · clone 안내 | `pinnedCommit`, `cloneHint` | — | `pinnedCommit`, `cloneHint` | `pinnedCommit`은 40자 소문자 hex SHA. `commitHash`, `revision` 금지 |
+| 사이드 프로젝트 | `SideProject`, `SideProjectService`, `SideProjectQueryService`, 모듈 `com.devpilot.project` | `side_project`, `side_project_id` | `/side-projects`, `sideProjectId`, `sideProject`(온보딩) | `Project` 단독 클래스, `sideproject`·`Sideproject`(한 단어), `PersonalProject` 금지. 코치의 `CoachProjectType`·과제 `PROJECT_TASK`와 구분 |
+| 사이드 프로젝트 상태 | `SideProjectStatus` | `status` | `status` | `ACTIVE` / `PAUSED` / `DONE` |
+| 저장소 URL | `repoUrl` | `repo_url` | `repoUrl` | 저장만 한다. 서버는 fetch하지 않는다(`07` §5.5) |
 | 추천 사유 | `ReasonCode`, `reasonCodes` | `reason_codes` | `reasons[]` | |
 | 점수 내역 | `ScoreBreakdown scoreBreakdown` | `score_breakdown` | (MVP 비노출) | |
 | 복귀 모드 | `comebackMode`, `ComebackModePolicy` | `comeback_mode` | `comebackMode` | `returnMode` 금지 |
@@ -196,6 +222,19 @@
 | 학습 세션 | `LearningSession` | `learning_session` | `/learning-sessions` | `StudySession` 금지 |
 | 실제 학습 시간 | `actualMinutes` | `actual_minutes` | `actualMinutes` | |
 | 세션 회고 | `selfReflection` | `self_reflection` | `selfReflection` | 주간 회고(`reflection`)와 구분 |
+| 러버덕 세션 | `RubberDuckSession`, `RubberDuckService`, `RubberDuckController`, `RubberDuckPolicy` | `rubber_duck_session` | `/rubber-duck`, `sessionId` | 식별자는 두 단어(`RubberDuck`, `rubber_duck`, `rubber-duck`, prompt id `rubber.duck`). 한 단어 `rubberduck`은 설정 prefix `devpilot.rubberduck.*`와 migration 파일 `V9__rubberduck_project.sql`에만 쓴다. 학습 세션(`LearningSession`)과 구분 — "세션" 단독으로 쓰지 않는다 |
+| 러버덕 대상 | `RubberDuckTargetType targetType`, `targetId` | `target_type`, `target_id`(FK 없음), `concept_key` | `targetType`, `targetId`, `conceptKey`, `targetTitle` | 코드 읽기 대상 값은 `CODE_READING`, 사이드 프로젝트 대상은 `PROJECT_WORK` |
+| 러버덕 상태 | `RubberDuckStatus` | `status` | `status` | 값은 `SessionStatus`와 같지만 다른 enum이다 |
+| 턴 | `RubberDuckTurn`, `turnNo`, `turnCount` | `rubber_duck_turn`, `turn_no`, `turn_count` | `/turns`, `turnNo`, `turnCount`, `maxTurns`, `remainingTurns` | `round`, `step`, `message` 금지 |
+| 러버덕 설명 | `explanation`(요청) → `userText` | `user_text` (마스킹본) | `explanation`, `userText` | 자기설명(`selfExplanation`)과 구분 |
+| 되묻는 질문 | `question` | `ai_question` | `question` | AI의 "답"이라고 부르지 않는다 |
+| 러버덕 정리 | `RubberDuckSummaryOutput`, `summary` | `summary_json` | `summary`, `summarySkippedReason` | 코치 리뷰·피드백과 혼동되므로 `review`, `feedback` 금지 |
+| 막힌 지점 | `RubberDuckGap`, `gaps`, `whatWasMissed`, `whyItMatters`, `reviewQuestion` | (`summary_json` 안) | `gaps[]`, `gapCount`(이벤트 payload) | 필드 이름은 `17` §4.11 출력 스키마가 기준이다. `weakness`, `mistake` 금지 |
+| 제대로 설명한 것 | `confirmed` | (`summary_json` 안) | `confirmed[]` | |
+| 막힘 신호 | `learnerStuck`(턴 — 서버 판정, `RubberDuckPolicy`), `suggestHint`(세션·응답) | `learner_stuck` | `learnerStuck`, `suggestHint` | RD-3. `stuck` 단독, `giveUp` 금지 |
+| AI가 겨냥한 빈틈 | `targetsGap` | 저장 안 함 | 비노출 | 다음 턴 prompt에도 넣지 않는다 |
+| 러버덕 완료 이벤트 | `LearningEventType.RUBBER_DUCK_COMPLETED`, `EventSourceType.RUBBER_DUCK_SESSION` | `event_type`, `source_type` | — | payload `{ sessionId, turns, gapCount, targetType, hintDisclosed }` |
+| 교차 학습 | `DueReviewSelector`의 재배치 단계 (`RV-INTERLEAVE`) | — | — | `shuffle`, `randomize` 금지 — 무작위가 아닌 결정적 재배치다 |
 | 학습 이벤트 | `LearningEvent`, `LearningEventType` | `learning_event` | (export만) | `ActivityLog` 금지 |
 | 중복 방지 키 | `dedupeKey` | `dedupe_key` | — | 멱등 키(`idempotencyKey`)와 구분 |
 | 이벤트 무효화 | `invalidatedAt` | `invalidated_at` | — | 삭제 대신 사용 |
@@ -295,4 +334,8 @@
 | `isDeleted`, `deleted` 플래그 | 삭제 정책은 cascade·purge·비활성 | `active`, `contentPurgedAt`, `invalidatedAt` |
 | `userId`를 요청 body·query로 받는 필드 | 사용자 식별은 JWT만 | `CurrentUser` |
 | `Manager`, `Helper`, `Util` 접미사 클래스 | 책임 불명확 | `…Service`, `…Policy`, `…Calculator` |
+| `Rubberduck…`, `rubberduck` (Java·DB·API·Dart 식별자), `Duck` 단독 | 사전 이름과 다름 | `RubberDuck…`, `rubber_duck_…`, `/rubber-duck` (예외: 모듈·패키지 `rubberduck`(`com.devpilot.rubberduck`, Java 패키지 규칙), 설정 `devpilot.rubberduck.*`, migration `V9__rubberduck_project.sql`) |
+| `sideproject`, `Sideproject`, `Project` 단독 클래스 | Project Coach·`CoachProjectType`·`PROJECT_TASK`와 혼동 | `SideProject`, `side_project`, `/side-projects` |
+| 과제 유형에 `CODE_READING`, 러버덕 대상에 `READ_CODE` | 두 enum 값 혼동 | `TaskType.READ_CODE` / `RubberDuckTargetType.CODE_READING` |
+| 복습 순서에 `shuffle`, `Random` | RV-INTERLEAVE는 결정적이어야 한다(`06` §6.5) | `DueReviewSelector`의 재배치 |
 | `LocalDate.now()`, `Instant.now()` 무인자 | ADR-017 | 주입된 `Clock` |

@@ -75,6 +75,8 @@ Base package: `com.devpilot`
 | `onboarding` | 온보딩 일괄 처리 (user, career, plan, skill 조합) | (없음) |
 | `dashboard` | 읽기 전용 집계 | (없음) |
 | `account` | 사용자 데이터 export (전 모듈 읽기 집계) | (없음) |
+| `project` | 사이드 프로젝트 등록·조회 (학습이 적용될 대상) | `side_project` |
+| `rubberduck` | **러버덕 대화**(설명 → AI 질문), 정리, gap → 복습 카드. 여러 모듈의 대상을 읽으므로 독립 모듈로 둔다(순환 방지) | `rubber_duck_session`, `rubber_duck_turn` |
 | `content` | seed YAML 적재·검증 | (seed 대상 테이블에 upsert) |
 | `integration.ai` | AI port, 공급자 구현, 프롬프트 로딩, 출력 가드, 비용 로그, 예산 가드, secret masking | `ai_call_log` |
 
@@ -93,16 +95,18 @@ Base package: `com.devpilot`
 | `plan` | `common`, `career`, `skill` |
 | `review` | `common`, `skill`, `learning`, `career` (horizon), `plan` (skill priority), `integration.ai` |
 | `training` | `common`, `skill`, `learning`, `review`, `integration.ai` |
-| `today` | `common`, `plan`, `skill`, `review`, `learning`, `training`, `career` (focus skill → `projectNeed`, `06` §5.4), `integration.ai` (`AiStatus`) |
-| `coach` | `common`, `skill`, `learning`, `review`, `integration.ai` |
+| `today` | `common`, `plan`, `skill`, `review`, `learning`, `training`, `career` (focus skill → `projectNeed`, `06` §5.4), `project` (PROJECT_TASK 대상), `integration.ai` (`AiStatus`). `CuratedReadingRegistry`는 today 모듈이 갖고 content 모듈이 기동 시 등록한다(`SeedCardRegistry`와 같은 방식) |
+| `coach` | `common`, `skill`, `learning`, `review`, `project`(리뷰 대상 프로젝트), `integration.ai` |
 | `evidence` | `common`, `skill`, `learning`, `coach`, `training`, `review`, `plan` (지표 입력), `integration.ai` |
 | `job` | `common`, `skill`, `evidence`, `career` (target role), `plan` (활성 plan의 `plan_skill_target`, `06` §13), `integration.ai` |
-| `onboarding` | `common`, `user`, `career`, `plan`, `skill`, `review` (seed 카드 배정), `training` |
+| `onboarding` | `common`, `user`, `career`, `plan`, `skill`, `review` (seed 카드 배정), `training`, `project` (첫 사이드 프로젝트 생성) |
 | `dashboard` | `common`, `user`, `plan`, `skill`, `review`, `today`, `learning`, `coach`, `evidence` (`MetricsCalculator` — 약한 thinking 축), `integration.ai` |
-| `content` | `common`, `skill`, `plan`, `review`, `training` |
-| `account` | `common`, `user`, `career`, `plan`, `skill`, `learning`, `review`, `today`, `training`, `coach`, `evidence`, `job` (데이터 export 전용 집계) |
+| `project` | `common` |
+| `rubberduck` | `common`, `integration.ai`, `skill`(대상 skill), `learning`(학습 세션 id, `RUBBER_DUCK_COMPLETED` 기록, `hintDisclosed` 조회), `review`(gap → 복습 카드, `REVIEW_ITEM` 대상), `training`(`CHALLENGE` 대상), `today`(`CODE_READING` 대상 task·RC-1 완료, reading 조회), `project`(`PROJECT_WORK` 대상). **다른 모듈은 rubberduck에 의존하지 않는다**(account 모듈의 export 집계만 예외) |
+| `content` | `common`, `skill`, `plan`, `review`, `training`, `today` (`CuratedReadingRegistry` 등록) |
+| `account` | `common`, `user`, `career`, `plan`, `skill`, `learning`, `review`, `today`, `training`, `coach`, `evidence`, `job`, `project`, `rubberduck` (데이터 export 전용 집계) |
 
-이 표는 순환이 없음을 확인했다(위상 정렬: common → integration.ai → user → learning → skill → career → plan → review → training → today → coach → evidence → job → onboarding → dashboard → content → account). 여러 모듈이 같이 쓰는 순수 규칙(`ComebackModePolicy`: today·review, `RubricScorer`: training·review)은 둘 다 의존할 수 있는 `learning.domain`에 둔다(§3.2).
+이 표는 순환이 없음을 확인했다(위상 정렬, 의존 대상이 앞: common → integration.ai → user → learning → skill → career → plan → review → training → project → today → coach → evidence → job → onboarding → dashboard → rubberduck → content → account). 여러 모듈이 같이 쓰는 순수 규칙(`ComebackModePolicy`: today·review, `RubricScorer`: training·review)은 둘 다 의존할 수 있는 `learning.domain`에 둔다(§3.2).
 
 **역방향 입력은 port(interface)로 받는다.** 의존 방향상 직접 조회할 수 없는 규칙 입력은 입력이 필요한 모듈이 `application`에 interface를 정의하고, 데이터를 가진 모듈이 구현한다.
 
@@ -184,7 +188,7 @@ com.devpilot.<module>
 | `learning` | `LearningSessionController` | `LearningSessionService`, `LearningEventRecorder`, `LearningEventQueryService`(사용자·skill의 최근 N일 이벤트 — `skill`이 사용), `HintService` | `LearningSession`, `LearningEvent`, `LearningEventType`, `HintDisclosure`, `HintLevel`, **`HintLadderPolicy`**, **`ComebackModePolicy`**(세션 이력만 입력, today·review가 사용), **`RubricScorer`**(rubric coverage, training·review가 사용), event record `LearningEventRecorded` | repositories |
 | `plan` | `PlanController` | `PlanQueryService`, `PlanCommandService`, `ReplanService`, `StudyBudgetService`, `PlanTemplateRegistry`(메모리 보관, `content`가 기동 시 등록) | `LearningPlan`, `PlanMilestone`, `PlanSkillTarget`, `PlanProgressSnapshot`, `PlanTemplate`(record), **`StudyBudgetCalculator`**, **`DeadlineRiskEvaluator`**, **`ReplanSuggestionPolicy`**, **`PlanTemplatePlacement`** | repositories, `ProgressSnapshotJob` |
 | `review` | `ReviewController`, `ReviewItemController` | `ReviewService`, `ReviewItemService`(Later: implements `OrphanAsyncTaskSweeper` — review variant), `ReviewQueryService`(다른 모듈 공개), `SeedCardAssignmentService`(`assignForNewUser`, `backfillAll`), `SeedCardRegistry`(메모리 보관, `content`가 기동 시 등록) | `ReviewItem`, `ReviewAnswer`, `SeedCard`(record), **`FinalRatingPolicy`**, `ReviewSchedulingStrategy`, **`RuleBasedV1Scheduler`**, **`DueReviewSelector`** | repositories, `ReviewVariantTask`(async, Later) |
-| `today` | `TodayController` | `TodayPlanService`, `TodayQueryService` | `DailyPlan`, `LearningTask`, **`PlannerScoring`**, **`TaskProposalPolicy`**, **`TimeAllocator`**, **`ReasonTemplates`** (`ComebackModePolicy`는 `learning.domain`) | repositories |
+| `today` | `TodayController`, `ReadingController`(`GET /readings/{key}`) | `TodayPlanService`, `TodayQueryService`, `ReadingQueryService`, `CuratedReadingRegistry`(메모리 보관, `content`가 기동 시 등록) | `DailyPlan`, `LearningTask`, **`PlannerScoring`**, **`TaskProposalPolicy`**, **`TimeAllocator`**, **`ReasonTemplates`** (`ComebackModePolicy`는 `learning.domain`) | repositories |
 | `training` | `ChallengeController`, `ChallengeAttemptController` | `ChallengeGenerationService`, `ChallengeValidationService`, `AttemptService`, `SubmissionService`, `ChallengeQueryService`(today가 사용), `TrainingAsyncTaskSweeper`(implements `OrphanAsyncTaskSweeper` — challenge 생성·submission 평가) | `Challenge`, `ChallengeAttempt`, `ChallengeSubmission`, **`AttemptOutcomeCalculator`** (`RubricScorer`는 `learning.domain`) | repositories, `ChallengeGenerationTask`, `SubmissionEvaluationTask` (async) |
 | `coach` | `CoachReviewController` | `CoachReviewService`(implements `OrphanAsyncTaskSweeper`), `CoachFindingService`, `ThinkingPatternRecorder` | `CoachReview`, `CoachFinding`, `ThinkingPatternObservation`, **`DiscoveredByResolver`** | repositories, `CoachAnalysisTask`(async), `CoachContentPurgeJob` |
 | `evidence` | `EvidenceController`, `WeeklyReviewController` | `EvidenceService`(implements `OrphanAsyncTaskSweeper`), `EvidenceExportService`, `WeeklyReviewService` | `EvidenceCandidate`, `WeeklyReview`, **`MetricsCalculator`** | repositories, `WeeklyReviewJob`, `EvidenceDraftTask` |
@@ -192,7 +196,9 @@ com.devpilot.<module>
 | `onboarding` | `OnboardingController` | `OnboardingService`, `DiagnosticSuggestionService` | `SelfAssessmentPropagation` | — |
 | `dashboard` | `DashboardController` | `DashboardQueryService` | — | — |
 | `account` | `AccountExportController` (`GET /me/export`) | `AccountExportService` | — | — |
-| `content` | — | `ContentSeeder`(ApplicationRunner: 검증 → upsert → `PlanTemplateRegistry`·`SeedCardRegistry` 등록 → `SeedCardAssignmentService.backfillAll()`), `ContentValidator` | seed record 타입 | `YamlContentReader` |
+| `project` | `SideProjectController` | `SideProjectService`, `SideProjectQueryService`(today·coach·rubberduck이 사용) | `SideProject`, `SideProjectStatus` | `SideProjectRepository` |
+| `rubberduck` | `RubberDuckController` | `RubberDuckService`(턴·정리·gap 카드·이벤트, `05` §9.5~§9.10) | `RubberDuckSession`, `RubberDuckTurn`, `RubberDuckTargetType`, `RubberDuckStatus`, **`RubberDuckPolicy`**(RD-1~RD-7 — 턴 상한, RD-3 "모르겠다" 판정, RD-5 증거 조건, `06` §9.5) | repositories, `StaleRubberDuckJob` |
+| `content` | — | `ContentSeeder`(ApplicationRunner: 검증 → upsert → `PlanTemplateRegistry`·`SeedCardRegistry`·`CuratedReadingRegistry` 등록 → `SeedCardAssignmentService.backfillAll()`), `ContentValidator` | seed record 타입 | `YamlContentReader` |
 
 ### 3.3 integration.ai
 
@@ -205,14 +211,14 @@ com.devpilot.<module>
 | `integration.ai.api.AiResult<T>` | `status(AiCallStatus)`, `value(T)`, `aiCallId`, `model`, `promptVersion`, `guardActions` |
 | `integration.ai.api.AiOperation`, `AiCallStatus`, `AiStatus` | enum (`04-domain-model-and-db.md` §3) |
 | `integration.ai.api.AiUsageSnapshot`, `AiBudgetDecision`, `AiConcurrencyReservation` | 도메인 모듈에 노출되는 불변 record: 사용량 요약(`GET /me`), 예산 판정, 동시 실행 예약(`17` §8) |
-| `integration.ai.api.output` (패키지) | operation 출력 record 9종(`CoachReviewOutput` 등, `17` §4). 도메인 모듈은 이 record만 받는다 |
+| `integration.ai.api.output` (패키지) | operation 출력 record 11종(`CoachReviewOutput` 등 9종 + 러버덕 `RubberDuckTurnOutput`·`RubberDuckSummaryOutput`, `17` §4). 도메인 모듈은 이 record만 받는다 |
 | `integration.ai.deepseek.DeepSeekAiProvider` | Spring `RestClient`로 `POST /responses` 호출(`instructions`, `input`, `text.format json_schema`, `max_output_tokens`, `thinking`, `reasoning_effort`, `store:false`), 응답 `output[]`에서 `type=message`의 `output_text` 추출, 종료 상태·HTTP 오류 → `AiCallStatus` 매핑, `Retry-After` 대기(`17` §5) |
 | `integration.ai.deepseek.DeepSeekBalanceClient` | `GET /user/balance` 조회 (`AiBalanceCheckJob`, 402 처리) |
 | `integration.ai.fake.FakeAiProvider` | fixture 기반 응답 (`local`, `test`, `demo`). `@ConditionalOnProperty(devpilot.ai.provider=fake)` |
 | `integration.ai.disabled.DisabledAiProvider` | 항상 `AI_UNAVAILABLE` |
 | `integration.ai.prompt.PromptRegistry` | `classpath:prompts/<id>/<version>/` 로딩, 활성 버전 선택, 템플릿 치환 |
 | `integration.ai.schema.OutputSchemaRegistry` | `classpath:ai/schemas/<OPERATION>.schema.json`(규범) 로딩 → wire 스키마 생성(`$schema`·`$id` 제거), operation → 출력 record 매핑, 전용 `ObjectMapper` 제공 (`17` §4.0). `integration.ai` 안에서만 쓴다 |
-| `integration.ai.guard.OutputGuardChain` | `VerificationGuard`, `CodeLeakGuard`, `FindingCountGuard`, `EnumGuard`, `SkillCodeGuard`, `LanguageGuard` |
+| `integration.ai.guard.OutputGuardChain` | `VerificationGuard`, `CodeLeakGuard`, `FindingCountGuard`, `EnumGuard`, `SkillCodeGuard`, `LanguageGuard`, `NoAnswerGuard`(러버덕 2개 operation 전용, `17` §6.8) |
 | `integration.ai.budget.AiBudgetGuard` | 일일 호출 수, 월 비용, 동시 실행 수, 잔액 소진 플래그 확인 |
 | `integration.ai.budget.AiCostCalculator` | usage × 모델 단가 × `peak-multiplier` → micro USD (`17` §8.4) |
 | `integration.ai.budget.AiBalanceMonitor` / `AiBalanceCheckJob` | 잔액 상태(메모리 플래그): 402 수신 또는 잔액 < `min-balance-usd`이면 `BALANCE_EXHAUSTED`, 다음 정상 조회에서 해제. 감사 이벤트 `AI_BALANCE_LOW` (`17` §8.7) |
@@ -407,6 +413,7 @@ IdempotencyService.execute(userId, key, method, path, requestHash, action):
 | `AccountDeletionJob` | user | `0 */5 * * * *` | `DELETION_REQUESTED` 사용자 삭제 (cascade) + 감사 로그 |
 | `OrphanAsyncTaskJob` | common | 기동 시 1회 + `0 */10 * * * *` | `OrphanAsyncTaskSweeper` 구현 호출: 10분 넘게 갱신되지 않은 `PENDING`/`RUNNING` 작업(coach review, challenge 생성, submission 평가, review variant, evidence 초안, job 분석) → `FAILED(INTERRUPTED)`. 대상 모듈을 직접 의존하지 않는다 (§2.2) |
 | `AiBalanceCheckJob` | integration.ai | `0 15 * * * *` (매시 15분, `balance-check-cron`) | `provider=deepseek`일 때만. `GET /user/balance` → 잔액 < `min-balance-usd`이면 `AiBalanceMonitor`를 `BALANCE_EXHAUSTED`로, 이상이면 해제. 상태가 바뀔 때 감사 이벤트 `AI_BALANCE_LOW`/`AI_BALANCE_RESTORED` + WARN/INFO. 조회 실패는 상태를 바꾸지 않는다 (S3) |
+| `StaleRubberDuckJob` | rubberduck | `0 25 * * * *` (매시 25분) | `status = IN_PROGRESS`이고 `started_at < now − devpilot.rubberduck.stale-after`(24h)인 러버덕 세션 → `ABANDONED`, `completed_at = now`. 정리 AI를 부르지 않고 복습 카드·학습 이벤트도 만들지 않는다(`05` §9.5). 부분 인덱스 `idx_rubber_duck_session_in_progress`를 쓴다 |
 
 - `@EnableScheduling`을 쓰고 단일 인스턴스를 전제로 한다. 인스턴스를 늘리면 분산 락을 도입한다(현재 범위 밖).
 - 모든 job은 시작, 처리 건수, 소요시간을 INFO 1줄로 남기고, 실패하면 `JOB_FAILED` WARN을 남긴다.
@@ -528,6 +535,14 @@ devpilot:
     easy-min-days: 4
     variant-after-failures: 2
     suspend-after-failures: 4
+  rubberduck:
+    max-turns: 5                            # 06 §9.5 RD-4
+    stuck-turns-before-hint: 2             # RD-3
+    dont-know-max-chars: 30                # RD-3 판정: 공백 제거 길이 < 30 이고
+    dont-know-phrases: ["모르겠", "모름", "잘 모르", "생각 안", "idk", "no idea", "don't know", "dont know"]   # 06 §9.5
+    stale-after: 24h                       # StaleRubberDuckJob (§6)
+    max-explanation-chars: 2000
+    evidence-coverage-bp: 7000             # 06 §7.2 러버덕 설명 증거의 고정 coverage (E2·E3용, E4 미만)
   skill:
     rule-window-days: 60
     axis-change-cooldown: 24h
@@ -571,6 +586,8 @@ devpilot:
       REVIEW_EVALUATE:         { mode: SYNC,  thinking: false, max-tokens: 2000,  timeout: 20s,  max-retries: 0, input-token-budget: 3000 }
       EVIDENCE_DRAFT:          { mode: ASYNC, thinking: true,  reasoning-effort: low,  max-tokens: 16000, timeout: 120s, max-retries: 1, input-token-budget: 6000 }
       JOB_EXTRACT:             { mode: ASYNC, thinking: false, max-tokens: 8000,  timeout: 120s, max-retries: 1, input-token-budget: 8000 }
+      RUBBER_DUCK:             { mode: SYNC,  thinking: false, max-tokens: 1500,  timeout: 20s,  max-retries: 0, input-token-budget: 6000 }
+      RUBBER_DUCK_SUMMARY:     { mode: SYNC,  thinking: true,  reasoning-effort: low, max-tokens: 4000, timeout: 30s, max-retries: 0, input-token-budget: 8000 }
     trusted-source-hosts: [docs.spring.io, spring.io, docs.oracle.com, openjdk.org, www.postgresql.org, owasp.org, cheatsheetseries.owasp.org, www.kisa.or.kr, supabase.com, dart.dev, docs.flutter.dev, api.flutter.dev, pmd.github.io, spotbugs.readthedocs.io, checkstyle.org, junit.org, hibernate.org, docs.jboss.org, developer.mozilla.org, www.rfc-editor.org]
     curated-sources-location: classpath:content/curated-sources.yaml
     pricing:                                             # USD per 1M tokens, 2026-09-18 확인 (17-ai-integration.md §8.4)
@@ -582,6 +599,7 @@ devpilot:
       language-min-letters: 30
       language-hangul-weight: 3
       language-min-ratio-bp: 4000
+      no-answer-phrases: ["맞습니다", "틀렸습니다", "정답은", "사실은", "올바른 답은", "해야 합니다", "하면 됩니다", "를 쓰세요", "을 쓰세요"]   # NoAnswerGuard (17 §6.8)
     prompts:                                             # 활성 prompt 버전
       coach.review: v1
       coach.response-feedback: v1
@@ -592,6 +610,8 @@ devpilot:
       review.evaluate: v1
       evidence.draft: v1
       job.extract: v1
+      rubber.duck: v1
+      rubber.duck.summary: v1
 ```
 
 - 설정 바인딩은 `DevPilotProperties`(중첩 record)와 Bean Validation(`@Validated`)을 쓴다. 가중치 합이 1.0이 아니거나 threshold 순서가 틀리면 **기동 실패**로 처리한다.

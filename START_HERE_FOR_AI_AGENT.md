@@ -1,6 +1,6 @@
-# AI Agent 시작 지시 — Sprint 0 (Bootstrap + Walking Skeleton)
+# AI Agent 시작 지시 — S0 (Bootstrap + Walking Skeleton)
 
-아래 문서를 읽고 **Sprint 0만** 구현하라. S0 범위 밖 기능(온보딩, 계획, 규칙 엔진, AI 연동)은 구현하지 않는다.
+아래 문서를 읽고 **S0만** 구현하라(단계 S0~S7은 날짜 없는 구현 순서다 — `docs/11` §3). S0 범위 밖 기능(온보딩, 계획, 규칙 엔진, AI 연동)은 구현하지 않는다.
 
 ## 필독 (순서대로)
 
@@ -31,7 +31,7 @@
 | 1 | monorepo 구조 확정: `backend/`, `app/`, `infra/`, `content/`, `evals/`, `docs/`, `database/`, `.github/` | BL-FND |
 | 2 | backend: Gradle 설정(toolchain, version catalog, Spotless AOSP, Checkstyle, PMD, SpotBugs, JaCoCo, `openApiCheck`), `./gradlew check` 통과 | BL-FND, BL-FND-22 |
 | 3 | backend: `common` 기반 — `ClockConfig`, `TraceIdFilter`, `RequestBodySizeLimitFilter`, `ErrorCode`(S0 사용분), `GlobalExceptionHandler`(ProblemDetail), `SecurityConfig`(JWT resource server, stateless, health 공개) | BL-FND |
-| 4 | backend: Flyway `V1__baseline.sql` 적용, Testcontainers(`postgres:16`) migration 통합 테스트 | BL-FND |
+| 4 | backend: Flyway 적용, Testcontainers(`postgres:16`) migration 통합 테스트. `db/migration`에는 V1~V9가 이미 있고 Flyway는 **전부** 적용한다(`docs/04` §10) — S0은 entity를 만들지 않으므로 `ddl-auto=validate`에 걸리는 것이 없다. 테스트는 빈 DB → 전체 migration → `database/schema.sql`과 같은지 확인 | BL-FND |
 | 5 | backend: **devtoken 인증 모드**(`docs/03` §4.2, `docs/05` §1.4.5) — `POST /api/v1/dev/token`(allowlist 검사 → EC P-256 서명 JWT), `GET /api/v1/dev/jwks.json`, 앱이 가진 공개키로 검증하는 `JwtDecoder`. `DEVPILOT_DEV_JWT_KEY`가 비면 기동 시 생성(prod는 필수) | BL-SEC-16 |
 | 6 | backend: 임시 `GET /api/v1/me` — JWT `sub`, `email`을 반환 (사용자 테이블·allowlist 프로비저닝은 S1). 테스트: 토큰 없음 401 `AUTHENTICATION_REQUIRED`, 발급 토큰 200, 잘못된 audience·만료·서명 401 | BL-FND |
 | 7 | backend: ArchUnit 테스트 — 필드 주입 금지, 무인자 `now()` 금지, `System.out` 금지, controller는 presentation 패키지 | BL-FND |
@@ -43,7 +43,7 @@
 
 ## 범위 밖
 
-- `app_user` 등 도메인 테이블(V2 이후 migration), 온보딩, 계획, Today, 복습, AI 연동
+- `app_user` 등 도메인 테이블의 entity·repository(테이블은 migration으로 생긴다), 온보딩, 계획, Today, 복습, AI 연동
 - Supabase(인증·DB) — Later. `supabase` auth-mode 코드 경로는 만들지 않는다
 - Trivy·CodeQL·image digest 고정 — S2 P1
 - 문서에 없는 라이브러리 추가
@@ -60,4 +60,4 @@
 
 ## 보고
 
-S0를 마치면 다음 Sprint로 넘어가지 말고 `AGENTS.md` §6 형식으로 보고하라. 사람이 직접 해야 하는 작업(tailnet HTTPS 활성화, healthchecks.io 계정, 서버 `api.env` 작성, GitHub branch protection·secret)은 따로 목록으로 정리하라.
+S0를 마치면 다음 단계로 넘어가지 말고 `AGENTS.md` §6 형식으로 보고하라. 사람이 직접 해야 하는 작업(tailnet HTTPS 활성화, healthchecks.io 계정, 서버 `api.env` 작성, GitHub branch protection·secret, **서버 개발 DB `devpilot` schema 초기화** — SP-2 때 적용한 옛 migration이 남아 있으면 `V4` checksum 불일치로 기동이 실패한다, `docs/04` §10)은 따로 목록으로 정리하라.

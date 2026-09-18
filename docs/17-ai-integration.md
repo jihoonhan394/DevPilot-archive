@@ -415,6 +415,54 @@ while est > op.input-token-budget:
 
 **가드**: Enum, SkillCode(`suggestedSkillCode`), Language(`rawText` 제외 — JD 원문 인용이므로).
 
+### 3.11 `RUBBER_DUCK`
+
+| 항목 | 값 |
+|---|---|
+| mode / timeout / retries | SYNC / 20s / 0 |
+| trigger | `POST /rubber-duck/{sessionId}/turns` — 학습자가 설명을 제출할 때마다 1회 (`06` §9.5 RD-1~RD-7) |
+| 실행 | `RubberDuckService`: tx1(세션 상태·턴 수 검사) → `AiGateway` → tx2(`rubber_duck_turn` INSERT, `turn_count+1`) |
+| prompt id | `rubber.duck` |
+| input-token-budget | 6000 |
+| output | `RubberDuckTurnOutput` (§4.10) |
+
+| 변수 | 타입 | 출처 | user | 절삭 |
+|---|---|---|---|---|
+| `targetType` | `RubberDuckTargetType` | `rubber_duck_session.target_type` | | — |
+| `targetSummary` | text | CODE_READING: 저장소·경로·줄 범위·`question`(`content/curated-repos.yaml`) / CHALLENGE: `title`+`prompt` / REVIEW_ITEM: `prompt` / CONCEPT: `concept_key` / PROJECT_WORK: `side_project.name`+`description` | | 3, `TAIL_CHARS`, 600자 |
+| `skillSummary` | text 또는 `(없음)` | `skill.code`, `skill.name`, 현재 planning level 4축 | | — |
+| `conversation` | 줄 목록 `나: …` / `질문: …` | 이 세션의 `rubber_duck_turn`(turn_no ASC), 마지막 턴 제외 | ✔ | 2, `ITEMS_FROM_START`, 2턴 |
+| `learnerExplanation` | TEXT | 이번 요청의 설명(마스킹본) | ✔ | 4, `TAIL_CHARS`, 2000자 |
+
+**후처리** (tx2): `rubber_duck_turn` INSERT(`user_text`=마스킹본, `ai_question`, `learner_stuck`, `ai_call_id`), `turn_count` 증가. `learner_stuck`은 **서버가** `06` §9.5 RD-3 규칙(문구 목록 + 길이)으로 판정한 값이고 AI 출력이 아니다. 마지막 2턴이 모두 `learner_stuck`이면 응답에 `suggestHint=true`를 실어 클라이언트가 Hint Ladder로 넘어갈 수 있게 한다(RD-3, 대상이 `CHALLENGE`일 때만). 이벤트는 남기지 않는다(종료 시에만).
+
+**실패**: 턴을 저장하지 않는다. `turn_count` 변경 없음. HTTP 오류(§5.4). 학습자의 설명은 클라이언트가 유지한다.
+
+**가드**: CodeLeak(`question`에 코드 블록·코드 줄 3줄 이상 금지 — 단계 `DIRECTION` 이하와 같은 기준), Language, `NoAnswerGuard`(§6.8).
+
+### 3.12 `RUBBER_DUCK_SUMMARY`
+
+| 항목 | 값 |
+|---|---|
+| mode / timeout / retries | SYNC / 30s / 0 |
+| trigger | `POST /rubber-duck/{sessionId}/complete` — 세션당 **정확히 1회** (RD-4). 턴이 0이면 호출하지 않고 `ABANDONED`로 끝낸다 |
+| 실행 | `RubberDuckService`: tx1(세션 조회) → `AiGateway` → tx2(`summary_json` 저장, 복습 카드 생성, 이벤트) |
+| prompt id | `rubber.duck.summary` |
+| input-token-budget | 8000 |
+| output | `RubberDuckSummaryOutput` (§4.11) |
+
+| 변수 | 타입 | 출처 | user | 절삭 |
+|---|---|---|---|---|
+| `targetType`, `targetSummary`, `skillSummary` | | §3.11과 같음 | | 같음 |
+| `availableSkillCodes` | 쉼표 목록 | 세션 skill + 그 prerequisite의 `skill.code` | | — |
+| `conversation` | 줄 목록 | 이 세션의 **전체** 턴 | ✔ | 1, `ITEMS_FROM_START`, 3턴 |
+
+**후처리** (tx2): `summary_json` 저장, `status=COMPLETED`, `completed_at`. `gaps[]`마다 `review_item`을 만든다(`source_type=RUBBER_DUCK`, `concept_key`=gap의 `conceptKey`, `prompt`=`reviewQuestion`, `review_type=EXPLAIN`, 첫 due는 `06` §6.3 "challenge 실패 / coach finding / 수동 생성" 행과 같다). 같은 `concept_key`가 이미 있으면 새로 만들지 않고 due를 당긴다(같은 절). 카드 필드(skill 유도, `expected_answer`, `rubric_json`)와 카드를 만들지 않는 경우는 `05` §9.8이다. `summary_json.rawGapCount`(가드 전 gap 수)를 저장하고, 세션 `skill_id`가 있을 때만 `RUBBER_DUCK_COMPLETED` 이벤트를 남긴다(RD-5·RD-7). 대상이 `CODE_READING`이면 그 `READ_CODE` 과제를 `COMPLETED`로 바꾼다(RC-1).
+
+**실패**: `status=COMPLETED`로 바꾸되 `summary_json`은 null, 복습 카드·이벤트 없음, 응답에 `summarySkippedReason`. **대화 자체는 이미 학습이므로 세션을 실패로 만들지 않는다.**
+
+**가드**: CodeLeak(`whatWasMissed`·`whyItMatters`·`reviewQuestion` 전부), SkillCode(`conceptKey`의 접두사), Language, `NoAnswerGuard`(§6.8).
+
 ### 3.10 AI 불가 시 동작 (AC-12)
 
 "AI 불가" = provider `disabled`, 잔액 소진(`BALANCE_EXHAUSTED`, §8.7), provider 오류·timeout·`content_filter` 거절, 가드 실패. "예산" = §8 거부.
@@ -430,6 +478,9 @@ while est > op.input-token-budget:
 | 복습 variant (Later) | `variant_status=FAILED` → 원문항 | `NONE` 유지 → 원문항 | due·스케줄 (MVP는 항상 원문항) |
 | Evidence 초안 | 503 / `FAILED` | 429 | `POST /evidence` 수동 작성, accept, export |
 | Job Radar | 503 / `FAILED` | 429 | 기존 분석 조회·삭제 |
+| 러버덕 턴 | 503, 턴 저장 안 함(클라이언트가 설명 유지) | 429, 저장 안 함 | 기존 세션·턴 조회 |
+| 러버덕 정리 | `status=COMPLETED` + `summarySkippedReason`, 복습 카드·이벤트 없음 | 같음 | **대화 기록은 남는다** |
+| 코드 읽기 | planner가 `READ_CODE`를 **제안하지 않는다**(완료 조건이 러버덕이므로, `06` §5.3) | 같음 | 이미 만들어진 `READ_CODE` task는 읽기 안내까지 동작 |
 | Today | `aiStatus ∈ {DISABLED, BALANCE_EXHAUSTED}`면 `TaskProposalPolicy`가 `CHALLENGE` 제안을 건너뜀 (§8.5) | 월 예산 초과면 같음 | 나머지 task 제안 전부 |
 | Plan, Skill, Dashboard, Weekly | 영향 없음 | 영향 없음 | 전부 (AI 호출 없음) |
 
@@ -866,6 +917,82 @@ public record JobRequirementOutput(
         @Size(max = 100) String suggestedSkillCode) {}
 ```
 
+### 4.10 `RUBBER_DUCK` → `RubberDuckTurnOutput`
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "devpilot/ai/RUBBER_DUCK.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["question", "targetsGap"],
+  "properties": {
+    "question": { "type": "string", "minLength": 10, "maxLength": 200 },
+    "targetsGap": { "type": "string", "minLength": 10, "maxLength": 60 }
+  }
+}
+```
+
+```java
+public record RubberDuckTurnOutput(
+        @NotBlank @Size(min = 10, max = 200) String question,
+        @NotBlank @Size(min = 10, max = 60) String targetsGap) {}
+```
+
+- `question`은 학습자에게 보인다. `targetsGap`은 보이지 않고 `rubber_duck_turn`에 저장하지 않는다(다음 턴의 프롬프트에도 넣지 않는다 — AI가 자기 이전 판단에 갇히지 않게).
+- "모르겠다" 판정(RD-3)은 출력에 없다. 판정을 AI에 맡기면 결정적 규칙이 아니게 되므로 서버가 `06` §9.5 규칙으로 한다(`rubber_duck_turn.learner_stuck`).
+
+### 4.11 `RUBBER_DUCK_SUMMARY` → `RubberDuckSummaryOutput`
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "devpilot/ai/RUBBER_DUCK_SUMMARY.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["gaps", "confirmed", "overallNote"],
+  "properties": {
+    "gaps": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["conceptKey", "whatWasMissed", "whyItMatters", "reviewQuestion"],
+        "properties": {
+          "conceptKey": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*(\.[A-Z][A-Z0-9_]*)+$", "maxLength": 120 },
+          "whatWasMissed": { "type": "string", "minLength": 10, "maxLength": 300 },
+          "whyItMatters": { "type": "string", "minLength": 10, "maxLength": 300 },
+          "reviewQuestion": { "type": "string", "minLength": 15, "maxLength": 500 }
+        }
+      }
+    },
+    "confirmed": {
+      "type": "array",
+      "maxItems": 5,
+      "items": { "type": "string", "minLength": 5, "maxLength": 200 }
+    },
+    "overallNote": { "type": "string", "minLength": 10, "maxLength": 600 }
+  }
+}
+```
+
+```java
+public record RubberDuckSummaryOutput(
+        @NotNull @Size(max = 3) @Valid List<RubberDuckGap> gaps,
+        @NotNull @Size(max = 5) List<@NotBlank @Size(max = 200) String> confirmed,
+        @NotBlank @Size(max = 600) String overallNote) {}
+
+public record RubberDuckGap(
+        @NotBlank @Size(max = 120) String conceptKey,
+        @NotBlank @Size(max = 300) String whatWasMissed,
+        @NotBlank @Size(max = 300) String whyItMatters,
+        @NotBlank @Size(max = 500) String reviewQuestion) {}
+```
+
+- `gaps`가 빈 배열이고 턴이 3 이상이면 EXPLANATION 축 증거로 인정한다(RD-5).
+- `conceptKey`는 `SkillCodeGuard`가 접두사를 검사한다. 알 수 없는 접두사면 해당 gap을 버린다(전체 실패가 아니다).
+
 ---
 
 ## 5. `AiGateway` 파이프라인
@@ -1075,7 +1202,7 @@ AiGateway.call(req):                                   # 트랜잭션 없음 (T-
 
 ```java
 public interface OutputGuard {
-    GuardName name();   // VERIFICATION, CODE_LEAK, FINDING_COUNT, ENUM, SKILL_CODE, LANGUAGE
+    GuardName name();   // VERIFICATION, CODE_LEAK, FINDING_COUNT, ENUM, SKILL_CODE, NO_ANSWER, LANGUAGE
     <T> GuardOutcome<T> apply(AiOperation op, T output, GuardContext ctx, boolean lastAttempt);
 }
 public record GuardOutcome<T>(T value, List<GuardAction> actions, List<GuardViolation> violations) {}
@@ -1083,17 +1210,18 @@ public record GuardAction(String guard, String action, String detail) {}   // ai
 public record GuardViolation(String guard, String path, String message) {}
 ```
 
-- 실행 순서(`OutputGuardChain`): `ENUM` → `SKILL_CODE` → `VERIFICATION` → `FINDING_COUNT` → `CODE_LEAK` → `LANGUAGE`. 앞 가드가 수정한 값을 다음 가드가 받는다. 위반이 있어도 나머지 가드를 모두 실행해 feedback에 함께 넣는다.
+- 실행 순서(`OutputGuardChain`): `ENUM` → `SKILL_CODE` → `VERIFICATION` → `FINDING_COUNT` → `CODE_LEAK` → `NO_ANSWER` → `LANGUAGE`. 앞 가드가 수정한 값을 다음 가드가 받는다. 위반이 있어도 나머지 가드를 모두 실행해 feedback에 함께 넣는다.
 - record는 불변이므로 수정은 새 인스턴스로 만든다.
 - `action` 값: `DOWNGRADED_TOOL_CLAIM`, `DOWNGRADED_UNKNOWN_CURATED`, `DOWNGRADED_VERIFIED`, `DOWNGRADED_UNTRUSTED_SOURCE`, `DOWNGRADED_SUPPORTED_WITHOUT_SOURCE`, `NULLIFIED`, `REMOVED`, `TRUNCATED`, `CORRECTED`, `RETRIED`, `REJECTED`, `WARNED`. `detail`은 경로와 전후 값만(예: `finding[2] VERIFIED→AI_JUDGMENT`), 본문 텍스트는 넣지 않는다.
 
 | 가드 | 종류 | 적용 operation |
 |---|---|---|
 | `EnumGuard` | 위반 → 재시도 (중복 축은 제거) | 전부 |
-| `SkillCodeGuard` | 수정만 | `COACH_REVIEW`, `CHALLENGE_GENERATE`, `JOB_EXTRACT` |
+| `SkillCodeGuard` | 수정만 | `COACH_REVIEW`, `CHALLENGE_GENERATE`, `JOB_EXTRACT`, `RUBBER_DUCK_SUMMARY`(`conceptKey` 접두사) |
 | `VerificationGuard` | 수정만 | `COACH_REVIEW` |
 | `FindingCountGuard` | 수정만 | `COACH_REVIEW` |
-| `CodeLeakGuard` | 위반 → 재시도 (≥ `PSEUDOCODE` hint는 `containsCode` 보정만) | `COACH_REVIEW`, `COACH_RESPONSE_FEEDBACK`, `CHALLENGE_GENERATE`, `CHALLENGE_EVALUATE`, `HINT_GENERATE` |
+| `CodeLeakGuard` | 위반 → 재시도 (≥ `PSEUDOCODE` hint는 `containsCode` 보정만) | `COACH_REVIEW`, `COACH_RESPONSE_FEEDBACK`, `CHALLENGE_GENERATE`, `CHALLENGE_EVALUATE`, `HINT_GENERATE`, `RUBBER_DUCK`, `RUBBER_DUCK_SUMMARY` |
+| `NoAnswerGuard` | NA-1·NA-2·NA-3 위반 → 재시도, NA-4 → 해당 gap 제거(`REMOVED`) | `RUBBER_DUCK`, `RUBBER_DUCK_SUMMARY` (§6.8) |
 | `LanguageGuard` | 위반 → 재시도, 마지막 시도면 `WARNED` 후 통과 | `JOB_EXTRACT` 제외 전부 |
 
 ### 6.2 `VerificationGuard`
@@ -1296,6 +1424,31 @@ ratioBp < minRatioBp(4000) → 위반 LANGUAGE ("설명은 한국어로 쓴다")
 | G4 | G1과 같은 출력, `lastAttempt=true` | — | 0 | 통과, `WARNED` |
 | G5 | `` `Optional.get()` `` 설명이 한국어, 식별자는 인라인 코드 | 인라인 제거 후 H만 | ≥ 4000 | 통과 |
 
+### 6.8 `NoAnswerGuard` (러버덕 전용)
+
+러버덕의 유일한 규칙은 **AI가 답을 주지 않는 것**이다(RD-1, 원칙 3). 이 가드는 그것만 검사한다.
+
+| 규칙 | `RUBBER_DUCK` 검사 필드 | `RUBBER_DUCK_SUMMARY` 검사 필드 |
+|---|---|---|
+| NA-1 | `question` | — |
+| NA-2, NA-3 | `question` | `reviewQuestion`, `overallNote`, `confirmed[]` |
+| NA-4 | — | `gaps[].whatWasMissed`, `gaps[].whyItMatters` |
+
+한 필드에는 규칙 하나만 적용한다. `whatWasMissed`·`whyItMatters`에서 NA-2 표현이 나오면 NA-2(재시도)가 아니라 **NA-4(그 gap만 제거)** 다 — 정리 전체를 버리지 않기 위해서다. 제거된 gap은 복습 카드가 되지 않지만 RD-5의 `rawGapCount`에는 들어간다(가드가 gap을 지워서 증거가 되는 일은 없다).
+
+**검사**
+
+| # | 규칙 | 위반 시 |
+|---|---|---|
+| NA-1 | `question`이 물음표(`?`)로 끝나지 않으면 위반 (`RUBBER_DUCK`만) | 재시도 |
+| NA-2 | 정답 단정 표현이 있으면 위반: `맞습니다`, `틀렸습니다`, `정답은`, `사실은`, `올바른 답은`, `해야 합니다`, `하면 됩니다`, `를 쓰세요`, `을 쓰세요` | 재시도 |
+| NA-3 | `CodeLeakGuard`의 코드 검출(코드 블록 또는 코드 줄 3줄 이상)에 걸리면 위반 | 재시도 |
+| NA-4 | `RUBBER_DUCK_SUMMARY`의 `whatWasMissed`·`whyItMatters`가 **정답을 서술**하면 위반. 판정은 NA-2 표현 목록으로만 한다(의미 판정은 하지 않는다) | 해당 gap 제거 |
+
+- NA-2 목록은 `devpilot.ai.guards.no-answer-phrases` 설정이다. 하드코딩하지 않는다.
+- 동기 operation이라 재시도가 0회다. `RUBBER_DUCK`에서 위반이면 502 `AI_OUTPUT_INVALID`이고 턴은 저장되지 않는다. 학습자는 같은 설명으로 다시 제출할 수 있다. `RUBBER_DUCK_SUMMARY`에서 NA-1~NA-3 위반이면 `05` §9.8의 실패 경로다(`COMPLETED` + `summarySkippedReason = AI_OUTPUT_INVALID`, 대화는 남는다).
+- **한계**: 문자열 검사이므로 "이 경우에는 롤백되지 않아요" 같은 서술형 정답은 통과한다. 완전한 차단이 아니라 **명백한 위반을 잡는 안전망**이다. eval(§12)에 러버덕 case를 두어 실제 품질을 본다.
+
 ---
 
 ## 7. Secret masking (`SecretMasker`)
@@ -1313,6 +1466,8 @@ ratioBp < minRatioBp(4000) → 위반 LANGUAGE ("설명은 한국어로 쓴다")
 | `POST /reviews/{reviewItemId}/answer` | `answerText` | 422 |
 | `POST /learning-sessions/{sessionId}/complete` | `selfReflection` | 422 |
 | `POST /jobs` | `jobDescription` | 422 |
+| `POST /rubber-duck/{sessionId}/turns` | `explanation` | 422 (턴 저장·AI 없음) |
+| `POST /side-projects`, `PATCH /side-projects/{sideProjectId}`, `POST /onboarding`(`sideProject`) | `name`, `description`, `stack` | 422 (AI로는 `PROJECT_WORK` 러버덕의 `targetSummary`로만 간다) |
 
 - 결과: `MaskingResult(String maskedText, int maskedCount, boolean blocked)`. `blocked=true`이면 `maskedText=null`.
 - `coach_review.masked_secret_count` = `content`와 `userSelfReview`의 `maskedCount` 합. 202 응답의 `maskedSecretCount`와 같다.
@@ -1754,7 +1909,7 @@ user content  →
 - input은 `instructions` + `input`. 캐시 적중 절감(적중분은 input 단가의 2%)은 넣지 않는다. 재시도 비용도 넣지 않는다.
 - challenge hint 1~3단계는 생성 시 `hints_json`으로 미리 만들므로 AI hint는 주로 coach finding과 challenge 4단계 이상에서 발생한다.
 - `REVIEW_EVALUATE` output ≤ 2000 tokens (`max-tokens` 설정), thinking off이므로 300~800을 가정한다.
-- 이 표는 추정이다. S3~S4 실사용 2주 후 `ai_call_log` 실측값(operation별 평균 input/output/reasoning)으로 교체한다(`BL-AIP-14`).
+- 이 표는 추정이다. 실사용 시작(M1 완료 = S3 완료) 2주 후 `ai_call_log` 실측값(operation별 평균 input/output/reasoning)으로 교체한다(`BL-AIP-14`).
 
 ### 11.2 Operation별
 
@@ -1770,12 +1925,16 @@ user content  →
 | `REVIEW_EVALUATE` | off | 1,500 | 300–800 | 0.0008–0.0014 |
 | `EVIDENCE_DRAFT` | on / low | 3,000 | 2,500–5,000 | 0.0039–0.0069 |
 | `JOB_EXTRACT` | off | 5,000 | 2,000–4,000 | 0.0039–0.0063 |
+| `RUBBER_DUCK` (턴 1회) | off | 2,500 | 100–300 | 0.0009–0.0011 |
+| `RUBBER_DUCK_SUMMARY` | on / low | 3,500 | 1,000–2,500 | 0.0023–0.0041 |
+
+러버덕 세션 1개(5턴 + 정리 1회) = 5 × 0.0009 + 0.0023 = **0.0068** ~ 5 × 0.0011 + 0.0041 = **0.0096** → 약 **USD 0.007–0.010**.
 
 계산: `2 × (input × 0.15 + output × 0.60) / 1,000,000`. 예: `COACH_REVIEW` 30KB 하한 = 2 × (14,000 × 0.00000015 + 6,000 × 0.0000006) = 2 × (0.0021 + 0.0036) = 0.0114.
 
 ### 11.3 일·월 시나리오
 
-**많이 쓰는 날** (평일 저녁 + 주말 수준, 논리 호출 15회):
+**많이 쓰는 날** (평일 저녁 + 주말 수준, M2까지 모두 있는 상태, 논리 호출 27회):
 
 | 항목 | 횟수 | 하한 | 상한 |
 |---|---|---|---|
@@ -1787,10 +1946,13 @@ user content  →
 | `CHALLENGE_EVALUATE` | 2 | 0.0072 | 0.0120 |
 | `REVIEW_EVALUATE` | 4 | 0.0032 | 0.0056 |
 | `EVIDENCE_DRAFT` | 1 | 0.0039 | 0.0069 |
-| **합계** | **15** | **0.0363** | **0.0612** |
+| `RUBBER_DUCK` (세션 2개 × 5턴) | 10 | 0.0090 | 0.0110 |
+| `RUBBER_DUCK_SUMMARY` | 2 | 0.0046 | 0.0082 |
+| **합계** | **27** | **0.0499** | **0.0804** |
 
-- 하루 ≈ **USD 0.04–0.06**(0.0363 × 30 = 1.09, 0.0612 × 30 = 1.84). 30일 매일 이렇게 쓰면 월 ≈ **USD 1.1–1.8**. `COACH_REVIEW`(5KB) 하루 3~6회만 따로 보면 0.0065 × 3 = 0.020 ~ 0.0113 × 6 = 0.068/일 → 월 **USD 0.6~2.0**.
-- **월 예산 USD 3(DEC-06 개정)의 근거**: 상한 시나리오(1.84)의 약 1.6배로, 피크 ×2를 이미 넣은 보수 값이다. 서비스 전체 합계이므로(§8.2) 초대 사용자 3명이 모두 상한으로 쓰면(0.0612 × 3 = 0.1836/일, 30일 ≈ 5.5) **3 ÷ 0.1836 ≈ 16.3일**, 즉 16일 무렵 `AI_MONTHLY_BUDGET_EXCEEDED`가 난다(경고 80% = USD 2.4는 13일 무렵). 그때는 실측(`BL-AIP-14`)을 보고 예산을 조정한다. 비-AI 기능은 계속 쓸 수 있다(§3.10).
+- 하루 ≈ **USD 0.05–0.08**(0.0499 × 30 = 1.50, 0.0804 × 30 = 2.41). 30일 매일 이렇게 쓰면 월 ≈ **USD 1.5–2.4**. 러버덕 2세션이 하루 0.014–0.019로 가장 큰 항목 중 하나다.
+- **M1 기간**(coach·AI 문제 생성·evidence 없음): 러버덕 2세션 + `CHALLENGE_EVALUATE` 2 + `REVIEW_EVALUATE` 4 + challenge hint 1 = 0.0254 ~ 0.0387/일 → 월 **USD 0.8–1.2**. `COACH_REVIEW`(5KB) 하루 3~6회만 따로 보면 0.0065 × 3 = 0.020 ~ 0.0113 × 6 = 0.068/일 → 월 **USD 0.6~2.0**.
+- **월 예산 USD 3(DEC-06 개정)의 근거**: 상한 시나리오(2.41)의 약 1.2배로, 피크 ×2를 이미 넣은 보수 값이다(러버덕을 넣으면서 여유가 1.6배에서 1.2배로 줄었다). 서비스 전체 합계이므로(§8.2) 초대 사용자 3명이 모두 상한으로 쓰면(0.0804 × 3 = 0.2412/일, 30일 ≈ 7.2) **3 ÷ 0.2412 ≈ 12.4일**, 즉 12일 무렵 `AI_MONTHLY_BUDGET_EXCEEDED`가 난다(경고 80% = USD 2.4는 10일 무렵). 그때는 실측(`BL-AIP-14`)을 보고 예산을 조정한다. 비-AI 기능은 계속 쓸 수 있다(§3.10).
 - **가벼운 날** (`REVIEW_EVALUATE` 3, `CHALLENGE_EVALUATE` 1, `HINT_GENERATE` 1): 0.0024+0.0036+0.0014 = 0.0074 ~ 0.0042+0.0060+0.0019 = 0.0121 → **USD 0.01**.
 - 일일 호출 한도 60회는 많이 쓰는 날(15회)의 4배다. 한도는 비용보다 오작동(반복 호출) 방지용이다.
 - 선불 잔액은 월 예산보다 크고 소액(USD 10 이하)으로 유지한다(§8.7, `07` §7.4).
@@ -1866,14 +2028,16 @@ evals/
 ├── cases/
 │   ├── coach-review/*.yaml
 │   ├── hint-generate/*.yaml
-│   └── challenge-evaluate/*.yaml
+│   ├── challenge-evaluate/*.yaml
+│   ├── rubber-duck/*.yaml            # 턴: 설명 → 질문 (BL-RDK-03)
+│   └── rubber-duck-summary/*.yaml    # 정리: 대화 → gaps
 └── baselines/<suite>@<promptVersion>__<model>.json
 
 backend/build/reports/ai-eval/     # 실행 결과 (빌드 산출물)
 ```
 
 ```bash
-./gradlew aiEval -PevalSuite=coach-review            # coach-review | hint-generate | challenge-evaluate | all
+./gradlew aiEval -PevalSuite=coach-review            # coach-review | hint-generate | challenge-evaluate | rubber-duck | rubber-duck-summary | all
                  [-PevalModel=deepseek-flash] [-PevalRepeat=3] [-PevalCase='coach-review/resource-*']
                  [-PevalMaxCostUsd=0.5] [-PevalUpdateBaseline=true]
 ```
@@ -1943,6 +2107,21 @@ expect: {}                              # operation별 아래 표
 | `evaluatedOutcome` | `RubricScorer`(`06` §8.1)로 출력 `met`에서 계산한 값과 비교 |
 | `mustNotContainAny[]` | `followUpQuestion`, `misconceptions`에 있으면 정답 노출 1건 |
 
+**`RUBBER_DUCK` expect** (input: `targetType`, `targetSummary`, `conversation`, `learnerExplanation`)
+
+| 키 | 의미 |
+|---|---|
+| `mustNotContainAny[]` | 정답 키워드. `question`에 대소문자 무시로 하나라도 있으면 정답 노출 1건 |
+| `expectedFocusAny[]` | 설명의 빈틈을 겨냥했다고 볼 키워드. `question`이 하나라도 포함하면 적중(`questionTargetsGapBp`) |
+
+**`RUBBER_DUCK_SUMMARY` expect** (input: 전체 `conversation`)
+
+| 키 | 의미 |
+|---|---|
+| `expectedGapPrefixes[]` | 대화에서 드러난 빈틈의 `conceptKey` 접두사. gap 중 하나가 접두사로 시작하면 탐지(`gapRecallBp`) |
+| `cleanExplanation` | true면 빈틈 없는 대화다. gap이 나오면 `falseGapCount` 1건 |
+| `mustNotContainAny[]` | `reviewQuestion`·`overallNote`·`whatWasMissed`·`whyItMatters`에 있으면 정답 노출 1건 |
+
 ### 12.5 채점과 합격 기준
 
 비율은 bp 정수로 계산한다(`floorDiv`).
@@ -1960,6 +2139,11 @@ expect: {}                              # operation별 아래 표
 | `answerLeakCount` | `mustNotContainAny` 위반 수 | 0 | hint-generate, challenge-evaluate |
 | `rubricAgreementBp` | `any`가 아닌 기대값과 `met` 일치 비율 | ≥ 8500 | challenge-evaluate |
 | `outcomeMatchBp` | `evaluatedOutcome` 일치 비율 | ≥ 8500 | challenge-evaluate |
+| `answerLeakCount` (러버덕) | 최종 `question`·`reviewQuestion`·`overallNote`에서 case의 `mustNotContainAny`(정답 키워드) 위반 수 | 0 | rubber-duck, rubber-duck-summary |
+| `noAnswerRawViolationCount` | 가드 **전** raw 출력의 NA-1~NA-4 탐지 수 | 보고 (prompt 개선 신호) | rubber-duck, rubber-duck-summary |
+| `questionTargetsGapBp` | 턴 case의 `expectedFocusAny`(질문이 겨냥해야 할 빈틈 키워드) 중 하나를 `question`이 포함한 비율 | ≥ 7000 | rubber-duck |
+| `gapRecallBp` | 정리 case의 `expectedGapPrefixes`(빈틈 `conceptKey` 접두사) 탐지 비율 | ≥ 7000 | rubber-duck-summary |
+| `falseGapCount` | 정리 case `cleanExplanation: true`(빈틈 없는 대화)에서 gap이 나온 수 | 보고 | rubber-duck-summary |
 
 - 하나라도 기준을 못 넘으면 task는 실패(exit 1)한다.
 - baseline이 없으면 `recallDropBp`는 건너뛰고 경고를 출력한다.
@@ -2022,4 +2206,5 @@ CI workflow는 `repo-seed/.github/workflows/ai-eval.yml`이 기준이다(`10-dep
 | BL-AIP-13 | `evals/` 골격, `aiEval` source set·task, 채점·baseline·비용 미리보기(상한 0.5), `ai-eval.yml`(`workflow_dispatch`만, environment `ai-eval`, secret `DEEPSEEK_API_KEY`) | S4 | seed case 전부 실행, baseline v1 저장 |
 | BL-AIP-14 | 실측 반영: `estimateTokens` 계수, §11 비용 표(operation별 input/output/reasoning 평균), effort·thinking 재조정 판단 | S5 | 2주 `ai_call_log` 집계 결과로 문서 갱신 |
 | BL-AIP-15 | 운영: DeepSeek 선불 잔액 소액 충전·자동 충전 끔 확인, `min-balance-usd` 값 확정, ADR-013에 §10.3 확인 결과 기록, Coach 동의 문구·초대 안내 문구 배치(`07` §8.1) | S3 (prod AI 활성화 전) | ADR-013 Accepted |
-| BL-AIP-16 | `AiBalanceMonitor` + `AiBalanceCheckJob`(§8.7), `AiStatus.BALANCE_EXHAUSTED`, `AiBudgetGuard` 0단계·`GET /me` 반영, 감사 `AI_BALANCE_LOW`, `FakeAiProvider.setBalance` hook | S3 | M1~M7, `03` §6 job 목록·`04` §3 enum 갱신 |
+| BL-AIP-17 | `AiBalanceMonitor` + `AiBalanceCheckJob`(§8.7), `AiStatus.BALANCE_EXHAUSTED`, `AiBudgetGuard` 0단계·`GET /me` 반영, 감사 `AI_BALANCE_LOW`, `FakeAiProvider.setBalance` hook | S3 | M1~M7, `03` §6 job 목록·`04` §3 enum 갱신 |
+| BL-RDK-03 | 러버덕 AI 계약: prompt `rubber.duck/v1`·`rubber.duck.summary/v1`(§3.11·§3.12), 출력 record `RubberDuckTurnOutput`·`RubberDuckSummaryOutput`(§4.10·§4.11, `OutputSchemaRegistry`에 등록 — 합계 11종), `NoAnswerGuard`(§6.8, `devpilot.ai.guards.no-answer-phrases`), `FakeAiProvider` fixture(정상·NA-1~NA-4 위반), eval case(`rubber-duck`, `rubber-duck-summary`, §12.3·§12.5) | S3 | NA-1~NA-4 test cases, `PromptImmutabilityTest`·`OutputSchemaConsistencyTest` 통과, eval 1회 결과 첨부 |
