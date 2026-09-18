@@ -1,0 +1,129 @@
+# DevPilot plan template — JAVA_BACKEND
+# Spec: docs/19-content-spec.md §3.4 (schema), §5 (날짜 배치 알고리즘)
+# - milestones 순서 = plan_milestone.sort_order
+# - PREPARATION milestone이 모두 APPLICATION milestone보다 앞에 온다
+# - weightBp 전체 합 = 10000. 단계(phase) 안에서는 해당 단계 합으로 다시 나눠 쓴다
+# - MUST role target skill은 정확히 한 milestone에 들어간다. 한 skill은 최대 한 milestone
+templateKey: JAVA_BACKEND_DEFAULT
+targetRole: JAVA_BACKEND
+planTitle: Java 백엔드 이직 준비
+placement:
+  minMilestoneDays: 7
+milestones:
+  - key: JAVA_SQL_FOUNDATION
+    title: Java·SQL 기초 다지기
+    description: 예외, 컬렉션, Stream 같은 Java 핵심과 SQL 기초를 다지고, Git·Gradle·JUnit으로 작은 코드를 테스트와 함께 관리하는 습관을 만든다.
+    priority: MUST
+    weightBp: 1500
+    phase: PREPARATION
+    skillCodes:
+      - JAVA.OOP
+      - JAVA.COLLECTION
+      - JAVA.GENERICS
+      - JAVA.EXCEPTION
+      - JAVA.EXCEPTION.TRY_WITH_RESOURCES
+      - JAVA.LAMBDA_STREAM
+      - JAVA.OPTIONAL
+      - JAVA.MODERN_SYNTAX
+      - PRACTICAL_ENGINEERING.NULL_BOUNDARY
+      - DATABASE.SQL_BASICS
+      - DEVOPS.GIT
+      - DEVOPS.BUILD_GRADLE
+      - TESTING.JUNIT
+  - key: SPRING_JPA_CORE
+    title: Spring·JPA 핵심
+    description: DI, MVC, 검증, 예외 응답, 트랜잭션, JPA 영속성 컨텍스트와 N+1을 포트폴리오 API에 적용하며 익힌다.
+    priority: MUST
+    weightBp: 2500
+    phase: PREPARATION
+    skillCodes:
+      - SPRING.DI_IOC
+      - SPRING.BOOT_CONFIG
+      - SPRING.MVC_REST
+      - SPRING.VALIDATION
+      - SPRING.EXCEPTION_HANDLING
+      - SPRING.AOP_PROXY
+      - SPRING.TRANSACTION
+      - SPRING.DATA_JPA
+      - DATABASE.JPA
+      - DATABASE.JPA.PERSISTENCE_CONTEXT
+      - DATABASE.JPA.FETCH_STRATEGY
+      - WEB_HTTP.HTTP_BASICS
+      - WEB_HTTP.REST_API_DESIGN
+  - key: TEST_DB_DEEP_DIVE
+    title: 테스트·DB 심화
+    description: 인덱스, 격리 수준, 락으로 데이터 정합성을 다루고 slice 테스트와 Testcontainers로 검증하는 방법을 익힌다.
+    priority: MUST
+    weightBp: 2000
+    phase: PREPARATION
+    skillCodes:
+      - DATABASE.MODELING
+      - DATABASE.INDEX
+      - DATABASE.INDEX.EXPLAIN_PLAN
+      - DATABASE.TRANSACTION
+      - DATABASE.TRANSACTION.LOCKING
+      - DATABASE.MIGRATION
+      - SPRING.TRANSACTION.PROPAGATION
+      - JAVA.CONCURRENCY
+      - TESTING.UNIT_TEST_DESIGN
+      - TESTING.TEST_DOUBLE
+      - TESTING.SPRING_TEST
+      - TESTING.TESTCONTAINERS
+  - key: DEPLOY_SECURITY
+    title: 배포·보안
+    description: Docker와 GitHub Actions로 배포 파이프라인을 만들고, 인증·인가, 입력 검증, secret·로그 관리를 점검한다.
+    priority: MUST
+    weightBp: 1500
+    phase: PREPARATION
+    skillCodes:
+      - DEVOPS.LINUX_BASICS
+      - DEVOPS.DOCKER
+      - DEVOPS.CI_GITHUB_ACTIONS
+      - DEVOPS.CLOUD_DEPLOY
+      - WEB_HTTP.AUTH_SESSION_TOKEN
+      - WEB_HTTP.CORS
+      - SPRING.SECURITY
+      - SPRING.SECURITY.JWT_RESOURCE_SERVER
+      - SECURITY.OWASP_TOP10
+      - SECURITY.AUTHN_AUTHZ
+      - SECURITY.INPUT_VALIDATION
+      - SECURITY.SECRET_MANAGEMENT
+      - SECURITY.SENSITIVE_DATA_LOGGING
+      - PRACTICAL_ENGINEERING.LOGGING
+      - PRACTICAL_ENGINEERING.RESOURCE_TIMEOUT
+  - key: PORTFOLIO_RESUME
+    title: 포트폴리오·이력서
+    description: 포트폴리오 코드를 리뷰·리팩터링하고, 문제 해결 과정과 기술 선택 근거를 이력서와 면접 답변으로 정리한다.
+    priority: MUST
+    weightBp: 1500
+    phase: PREPARATION
+    skillCodes:
+      - PRACTICAL_ENGINEERING.CODE_REVIEW
+      - PRACTICAL_ENGINEERING.INCIDENT_ANALYSIS
+      - WEB_HTTP.IDEMPOTENCY
+      - SYSTEM_DESIGN.CACHING
+      - JAVA.CONCURRENCY.VIRTUAL_THREAD
+      - INTERVIEW.PROJECT_STORY
+      - INTERVIEW.TECH_DECISION
+      - INTERVIEW.TROUBLESHOOTING_STORY
+  - key: APPLY_INTERVIEW
+    title: 지원·면접 준비
+    description: 지원을 진행하면서 CS·네트워크 빈출 개념, 코딩 테스트 유형, 이직 동기 답변을 반복 점검한다.
+    priority: MUST
+    weightBp: 1000
+    phase: APPLICATION
+    skillCodes:
+      - INTERVIEW.CAREER_MOTIVATION
+      - JAVA.JVM_MEMORY_GC
+      - CS.OS_PROCESS_THREAD
+      - CS.DATA_STRUCTURE
+      - CS.IO_MODEL
+      - NETWORK.TCP_IP
+      - NETWORK.DNS
+      - NETWORK.TLS
+      - ALGORITHM.COMPLEXITY
+      - ALGORITHM.SORT_SEARCH
+      - ALGORITHM.GRAPH_SEARCH
+      - ALGORITHM.DP_GREEDY
+      - SYSTEM_DESIGN.SCALABILITY
+      - SYSTEM_DESIGN.MESSAGE_QUEUE

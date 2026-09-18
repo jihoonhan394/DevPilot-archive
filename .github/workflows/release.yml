@@ -1,0 +1,133 @@
+# DevPilot release — tag v0.<sprint>.<patch> push (main의 커밋만). 결정 D: Actions는 빌드·push까지만 하고 서버에 접근하지 않는다
+# 기준: docs/10-deployment-and-operations.md §7.2, §9.2 (2026-09-18)
+#
+# 산출물
+#   - GHCR 이미지 ghcr.io/<owner>/devpilot-api:<tag> (linux/amd64 — 서버 x86_64)
+#   - GitHub Release <tag> 의 자산 web.zip (Flutter web, AUTH_MODE=dev, same-origin API)
+# 배포는 운영자가 서버에서: ssh <server> → sudo -u deploy /opt/devpilot/deploy.sh <tag>  (web.zip 다운로드 + GHCR pull)
+# GitHub environment·secret 없음 (GITHUB_TOKEN 만: packages write, contents write)
+name: release
+
+on:
+  push:
+    tags: ["v0.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build-api:
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7 # TODO(S0): pin to commit SHA
+        with:
+          fetch-depth: 0
+      - name: Validate tag format and main ancestry
+        run: |
+          [[ "$TAG" =~ ^v0\.[0-9]+\.[0-9]+$ ]] || { echo "invalid tag: $TAG (v0.<sprint>.<patch>)"; exit 1; }
+          git merge-base --is-ancestor "refs/tags/$TAG" origin/main || { echo "$TAG is not on main"; exit 1; }
+      - uses: actions/setup-java@v6 # TODO(S0): pin to commit SHA
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6 # TODO(S0): pin to commit SHA
+      - name: Build jar (tests already passed in ci job)
+        working-directory: backend
+        run: ./gradlew bootJar
+      - name: Image name (owner 소문자)
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/devpilot-api" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v4 # TODO(S0): pin to commit SHA
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image (linux/amd64)
+        uses: docker/build-push-action@v7 # TODO(S0): pin to commit SHA
+        with:
+          context: backend
+          file: backend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ env.TAG }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.TAG }}
+
+  build-web:
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write # GitHub Release 생성·자산 업로드
+    steps:
+      - uses: actions/checkout@v7 # TODO(S0): pin to commit SHA
+      - name: Validate tag format
+        run: '[[ "$TAG" =~ ^v0\.[0-9]+\.[0-9]+$ ]] || { echo "invalid tag: $TAG"; exit 1; }'
+      - name: Read Flutter version from .fvmrc
+        id: fvm
+        run: echo "version=$(jq -r '.flutter' app/.fvmrc)" >> "$GITHUB_OUTPUT"
+      - uses: subosito/flutter-action@v2 # TODO(S0): pin to commit SHA
+        with:
+          channel: stable
+          flutter-version: ${{ steps.fvm.outputs.version }}
+          cache: true
+      - name: Build web (AUTH_MODE=dev, API_BASE_URL 비움 = same-origin → 앱이 /api/v1 을 붙인다. 호스트명은 저장소에 없다)
+        working-directory: app
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter gen-l10n
+          dart run build_runner build --delete-conflicting-outputs
+          flutter build web --release --no-web-resources-cdn --csp \
+            --dart-define=AUTH_MODE=dev --dart-define=API_BASE_URL=
+      - name: Create web.zip (zip 루트에 index.html — deploy.sh가 /opt/devpilot/web 에 푼다)
+        run: |
+          [[ -f app/build/web/index.html ]] || { echo "index.html not found"; exit 1; }
+          (cd app/build/web && zip -qr "${GITHUB_WORKSPACE}/web.zip" .)
+          ls -l web.zip
+      - name: Upload web.zip to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" web.zip --repo "$GITHUB_REPOSITORY" --clobber
+
+  summary:
+    needs: [build-api, build-web]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Job summary
+        env:
+          API_RESULT: ${{ needs.build-api.result }}
+          WEB_RESULT: ${{ needs.build-web.result }}
+        run: |
+          {
+            echo "## Release ${TAG}"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| api image (linux/amd64 → GHCR) | ${API_RESULT} |"
+            echo "| web.zip (GitHub Release 자산) | ${WEB_RESULT} |"
+            echo "| 배포 | 서버에서 \`sudo -u deploy /opt/devpilot/deploy.sh ${TAG}\` (docs/10 §9.2) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [[ "${API_RESULT}" == "success" && "${WEB_RESULT}" == "success" ]]

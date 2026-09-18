@@ -1,0 +1,15 @@
+# DevPilot daily backup timer
+# 18:30 UTC (KST 03:30) — 결정 C. 앱의 CoachContentPurgeJob(18:20)·RetentionCleanupJob 시각과 겹치지 않는지 docs/03 §6에서 확인
+# 기준: docs/03-system-architecture.md §6, docs/10-deployment-and-operations.md §8 (2026-09-18)
+
+[Unit]
+Description=Run DevPilot backup daily
+
+[Timer]
+OnCalendar=*-*-* 18:30:00 UTC
+RandomizedDelaySec=300
+Persistent=true
+Unit=devpilot-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,38 @@
+# profile: test — ./gradlew test (CI 포함). 테스트 클래스는 @ActiveProfiles("test")
+# 기준: docs/03-system-architecture.md §10, docs/09-test-and-quality.md, docs/18-project-setup-and-local-dev.md §4.4 (2026-09-18)
+#   DB   : Testcontainers postgres:16 + @ServiceConnection (spring.datasource.* 를 여기서 정하지 않는다)
+#   인증 : auth-mode=supabase(JWKS 경로) + TestJwksServer(로컬 EC P-256 JWKS). TestJwksConfig가 DynamicPropertyRegistrar로
+#          spring.security.oauth2.resourceserver.jwt.issuer-uri / jwk-set-uri 를 **직접** 등록한다 — application.yml의
+#          ${SUPABASE_URL} placeholder 해석에 의존하지 않는다 (docs/09 §6.2). web slice는 spring-security-test jwt().
+#          devtoken 모드(POST /dev/token, 앱 공개키 JwtDecoder)는 별도 테스트에서 auth-mode를 덮어써 검증한다
+#   CORS : 설정 없음 (docs/07-security-and-privacy.md §9.1)
+#   AI   : fake (FakeAiConfig는 devpilot.ai.provider=fake 일 때만 bean 등록 — provider=disabled E2E와 충돌 방지)
+#   스케줄러: @EnableScheduling 설정 클래스에 @Profile("!test") → 테스트에서 job이 자동 실행되지 않는다
+#   OpenAPI: OpenApiSnapshotTest가 /v3/api-docs.yaml 을 읽어 build/openapi/openapi.yaml 로 쓴다
+#            → api-docs 는 test profile에서 켠다 (Swagger UI는 끈다)
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: false
+  writer-with-order-by-keys: true
+  writer-with-default-pretty-printer: true
+
+devpilot:
+  security:
+    auth-mode: supabase
+    allowed-emails: owner@devpilot.test,invited@devpilot.test
+    allowed-subjects: ""
+    log-hash-key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef   # 테스트 고정값 (64 hex)
+  web:
+    app-base-url: http://localhost:5173
+  ai:
+    provider: fake
+    monthly-budget-usd: 25       # 운영 기본은 3 (DEC-06). 예산 테스트 벡터(17 §8.5, 09 BI-01~06)는 이 25 기준이다 — 재계산하지 않는다
+
+logging:
+  level:
+    root: WARN
+    com.devpilot: INFO
+    org.testcontainers: INFO
