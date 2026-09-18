@@ -128,6 +128,8 @@
 
 **Consequences** — `AGENTS.md`에 버전 기준과 "Boot 3 설정을 추측으로 쓰지 않는다"를 둔다. property 이름은 S0에 Boot 4.1 문서로 재확인한다(`20-decisions-and-risks.md` §3.1). 4.1 OSS 종료(2027-07-31) 전에 4.2로 올리는 작업을 Later 백로그로 등록한다. SP-4 결과를 이 ADR에 추가한다.
 
+**SP-4 결과 (2026-09-18)** — 통과. Temurin 25.0.4 + Gradle 9.7.1 + Boot 4.1.1(Framework 7.0.9, Security 7.1.1, Hibernate 7.4.5, Jackson 3.1.5, Flyway 12.4.0, Testcontainers 2.0.5)에서 Spotless(google-java-format 1.36.1 AOSP)·Checkstyle 14.1.0·PMD 7.27.0·SpotBugs 4.10.4·JaCoCo 0.8.15·springdoc 3.1.1·ArchUnit 1.5.0이 함께 동작하고 `./gradlew check`(단위 40 + 통합 24, `postgres:16`은 서버 Docker 터널)가 통과했다. Java 21 fallback은 필요 없다. 확인하면서 바로잡은 것: (1) Spring Security 7의 `NimbusJwtDecoder.withPublicKey`는 RSA 전용이라 EC P-256 devtoken 검증은 `withJwkSource`(메모리의 공개 JWK)로 한다(`03` §4.2) (2) Boot의 `MessageSource` 자동 설정은 기본 파일 `messages.properties`가 있어야 켜진다 — 빈 기본 파일을 두고 문구는 `messages_ko.properties`에 둔다 (3) YAML flow mapping(`{ … }`) 안의 `${VAR:}` 값은 따옴표가 필요하다 (4) Swagger 모델 API의 raw 타입은 `-Werror`에 걸리므로 변수에 담아 쓴다.
+
 ---
 
 ## ADR-006 OCI Ampere A1 + Oracle Linux 9
