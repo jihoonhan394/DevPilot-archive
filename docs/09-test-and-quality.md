@@ -401,7 +401,7 @@ V10,10,GOOD,CORRECT,SELF_EXPLAIN,GOOD,,5,4
 | `FlywayMigrationIntegrationTest` | 빈 `postgres:16` DB → Flyway 전체 적용 성공 → `spring.jpa.hibernate.ddl-auto=validate`로 context 기동 성공(모든 entity 매핑이 스키마와 일치). 적용된 migration 버전 목록이 `db/migration` 파일 목록과 같음 |
 | `SchemaSnapshotConsistencyTest` | 같은 컨테이너에 DB `snapshot`을 만들어 `database/schema.sql`을 실행한다. migration 적용 DB와 비교: `information_schema.columns`(테이블, 컬럼, 타입, nullable, default), `pg_constraint`(이름 무관, `pg_get_constraintdef` 정규화 문자열 집합), `pg_indexes.indexdef`(스키마 이름 치환 후 집합). 차이가 있으면 실패하고 차이 목록을 출력한다 (`04` §10 "schema.sql = 전체 migration 결과") |
 | `SupabaseHardeningMigrationTest` | (현재 운영 DB는 순수 PostgreSQL이라 V1의 DO 블록은 no-op다. Supabase 도입 시 의미가 생긴다) migration 전에 역할 `anon`, `authenticated`를 만든 DB에 전체 migration 적용 → `has_schema_privilege('anon', 'devpilot', 'USAGE')`, `has_table_privilege('authenticated', 'devpilot.app_user', 'SELECT')` 등이 모두 `false` (AC-20) |
-| `MigrationImmutabilityCheck` (CI step) | PR diff에서 `backend/src/main/resources/db/migration/V*.sql` 중 **base 브랜치**에 이미 있는 파일이 수정되면 실패 (`git diff --name-status origin/${{ github.base_ref }}... \| grep '^M.*db/migration/V'`). base는 `developer` 또는 `main`이다 — `main` 고정으로 두면 `developer`에만 머지된 migration의 수정을 놓친다 |
+| `MigrationImmutabilityCheck` (CI step) | PR diff에서 `backend/src/main/resources/db/migration/V*.sql` 중 **base 브랜치**에 이미 있는 파일이 수정되면 실패 (`git diff --name-status origin/${{ github.base_ref }}... \| grep '^M.*db/migration/V'`). base는 `developer` 또는 `main`이다 — `main` 고정으로 두면 `developer`에만 머지된 migration의 수정을 놓친다. **첫 릴리스 태그(`v*`)가 생긴 뒤부터 검사한다** — `04` §10의 "적용된 migration 수정 금지"가 첫 배포부터 발효하기 때문이다 |
 
 - `schema.sql`의 파일 끝 DO 블록은 `snapshot` DB에서도 실행된다(역할이 없으면 no-op).
 

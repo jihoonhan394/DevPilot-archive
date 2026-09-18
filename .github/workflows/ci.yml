@@ -25,14 +25,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7 # TODO(S0): pin to commit SHA
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: actions-pin-check (uses 값은 40자 commit SHA)
-        # S0에서 21개 action을 SHA로 고정할 때까지 이 검사는 항상 실패한다. 필수 check인 security job이
-        # 첫 push부터 막히지 않도록 결과만 남기고 통과시킨다.
-        # TODO(S0): 모든 uses:를 SHA로 고정한 뒤 이 continue-on-error 줄을 지운다 (docs/10 §7.5)
-        continue-on-error: true
+        # 모든 action은 S0에 commit SHA로 고정했다(주석에 버전). 새 action도 SHA로만 추가한다 (docs/10 §7.5)
         run: |
           if grep -rnE '^[[:space:]]*-?[[:space:]]*uses:' .github/workflows \
               | grep -vE 'uses:[[:space:]]*\./' \
@@ -41,7 +38,7 @@ jobs:
             exit 1
           fi
       - name: gitleaks (.gitleaks.toml = 기본 규칙 + DeepSeek 키 sk-hex32, docs/07 §11.3)
-        uses: gitleaks/gitleaks-action@v3 # TODO(S0): pin to commit SHA
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -53,21 +50,26 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v7 # TODO(S0): pin to commit SHA
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # migration immutability 검사에 base 브랜치 히스토리가 필요하다
-      - uses: actions/setup-java@v6 # TODO(S0): pin to commit SHA
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "25"
-      - uses: gradle/actions/wrapper-validation@v6 # TODO(S0): pin to commit SHA
-      - uses: gradle/actions/setup-gradle@v6 # TODO(S0): pin to commit SHA
+      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       # 적용된 migration은 수정 금지 (docs/04 §10, docs/09 §8). base 는 developer 또는 main
       - name: Migration immutability
         if: github.event_name == 'pull_request'
         working-directory: .
         run: |
           set -euo pipefail
+          # 이 규칙은 첫 배포(릴리스 태그 v*)부터 발효한다 (docs/04 §10). 그 전에는 V1~V9를 직접 고칠 수 있다
+          if [ -z "$(git tag -l 'v*')" ]; then
+            echo "첫 릴리스 태그 전 — migration 불변성 검사 생략 (docs/04 §10)"
+            exit 0
+          fi
           git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"
           changed=$(git diff --name-status "origin/${{ github.base_ref }}..." \
             | grep -E '^M.*backend/src/main/resources/db/migration/V' || true)
@@ -94,7 +96,7 @@ jobs:
         run: ./gradlew openApiCheck
       - name: Upload reports
         if: failure()
-        uses: actions/upload-artifact@v7 # TODO(S0): pin to commit SHA
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: backend-reports
           path: |
@@ -111,11 +113,11 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v7 # TODO(S0): pin to commit SHA
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Read Flutter version from .fvmrc
         id: fvm
         run: echo "version=$(jq -r '.flutter' .fvmrc)" >> "$GITHUB_OUTPUT"
-      - uses: subosito/flutter-action@v2 # TODO(S0): pin to commit SHA
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: ${{ steps.fvm.outputs.version }}
@@ -141,7 +143,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7 # TODO(S0): pin to commit SHA
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # 필수 check가 path filter로 "건너뜀" 상태가 되지 않도록 job은 항상 돌고, 변경이 없으면 검증 단계만 생략한다
